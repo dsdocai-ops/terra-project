@@ -1,2 +1,2 @@
 # terra-project
-Game-development project on Godot for terra.
+Game-development project on Godot.
