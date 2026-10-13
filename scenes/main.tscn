@@ -1,0 +1,43 @@
+[gd_scene load_steps=8 format=3]
+
+[ext_resource type="PackedScene" path="res://scenes/player.tscn" id="1_player"]
+[ext_resource type="Script" path="res://scripts/terrain.gd" id="2_terrain"]
+[ext_resource type="Script" path="res://scripts/enemy_spawner.gd" id="3_enemies"]
+[ext_resource type="Shader" path="res://shaders/toon_sky.gdshader" id="4_sky"]
+
+[sub_resource type="ShaderMaterial" id="Sky_1"]
+shader = ExtResource("4_sky")
+
+[sub_resource type="Sky" id="Sky_2"]
+sky_material = SubResource("Sky_1")
+radiance_size = 0
+
+[sub_resource type="Environment" id="Env_1"]
+background_mode = 2
+sky = SubResource("Sky_2")
+ambient_light_source = 3
+glow_enabled = true
+fog_enabled = true
+fog_light_color = Color(0.62, 0.76, 0.92, 1)
+fog_density = 0.0007
+fog_sky_affect = 0.2
+
+[node name="Main" type="Node3D"]
+
+[node name="WorldEnvironment" type="WorldEnvironment" parent="."]
+environment = SubResource("Env_1")
+
+[node name="Sun" type="DirectionalLight3D" parent="."]
+transform = Transform3D(0.866, -0.3215, 0.383, 0, 0.766, 0.643, -0.5, -0.557, 0.663, 0, 50, 0)
+light_color = Color(1, 0.95, 0.85, 1)
+light_energy = 1.0
+shadow_enabled = true
+directional_shadow_max_distance = 220.0
+
+[node name="Terrain" type="Node3D" parent="."]
+script = ExtResource("2_terrain")
+
+[node name="Player" parent="." instance=ExtResource("1_player")]
+
+[node name="Enemies" type="Node3D" parent="."]
+script = ExtResource("3_enemies")
