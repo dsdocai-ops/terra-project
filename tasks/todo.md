@@ -269,13 +269,13 @@ Week 1 is fully detailed. Weeks 2 to 12 are listed with brief acceptance and are
 **Description:** `scripts/components/state_machine.gd` and `state.gd`: node-based, `change_to(name)` with states able to refuse, `enter`, `exit`, `physics_update(delta)`, `handle_input`. Player states `Idle` and `Move` under `scenes/player/states/`. Scaled delta hook left as a pass-through for `TimeManager` (week 2).
 
 **Acceptance criteria:**
-- [ ] `change_to` calls `exit` then `enter`, emits `state_changed`
-- [ ] A state returning false from `can_exit()` blocks the transition
-- [ ] Player starts in `Idle`, moves to `Move` on input, back to `Idle` when input stops
+- [x] `change_to` calls `exit` then `enter`, emits `state_changed`
+- [x] A state returning false from `can_exit()` blocks the transition (and `can_enter()` on the target)
+- [x] Player starts in `Idle`, moves to `Move` on input, back to `Idle` when input stops (states read `Player.move_input`, so they run headless without the Input Map)
 
 **Verification:**
-- [ ] `tests/unit/test_state_machine.gd`: transitions, refusal, signal
-- [ ] Manual: state label overlay shows Idle/Move switching
+- [x] `tests/unit/test_state_machine.gd` (9) and `tests/unit/test_player_states.gd` (4). Initial state enters on the actor's `ready` so the actor's `@onready` references exist
+- [ ] Manual: state label overlay shows Idle/Move switching (debug overlay arrives in week 2)
 
 **Dependencies:** W1-A4
 **Files likely touched:** `scripts/components/state_machine.gd`, `scripts/components/state.gd`, `scenes/player/states/idle.gd`, `scenes/player/states/move.gd`, `tests/unit/test_state_machine.gd`

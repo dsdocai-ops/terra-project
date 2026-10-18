@@ -1,7 +1,10 @@
-[gd_scene load_steps=5 format=3]
+[gd_scene load_steps=8 format=3]
 
 [ext_resource type="Script" path="res://scenes/player/player.gd" id="1_player"]
 [ext_resource type="SpriteFrames" path="res://assets/sprites/player/placeholder_frames.tres" id="2_frames"]
+[ext_resource type="Script" path="res://scripts/components/state_machine.gd" id="3_machine"]
+[ext_resource type="Script" path="res://scenes/player/states/idle.gd" id="4_idle"]
+[ext_resource type="Script" path="res://scenes/player/states/move.gd" id="5_move"]
 
 [sub_resource type="CircleShape2D" id="CircleShape2D_body"]
 radius = 8.0
@@ -25,6 +28,14 @@ shape = SubResource("CircleShape2D_body")
 [node name="StatusEffects" type="Node" parent="."]
 
 [node name="StateMachine" type="Node" parent="."]
+script = ExtResource("3_machine")
+initial_state = &"Idle"
+
+[node name="Idle" type="Node" parent="StateMachine"]
+script = ExtResource("4_idle")
+
+[node name="Move" type="Node" parent="StateMachine"]
+script = ExtResource("5_move")
 
 [node name="Sprite" type="AnimatedSprite2D" parent="."]
 position = Vector2(0, -20)

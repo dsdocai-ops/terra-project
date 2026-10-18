@@ -36,6 +36,9 @@ var facing_index: int = 0:
 		facing_index = clamped
 		facing_changed.emit(facing_index)
 
+## Raw movement input in input space (W is (0, -1)). Set by the owning
+## peer's input layer, replicated to the host through InputSync.
+var move_input: Vector2 = Vector2.ZERO
 ## World position of the owning peer's cursor.
 var aim_position: Vector2 = Vector2.ZERO
 var is_downed: bool = false
@@ -55,16 +58,12 @@ var _dodge_cooldown_left: float = 0.0
 @onready var health: Node = $Health
 @onready var hurtbox: Area2D = $Hurtbox
 @onready var status_effects: Node = $StatusEffects
-@onready var state_machine: Node = $StateMachine
+@onready var state_machine: StateMachine = $StateMachine
 @onready var sprite: AnimatedSprite2D = $Sprite
 @onready var weapon_pivot: Node2D = $WeaponPivot
 @onready var input_sync: MultiplayerSynchronizer = $InputSync
 @onready var state_sync: MultiplayerSynchronizer = $StateSync
 @onready var interact_area: Area2D = $InteractArea
-
-
-func _ready() -> void:
-	play_directional("idle")
 
 
 func is_perfect_dodge_window() -> bool:
