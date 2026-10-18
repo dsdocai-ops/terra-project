@@ -4,6 +4,7 @@ extends GutTest
 
 const EXPECTED: Dictionary[String, Variant] = {
 	"application/config/name": "Sinkhole",
+	"application/run/main_scene": "res://scenes/main/main.tscn",
 	"display/window/size/viewport_width": 960,
 	"display/window/size/viewport_height": 540,
 	"display/window/size/window_width_override": 1920,

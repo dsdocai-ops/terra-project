@@ -110,13 +110,13 @@ Week 1 is fully detailed. Weeks 2 to 12 are listed with brief acceptance and are
 **Description:** `scenes/main/main.tscn` + `main.gd` as the project main scene. Parses `OS.get_cmdline_user_args()` for `--host`, `--join=<ip>`, `--seed=<int>`; sets `GameState.world` after loading `world.tscn`; with no args shows a placeholder menu with Host and Join (IP field) buttons that call `NetworkManager`. Not the real main menu (that is `ui-hud` week 5).
 
 **Acceptance criteria:**
-- [ ] `godot --path . -- --host` reaches the world scene with no menu
-- [ ] `godot --path . -- --join=127.0.0.1` attempts a join with no menu
-- [ ] No args shows the placeholder menu; Host button works
+- [x] `godot --path . -- --host` reaches the world scene with no menu (`LaunchArgs` + `Main.apply_options`)
+- [x] `godot --path . -- --join=127.0.0.1` attempts a join with no menu (`--join=ip:port` also accepted)
+- [x] No args shows the placeholder menu with Play Solo, Host, Join + IP field; failures put the menu back with a status line
 
 **Verification:**
-- [ ] `tests/unit/test_launch_args.gd`: arg parser function returns the right struct for each arg combination
-- [ ] Manual: launch each variant
+- [x] `tests/unit/test_launch_args.gd` (11) and `tests/unit/test_main_scene.gd` (7); `application/run/main_scene` asserted in `test_project_settings`
+- [ ] Manual: launch each variant (covered by the headless two-instance smoke in W1-B10 and Alex's walkabout)
 
 **Dependencies:** W1-B1, W1-B3 (NetworkManager stub), W1-A3 (world scene path; can use a placeholder until A3 lands)
 **Files likely touched:** `scenes/main/main.tscn`, `scenes/main/main.gd`, `project.godot` (main_scene), `tests/unit/test_launch_args.gd`
