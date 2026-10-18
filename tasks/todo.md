@@ -74,13 +74,13 @@ Week 1 is fully detailed. Weeks 2 to 12 are listed with brief acceptance and are
 **Description:** Vendor the latest GUT 9.x release compatible with 4.7 into `addons/gut/`, enable the plugin, add `tests/unit/`, `tests/integration/`, `tests/helpers/`, write `test_scenes_load.gd` (instantiates every `.tscn` under `scenes/`) and `test_data_loads.gd` (loads every `.tres` under `data/`, asserts `id` equals filename when it extends `ContentData`). Confirm the SPEC-project test command runs headless and exits non-zero on a failing test. Record the GUT version in SPEC-foundation.
 
 **Acceptance criteria:**
-- [ ] `godot --headless --path . -s addons/gut/gut_cmdln.gd -gdir=res://tests -ginclude_subdirs -gexit` exits 0
-- [ ] A deliberately failing test makes it exit non-zero (then removed)
-- [ ] `test_scenes_load` and `test_data_loads` pass on the current tree
+- [x] `godot --headless --path . -s addons/gut/gut_cmdln.gd -gdir=res://tests -ginclude_subdirs -gexit` exits 0 (GUT 9.7.1 vendored, plugin enabled)
+- [x] A deliberately failing test makes it exit 1 (verified, then removed)
+- [x] `test_scenes_load` and `test_data_loads` pass on the current tree
 
 **Verification:**
-- [ ] Run the command above twice: once green, once with the failing test
-- [ ] SPEC-foundation open question for GUT version resolved
+- [x] Ran the command twice: green with exit 0, and exit 1 with a throwaway failing test
+- [x] SPEC-foundation open question for GUT version resolved (9.7.1)
 
 **Dependencies:** W1-B1
 **Files likely touched:** `addons/gut/**`, `project.godot`, `tests/integration/test_scenes_load.gd`, `tests/integration/test_data_loads.gd`, `specs/SPEC-foundation.md`

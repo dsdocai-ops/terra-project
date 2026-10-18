@@ -154,4 +154,4 @@ Nothing stateful here. The world scene is loaded identically on every peer.
 
 ## Open questions
 
-- Exact GUT release and Godot setup action (resolved during week 1, recorded here).
+- Resolved 2026-10-18: GUT 9.7.1 (release tag `v9.7.1`) vendored under `addons/gut/`. CI downloads the official `Godot_v4.7.2-stable_linux.x86_64` build directly from the `godotengine/godot-builds` release instead of a third-party setup action, so there is no dependency on an action publishing 4.7.2.
