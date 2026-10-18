@@ -93,8 +93,37 @@ func test_zero_vector_keeps_current() -> void:
 
 func test_move_reaches_base_speed_within_four_frames() -> void:
 	_player.move_input = Vector2(1, 0)
-	_step(5)
+	_step(4)
 	assert_almost_eq(_player.velocity.length(), Player.BASE_MOVE_SPEED, 0.5)
+
+
+func test_first_frame_of_input_already_accelerates() -> void:
+	_player.move_input = Vector2(1, 0)
+	_step(1)
+	assert_eq(_player.state_machine.current_name(), &"Move")
+	assert_almost_eq(_player.velocity.length(), Player.BASE_MOVE_SPEED / 4.0, 0.5, "a quarter of full speed after one frame")
+
+
+func test_first_frame_after_release_already_decelerates() -> void:
+	_player.move_input = Vector2(0, 1)
+	_step(10)
+	_player.move_input = Vector2.ZERO
+	_step(1)
+	assert_eq(_player.state_machine.current_name(), &"Idle")
+	assert_almost_eq(_player.velocity.length(), Player.BASE_MOVE_SPEED * 0.75, 0.5, "lost a quarter of full speed in one frame")
+
+
+func test_all_eight_inputs_move_in_their_iso_direction() -> void:
+	var inputs: Array[Vector2] = [
+		Vector2(0, -1), Vector2(1, -1), Vector2(1, 0), Vector2(1, 1),
+		Vector2(0, 1), Vector2(-1, 1), Vector2(-1, 0), Vector2(-1, -1),
+	]
+	for input in inputs:
+		_player.velocity = Vector2.ZERO
+		_player.state_machine.change_to(&"Idle")
+		_player.move_input = input
+		_step(10)
+		assert_almost_eq(_player.velocity.normalized(), Iso.input_to_world(input).normalized(), Vector2(0.001, 0.001), "input %s" % input)
 
 
 func test_all_eight_inputs_give_equal_screen_speed() -> void:
@@ -120,9 +149,14 @@ func test_idle_decelerates_to_zero_within_four_frames() -> void:
 	_player.move_input = Vector2(0, 1)
 	_step(10)
 	_player.move_input = Vector2.ZERO
-	_step(5)
+	_step(4)
 	assert_eq(_player.velocity, Vector2.ZERO)
 	assert_eq(_player.state_machine.current_name(), &"Idle")
+
+
+func test_accel_and_friction_scale_with_move_speed() -> void:
+	assert_almost_eq(_player.move_accel(), _player.move_speed() / Player.ACCEL_SECONDS, 0.001)
+	assert_almost_eq(_player.move_friction(), _player.move_speed() / Player.STOP_SECONDS, 0.001)
 
 
 func test_facing_follows_move_direction_and_animation_suffix() -> void:

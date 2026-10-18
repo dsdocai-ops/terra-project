@@ -22,9 +22,10 @@ const FACING_HYSTERESIS_DEG := 3.0
 ## Pixels per second on screen with no modifiers. StatBlock.MOVE_SPEED
 ## replaces this in week 2; tuned numbers are written back to the spec.
 const BASE_MOVE_SPEED := 120.0
-## Reach full speed, or stop, in about 4 physics frames at 60 Hz.
-const MOVE_ACCEL := BASE_MOVE_SPEED * 15.0
-const MOVE_FRICTION := BASE_MOVE_SPEED * 15.0
+## Time to reach full speed from rest, and to stop from full speed: 4 physics
+## frames at 60 Hz. Expressed as time so a speed buff keeps the same feel.
+const ACCEL_SECONDS := 4.0 / 60.0
+const STOP_SECONDS := 4.0 / 60.0
 
 ## Multiplayer peer that owns this player's input. 1 is the host, 0 means
 ## not assigned yet; the spawner sets it before adding the node to the tree.
@@ -118,6 +119,16 @@ func _physics_process(_delta: float) -> void:
 ## Current move speed in px/s. Reads StatBlock.MOVE_SPEED from week 2.
 func move_speed() -> float:
 	return BASE_MOVE_SPEED
+
+
+## Acceleration in px/s^2 toward the current move speed.
+func move_accel() -> float:
+	return move_speed() / ACCEL_SECONDS
+
+
+## Deceleration in px/s^2 when input stops.
+func move_friction() -> float:
+	return move_speed() / STOP_SECONDS
 
 
 ## Points the character along a screen-space direction, with hysteresis so
