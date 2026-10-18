@@ -1,0 +1,43 @@
+[gd_scene load_steps=5 format=3]
+
+[ext_resource type="Script" path="res://scenes/player/player.gd" id="1_player"]
+[ext_resource type="SpriteFrames" path="res://assets/sprites/player/placeholder_frames.tres" id="2_frames"]
+
+[sub_resource type="CircleShape2D" id="CircleShape2D_body"]
+radius = 8.0
+
+[sub_resource type="CircleShape2D" id="CircleShape2D_interact"]
+radius = 40.0
+
+[node name="Player" type="CharacterBody2D"]
+motion_mode = 1
+script = ExtResource("1_player")
+
+[node name="BodyShape" type="CollisionShape2D" parent="."]
+shape = SubResource("CircleShape2D_body")
+
+[node name="StatBlock" type="Node" parent="."]
+
+[node name="Health" type="Node" parent="."]
+
+[node name="Hurtbox" type="Area2D" parent="."]
+
+[node name="StatusEffects" type="Node" parent="."]
+
+[node name="StateMachine" type="Node" parent="."]
+
+[node name="Sprite" type="AnimatedSprite2D" parent="."]
+position = Vector2(0, -20)
+sprite_frames = ExtResource("2_frames")
+animation = &"idle_s"
+
+[node name="WeaponPivot" type="Node2D" parent="."]
+
+[node name="InputSync" type="MultiplayerSynchronizer" parent="."]
+
+[node name="StateSync" type="MultiplayerSynchronizer" parent="."]
+
+[node name="InteractArea" type="Area2D" parent="."]
+
+[node name="InteractShape" type="CollisionShape2D" parent="InteractArea"]
+shape = SubResource("CircleShape2D_interact")

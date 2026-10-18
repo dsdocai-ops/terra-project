@@ -251,13 +251,13 @@ Week 1 is fully detailed. Weeks 2 to 12 are listed with brief acceptance and are
 **Description:** `scenes/player/player.tscn` + `player.gd` with the composition from SPEC-player-controller: `CharacterBody2D` root, placeholder child nodes for `StatBlock`, `Health`, `Hurtbox`, `StatusEffects` (empty `Node`s named for later weeks), `StateMachine`, `Sprite` (`AnimatedSprite2D` with the placeholder diamond), `WeaponPivot`, `InputSync`, `StateSync` (empty `MultiplayerSynchronizer`s for W1-B9), `InteractArea`. `Player` exposes the spec's fields and signals (`peer_id`, `is_local`, `facing`, `facing_index`, `aim_position`, `dodge_charges`, etc.) with typed defaults. Doc comment with "Sync:" line.
 
 **Acceptance criteria:**
-- [ ] Scene instantiates headless; every node in the spec layout exists by name
-- [ ] `Player` has every public field and signal from the spec's "Interfaces provided", typed
-- [ ] `is_local` is `peer_id == multiplayer.get_unique_id()`
+- [x] Scene instantiates headless; every node in the spec layout exists by name
+- [x] `Player` has every public field and signal from the spec's "Interfaces provided", typed (`character` and `class_data` are `Resource` until classes-characters defines their classes)
+- [x] `is_local` is `peer_id == multiplayer.get_unique_id()`
 
 **Verification:**
-- [ ] `tests/unit/test_player_scene.gd`: node names present, fields exist
-- [ ] `test_scenes_load` passes
+- [x] `tests/unit/test_player_scene.gd`: node names, fields, signals, methods, defaults, `is_local`, 16 directional animations, `play_directional`
+- [ ] `test_scenes_load` passes (arrives with W1-B4)
 
 **Dependencies:** W1-A3
 **Files likely touched:** `scenes/player/player.tscn`, `scenes/player/player.gd`, `tests/unit/test_player_scene.gd`
