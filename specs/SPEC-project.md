@@ -4,7 +4,7 @@ Applies to every module in [CAPABILITY_MAP.md](CAPABILITY_MAP.md). Module specs 
 
 ## Objective
 
-Ship the full Sinkhole design in 12 weeks with two developers using Claude Code heavily: 2D isometric action roguelike, 7 classes with Ascensions, 4 characters, 19 weapons with 114 mutations, 30 abilities, 88 relics, 6 biomes with 30 floors and 16 bosses, extraction loop, town meta-progression, skill tree, story with 3 endings, and 1 to 4 player online co-op built in from week 1.
+Ship the full Sinkhole design in 12 weeks with two developers using Claude Code heavily: 2D isometric action roguelike, 7 classes with Ascensions, 4 characters, 20 weapons with 120 mutations, 30 abilities, 88 relics, 6 biomes with 30 floors and 16 bosses, extraction loop, town meta-progression, skill tree, story with 3 endings, and 1 to 4 player online co-op built in from week 1.
 
 Success for the project as a whole:
 
@@ -259,7 +259,7 @@ Project-level, checked at week 12:
 - [ ] All 12 weekly tags exist and each matched its "Done when" line.
 - [ ] CI green on `sinkhole`; test command exits 0 locally on both machines.
 - [ ] 500-seed floor soak passes for all 6 biomes.
-- [ ] Every content count from the design doc is met and verified by the data-driven tests: 4 characters, 7 classes, 28 Ascensions, 19 weapons, 114 mutations, 30 abilities, 8 ultimates, 88 relics, 12 synergies, 6 biomes, 30 floors, 16 bosses, 11 buildings, 38 skill nodes, 3 endings, 40+ lore pages, 50+ achievements.
+- [ ] Every content count from the design doc is met and verified by the data-driven tests: 4 characters, 7 classes, 28 Ascensions, 20 weapons, 120 mutations, 30 abilities, 8 ultimates, 88 relics, 12 synergies, 6 biomes, 30 floors, 16 bosses, 11 buildings, 38 skill nodes, 3 endings, 40+ lore pages, 50+ achievements.
 - [ ] 4-player online co-op completes a full 30-floor run on two or more machines.
 - [ ] 60 FPS with 60+ units in the perf scene on the Compatibility renderer.
 - [ ] At least 5 external playtesters from week 9 on, with notes in `specs/WEEKLY.md`.

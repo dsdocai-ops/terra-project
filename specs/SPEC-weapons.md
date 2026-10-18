@@ -4,14 +4,14 @@
 |---|---|
 | Module id | `weapons` |
 | Owner | Dev A |
-| Weeks | 2 (WeaponData, WeaponController, Pickaxe, Crossbow), 7 (10 weapons, weapon skills, Anvil rooms, mutations for those 10), 9 (all 18), 11 (all 114 mutations, Leviathan's Tooth) |
+| Weeks | 2 (WeaponData, WeaponController, Pickaxe, Crossbow), 7 (10 weapons, weapon skills, Anvil rooms, mutations for those 10), 9 (all 19), 11 (all 120 mutations, Leviathan's Tooth) |
 | Design doc | section 7, section 4.2 (affinities, starting weapons rule), section 13 (Blacksmith), section 14 (Armory, Dual Wielder, Weapon Master) |
 | Depends on | `combat-core`, `effect-system` |
 | Depended on by | `classes-characters` (affinity), `town` (Blacksmith), `bosses` (Hollow You, Leviathan reward), `ui-hud` |
 
 ## Objective
 
-19 weapons across 5 types, each with a light combo, a heavy attack, and a weapon skill that fires on heavy-after-perfect-dodge, plus 114 mutations offered at Anvil rooms. Weapons are data plus per-weapon attack scenes; mutations are `Effect`s.
+20 weapons across 5 types (19 main + the secret Leviathan's Tooth), each with a light combo, a heavy attack, and a weapon skill that fires on heavy-after-perfect-dodge, plus 120 mutations offered at Anvil rooms. Weapons are data plus per-weapon attack scenes; mutations are `Effect`s.
 
 ## Scope
 
@@ -23,7 +23,7 @@
 | Heavy | Sledgehammer, Greataxe, Rust Anchor | shockwave ring; continuous spin; throw and yank |
 | Ranged | Crossbow, Shortbow, Hand Cannon, Throwing Knives | piercing charged bolt; arrow rain at cursor; recoil dash shotgun; stick and recall |
 | Magic | Lantern Staff, Spore Tome, Tide Orb, Blood Grimoire | charged beam + light bonus; growing toxic clouds; water puddles + wave; HP cost spells |
-| Exotic | Chain Whip, Drill Gauntlets, Saw Boomerang | tip triple damage; drill through, shred armor; bouncing saw |
+| Exotic | Chain Whip, Drill Gauntlets, Saw Boomerang, Reaper's Chain | tip triple damage; drill through, shred armor; bouncing saw; wide chain-scythe arcs, heavy hooks and pulls an enemy, kills drop souls |
 | Secret | Leviathan's Tooth | from The Leviathan; design is Dev A's call, must have light, heavy, skill, 6 mutations |
 
 Unlock state: Pickaxe, Crossbow, Lantern Staff unlocked at start. Class unlock grants Twin Daggers (Rogue), Hand Cannon (Engineer), Grave Scythe (Necromancer), Longsword (Lightbearer). Everything else bought at the Blacksmith (`town`) or found as a rare drop in the pit (`run-economy` loot table, 2% on legendary chests). Pickaxe always selectable by any class.
@@ -68,10 +68,12 @@ Weapon skill rule: `attack_heavy` pressed while `Player.is_perfect_dodge_window(
 - Chain Whip tip: hitbox split into shaft and tip, tip hits tagged `tip` for triple damage.
 - Twin Daggers skill: teleport behind nearest Marked enemy.
 - Grave Scythe souls: on kill spawns `SoulOrb` pickup (heal 3%, +5% damage 5 s); Necromancer affinity makes every kill drop one.
+- Reaper's Chain (added 2026-10-18, Necromancer affinity, may be adjusted by the team): light combo is wide 180-degree arcs at mid-long range with a `tip` segment like Chain Whip; heavy throws the blade, hooks the first enemy hit, and pulls it to the player (reuses Rust Anchor's yank path, enemy-to-player direction only); kills drop `SoulOrb` like Grave Scythe. Weapon skill: spin the chain in a full circle pulling every hooked enemy inward.
+- Blood Grimoire has no class affinity (changed 2026-10-18); it remains a Magic weapon bought at the Blacksmith.
 
 ### Mutations
 
-`MutationData extends ContentData`: `weapon: WeaponData`, `description`, `effect_script` (extends `Effect`, has access to the player's `WeaponController` and the weapon's attack node), `icon`. Exactly 6 per weapon, 19 x 6 = 114. The 6 examples in design doc section 7 are mandatory names (Thunderhead, Phantom Pair, Wrecking Ball, Grapeshot, Twin Saws, Reaper's Harvest); the remaining 108 are authored by Dev A in weeks 7, 9, 11 and listed in `specs/content/mutations.md` as they are designed so both devs and Claude Code have the canonical list.
+`MutationData extends ContentData`: `weapon: WeaponData`, `description`, `effect_script` (extends `Effect`, has access to the player's `WeaponController` and the weapon's attack node), `icon`. Exactly 6 per weapon, 20 x 6 = 120. The 6 examples in design doc section 7 are mandatory names (Thunderhead, Phantom Pair, Wrecking Ball, Grapeshot, Twin Saws, Reaper's Harvest); the remaining 114 are authored by Dev A in weeks 7, 9, 11 and listed in `specs/content/mutations.md` as they are designed so both devs and Claude Code have the canonical list.
 
 Anvil rooms: `ANVIL` populator spawns an `Anvil` interactable; offers 1 of 3 mutations for the *current* weapon not already applied (Armory node +1 choice). A weapon can hold any number of mutations within a run; they are lost at run end. Mutations are `Effect`s attached with `source = MutationData`, so proc caps apply.
 
@@ -103,9 +105,9 @@ Sync: host-authoritative, client-predicted animation.
 
 ## Testing
 
-- Data-driven `test_weapon_data.gd`: 19 weapons, each with light combo 2 to 4, heavy, skill scene, exactly 6 mutations, type set, attack scene instantiates; mutation ids unique; 114 total.
+- Data-driven `test_weapon_data.gd`: 20 weapons, each with light combo 2 to 4, heavy, skill scene, exactly 6 mutations, type set, attack scene instantiates; mutation ids unique; 120 total.
 - Unit `test_weapon_controller.gd`: swap lockout, skill only in perfect window and off cooldown, affinity signal on equip.
-- Harness `test_mutation_triggers.gd`: one case per mutation (114 by week 11) asserting its documented effect.
+- Harness `test_mutation_triggers.gd`: one case per mutation (120 by week 11) asserting its documented effect.
 - Integration: Anvil offers 3 distinct unapplied mutations for the active weapon; Armory adds a 4th.
 - Manual: feel pass per weapon on the Training Grounds dummies (DPS readout) each content week.
 - Two-instance: client swaps, attacks with each weapon type, uses a weapon skill; host results visible on both.
@@ -114,11 +116,11 @@ Sync: host-authoritative, client-predicted animation.
 
 - [ ] Week 2: Pickaxe and Crossbow with light, heavy, swap.
 - [ ] Week 7: 10 weapons with skills, Anvil rooms, 60 mutations.
-- [ ] Week 9: all 18 main weapons.
-- [ ] Week 11: Leviathan's Tooth, 114 mutations, all with harness tests.
+- [ ] Week 9: all 19 main weapons.
+- [ ] Week 11: Leviathan's Tooth, 120 mutations, all with harness tests.
 - [ ] Every weapon has a distinct feel per the "Feel" column; checked in weekly playtest notes.
 
 ## Open questions
 
 - Leviathan's Tooth design (Dev A, before week 11). Recorded in `specs/content/mutations.md` with its 6 mutations.
-- **Reaper's Chain.** Referenced as a Necromancer affinity weapon in the design doc since commit `92f268d` but absent from the section 7 weapon list. If it becomes a 20th weapon, the counts in this spec (19 weapons, 114 mutations) and in SPEC-project success criteria change. See the open question in SPEC-classes-characters.
+- Reaper's Chain mechanics above are a first pass from 2026-10-18; the team may adjust before week 9. Its 6 mutations go in `specs/content/mutations.md` with the others.

@@ -23,7 +23,7 @@ Owner is the developer lane from design doc section 19. **Which person is Dev A 
 | `save-system` | SaveManager: `user://save.json`, `save_version` and migrations, what persists, when it saves, per-player progress in co-op | foundation | B | 5 | 18 |
 | `effect-system` | Events bus signal set; effect script base class listening to `on_hit`, `on_kill`, `on_dodge`, etc.; tag system; proc depth cap (3) and no self-retrigger; host-only execution with spawner replication; shared by relics, mutations, synergies, class passives, Ascensions, tree nodes | stats-status, networking, time-manager | B | 4 | 18 |
 | `relics` | RelicData, 70 passive + 10 active + 8 cursed, rarity, tags, 12 synergies with HUD display, Shrine choose-1-of-3, Cursed Altars, active relic slots C and B, Relic Vault codex data | effect-system, run-economy | B | 4, 8, 11 | 9 |
-| `weapons` | WeaponData for 19 weapons (18 + Leviathan's Tooth), light combo / heavy / weapon skill on perfect-dodge window, 2-slot carry, affinity hooks, MutationData for 114 mutations, Anvil rooms, Blacksmith unlock data | combat-core, effect-system | A | 2, 7, 9, 11 | 7 |
+| `weapons` | WeaponData for 20 weapons (19 + Leviathan's Tooth), light combo / heavy / weapon skill on perfect-dodge window, 2-slot carry, affinity hooks, MutationData for 120 mutations, Anvil rooms, Blacksmith unlock data | combat-core, effect-system | A | 2, 7, 9, 11 | 7 |
 | `abilities` | AbilityData, 30 abilities in 9 schools, Rune Stone pickups, slots Q/R/V, 3 upgrade ranks via duplicates, Shrine swap, ultimate charge meter, 8 ultimates (4 character + 3 alternate + Spore Bloom), class twists on ultimates | effect-system, combat-core, stats-status | A | 5, 9 | 8 |
 | `classes-characters` | ClassData for 7 classes (role, affinity, passive, class skill, alternate skill at mastery 5), AscensionData 14 Tier 1 + 14 Tier 2, class pair bonuses, CharacterData for 4 characters (passive, ultimate, unlock), pre-run character/class/weapon select, Class XP earn hooks | abilities, weapons, effect-system, story-dialogue | A | 5, 7, 9, 11 | 4, 8 |
 | `story-dialogue` | StoryManager and flags; DialogueData loaded from JSON; dialogue UI with portraits and conditions; 8 NPC dialogue sets that change with progress; 3 acts; 3 endings; 40+ lore pages and codex; rescue missions (trapped miner, escort follower, unlock on rope); 3 personal events per character | save-system, run-economy, enemies-ai | B | 6, 7, 10 | 11 |
@@ -75,9 +75,9 @@ Week 5   abilities (10), classes-characters (Warrior, Ranger, Mage), save-system
 Week 6   biomes (Biome 1), bosses (Boomer Jack, The Foreman), story-dialogue (system, first NPCs), town (Shop, Rest hooks)
 Week 7   progression-trees (full skill tree), weapons (10, mutations, Anvil), classes-characters (Ascensions T1 x3, Class XP), story-dialogue (rescue missions)
 Week 8   biomes (2, 3), bosses (4), relics (40, synergies)
-Week 9   biomes (4, 5), bosses (4), weapons (all 18), abilities (all 30), classes-characters (chars 2 to 4, Rogue, Necromancer, Engineer, Lightbearer)
+Week 9   biomes (4, 5), bosses (4), weapons (all 19), abilities (all 30), classes-characters (chars 2 to 4, Rogue, Necromancer, Engineer, Lightbearer)
 Week 10  biomes (6), bosses (Hollow You, The Sinkhole), story-dialogue (all dialogue, endings, lore)
-Week 11  classes-characters (T2, class trees), relics (88, Cursed Altars), weapons (114 mutations), floor-generation (Challenge, Secret rooms), bosses (secret), endgame, town (all buildings)
+Week 11  classes-characters (T2, class trees), relics (88, Cursed Altars), weapons (120 mutations), floor-generation (Challenge, Secret rooms), bosses (secret), endgame, town (all buildings)
 Week 12  art-audio (final pass), ui-hud (settings, achievements UI), networking (co-op bug fix), balancing, external playtests
 ```
 

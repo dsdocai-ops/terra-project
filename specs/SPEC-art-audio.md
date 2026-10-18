@@ -51,7 +51,7 @@ SFX list (minimum): hit per weapon type (5), heavy hit, crit, dodge, perfect dod
 
 ### Final pass (week 12)
 
-Replace placeholders for: all 4 player characters x 8 directions, 27 enemies + corrupted tint, 16 bosses, 6 tilesets, 11 buildings x 4 states, 8 NPC portraits + 4 character portraits + rescued miners, 88 relic icons, 30 ability icons, 19 weapon icons, 114 mutation icons (can be weapon icon + overlay), UI theme. Priority order if time is short: player sheets, Biome 1 to 3 tiles and enemies, bosses, icons, rest. Art quality decisions are the team's; this spec only fixes formats and naming.
+Replace placeholders for: all 4 player characters x 8 directions, 27 enemies + corrupted tint, 16 bosses, 6 tilesets, 11 buildings x 4 states, 8 NPC portraits + 4 character portraits + rescued miners, 88 relic icons, 30 ability icons, 20 weapon icons, 120 mutation icons (can be weapon icon + overlay), UI theme. Priority order if time is short: player sheets, Biome 1 to 3 tiles and enemies, bosses, icons, rest. Art quality decisions are the team's; this spec only fixes formats and naming.
 
 ## Interfaces provided
 

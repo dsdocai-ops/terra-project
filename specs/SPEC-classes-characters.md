@@ -23,7 +23,7 @@
 | Ranger | ranged DPS | Ranged: +1 pierce | Far Shot: up to +40% by distance | Tumble Volley: backflip + arrow fan | Beastmaster (Pack Leader), Sharpshooter (Deadeye) |
 | Mage | elemental AoE | Magic: elements applied twice | Arcane Flow: combos cut cooldowns 1 s | Blink: teleport + last-element explosion | Pyromancer (Phoenix), Stormcaller (Eye of the Storm) |
 | Rogue | burst assassin | Twin Daggers, Throwing Knives, Chain Whip: behind always crits | Backstab: +75% from behind + Mark | Smoke Step: dash + invisible 2 s | Assassin (Death Mark), Trickster (Master Thief) |
-| Necromancer | summoner | Grave Scythe, Reaper's Chain, Spore Tome: kills always drop souls (see open question on Reaper's Chain) | Soul Harvest: 5 souls = skeleton (max 3) | Corpse Burst: detonate minion/corpse, minion returns in 10 s | Gravelord (Lord of the Dead), Plague Lord (Pestilence) |
+| Necromancer | summoner | Grave Scythe, Reaper's Chain, Spore Tome: kills always drop souls | Soul Harvest: 5 souls = skeleton (max 3) | Corpse Burst: detonate minion/corpse, minion returns in 10 s | Gravelord (Lord of the Dead), Plague Lord (Pestilence) |
 | Engineer | zone control | Hand Cannon, Drill Gauntlets, Saw Boomerang, Crossbow: Scrap faster | Scrap: hits and kills generate | Deploy: turret (max 2), use on turret to upgrade | Mechanist (War Machine), Demolitionist (Chain Reaction) |
 | Lightbearer | support / healer | Lantern Staff, Sledgehammer, Longsword: hits heal nearby allies | Radiance: aura heals allies, burns enemies | Sanctuary: zone -40% damage, faster revive | Paladin (Avatar of Light), Oracle (Foresight) |
 
@@ -129,4 +129,4 @@ Sync: host-authoritative.
 ## Open questions
 
 - Class tree node lists (6 to 8 per class from the design doc highlights) are authored in week 7/11 and listed in `specs/content/class-trees.md`.
-- **Reaper's Chain.** Design doc commit `92f268d` (2026-10-18) changed the Necromancer affinity from Blood Grimoire to Reaper's Chain, but section 7 lists no weapon by that name among the 18. Needs a decision: (a) rename an existing weapon (Chain Whip or Rust Anchor) to Reaper's Chain, (b) add it as a 20th weapon and update every count (weapons 19 to 20, mutations 114 to 120, tests), or (c) revert to Blood Grimoire. Until decided, the `necromancer.tres` affinity list carries `grave_scythe`, `spore_tome` only and the data-driven test flags the missing id.
+- Resolved 2026-10-18: Reaper's Chain added as the 19th main weapon (Exotic) in design doc section 7 and `SPEC-weapons.md`. Blood Grimoire stays in the game with no class affinity. Necromancer affinity list is `grave_scythe`, `reapers_chain`, `spore_tome`.

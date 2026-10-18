@@ -112,7 +112,7 @@ Unlocks: Warrior, Ranger, and Mage at start. The other 4 are unlocked by rescuin
 
 #### Necromancer
 - **Role:** Summoner
-- **Affinity:** Grave Scythe, Reaper’s Chain, Spore Tome (kills always drop souls)
+- **Affinity:** Grave Scythe, Reaper's Chain, Spore Tome (kills always drop souls)
 - **Passive: Soul Harvest.** Kills drop souls. Every 5 souls raises a skeleton minion (max 3, more with upgrades)
 - **Class skill: Corpse Burst.** Detonate a minion or corpse for big AoE damage. A minion detonated this way rises again after 10s
 - **Ascensions:**
@@ -197,7 +197,7 @@ All inputs defined in Godot's Input Map so they can be rebound.
   - Frost + Storm = **Superconduct** (enemies lose armor)
   - Void + anything = **Collapse** (pulls nearby enemies together)
 
-## 7. Weapons (18 weapons, 5 weapon types)
+## 7. Weapons (19 weapons, 5 weapon types)
 
 Every weapon has a light combo, a heavy attack, and a **weapon skill**. The weapon skill fires when you press heavy attack within 0.5s after a perfect dodge (dodging through an attack at the last moment), and then has a cooldown of about 6s. Weapons are unlocked permanently at the Blacksmith or found as rare drops in the pit. You can carry 2 weapons and swap with the mouse wheel. Classes get bonus effects with their affinity weapons (section 4.2).
 
@@ -238,10 +238,11 @@ Every weapon has a light combo, a heavy attack, and a **weapon skill**. The weap
 | **Chain Whip** | Mid range | Hitting the tip deals triple damage |
 | **Drill Gauntlets** | Close range | Holding attack drills through enemies, shreds armor |
 | **Saw Boomerang** | Bouncing | Bounces between enemies, faster each bounce |
+| **Reaper's Chain** | Long chain arcs | Scythe blade on a long chain, swings in wide arcs. Heavy hooks an enemy and pulls it in. Kills drop souls |
 
 ### Weapon Mutations
 - **Anvil rooms** in the pit offer 1 of 3 mutations for your current weapon
-- Each weapon has 6 possible mutations (108 for the 18 main weapons). Examples:
+- Each weapon has 6 possible mutations (114 for the 19 main weapons). Examples:
   - Sledgehammer, **Thunderhead:** slams call down lightning
   - Twin Daggers, **Phantom Pair:** a shadow copy repeats your combo half a second later
   - Rust Anchor, **Wrecking Ball:** anchor becomes a spinning ball that orbits you
@@ -249,7 +250,7 @@ Every weapon has a light combo, a heavy attack, and a **weapon skill**. The weap
   - Saw Boomerang, **Twin Saws:** throws two, they fly in a figure 8
   - Grave Scythe, **Reaper's Harvest:** every 10 kills summons a ghost reaper for 8 seconds
 - Mutations are lost at the end of a run
-- The secret 19th weapon (Leviathan's Tooth, section 10) gets its own 6 mutations, so the real total is 114
+- The secret 20th weapon (Leviathan's Tooth, section 10) gets its own 6 mutations, so the real total is 120
 
 ## 8. Abilities
 
@@ -517,7 +518,7 @@ Each biome: 5 floors. **Mini-boss on floor 3, biome boss on floor 5** (in Biome 
 |---|---|---|
 | **The Rat King** | Break a hidden wall in Biome 1 (easier with Wren) | Legendary relic + Rat companion cosmetic |
 | **The Mushroom Hermit** | Bring a rare Golden Spore to a hidden room in Biome 2 | Unlocks a 4th alternate ultimate, **Spore Bloom** (giant mushrooms erupt across the room, launching and poisoning enemies) |
-| **The Leviathan** | Fish with a found Fishing Rod in Drowned City | Weapon: Leviathan's Tooth (secret 19th weapon) |
+| **The Leviathan** | Fish with a found Fishing Rod in Drowned City | Weapon: Leviathan's Tooth (secret 20th weapon) |
 | **The Watcher** | Beat the game, then find the eye in the town well | True ending |
 
 ### Floor Generation
@@ -776,9 +777,9 @@ Every week ends with a playable build. Content weeks are heavy because content i
 | 6 | Biome 1 complete + story base | All Biome 1 enemies, Boomer Jack, The Foreman, dialogue system, first NPCs and story flags, Shop rooms, Rest rooms |
 | 7 | Skill tree + weapons + Ascensions | Full skill tree UI and all branches, 10 weapons, anvil rooms with mutations, Ascensions for the first 3 classes, class XP and mastery, rescue mission system |
 | 8 | Biomes 2 and 3 | Enemies, hazards, mini-bosses, bosses for Fungal Caverns and Crystal Hollows, 40 relics, synergies |
-| 9 | Biomes 4 and 5 | Drowned City and Ember Forge with all enemies and bosses, all 18 weapons, all 30 abilities, characters 2 to 4, Rogue, Necromancer, Engineer, Lightbearer (unlocked through their rescues) |
+| 9 | Biomes 4 and 5 | Drowned City and Ember Forge with all enemies and bosses, all 19 weapons, all 30 abilities, characters 2 to 4, Rogue, Necromancer, Engineer, Lightbearer (unlocked through their rescues) |
 | 10 | Biome 6 + final boss + story | The Heart, The Hollow You, The Sinkhole 3-phase fight, all 3 endings, all NPC dialogue, Lore rooms and 40+ lore pages |
-| 11 | Content and endgame | Tier 2 Ascensions and all class trees, class pair bonuses, all 88 relics, Cursed Altars, Challenge rooms, Secret rooms, all 114 mutations, secret bosses, Deep Mode, heat levels, all town buildings |
+| 11 | Content and endgame | Tier 2 Ascensions and all class trees, class pair bonuses, all 88 relics, Cursed Altars, Challenge rooms, Secret rooms, all 120 mutations, secret bosses, Deep Mode, heat levels, all town buildings |
 | 12 | Polish | Final art/audio/VFX pass, balancing, co-op bug fixing, achievements, settings, external playtests |
 
 ## 21. Cut List (only if seriously behind, cut in this order)

@@ -4,7 +4,7 @@ Canonical lists for content that the design doc names in aggregate but does not 
 
 | File | Owner | Week | What |
 |---|---|---|---|
-| `mutations.md` | Dev A | 7, 9, 11 | 114 mutations: weapon, name, effect text. The 6 design doc examples are fixed. Includes Leviathan's Tooth design and its 6 |
+| `mutations.md` | Dev A | 7, 9, 11 | 120 mutations: weapon, name, effect text. The 6 design doc examples are fixed. Includes Leviathan's Tooth design and its 6 |
 | `abilities.md` | Dev A | 5, 9 | rank 2 and 3 scaling per ability, VFX ids |
 | `class-trees.md` | Dev A | 7, 11 | 6 to 8 nodes per class from the design doc highlights |
 | `dialogue-schema.md` | Dev B | 6 | JSON schema for dialogue and lore files, condition operators, flag namespace list |
