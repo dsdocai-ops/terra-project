@@ -98,7 +98,7 @@ func test_is_local_follows_peer_id() -> void:
 func test_sprite_has_idle_and_walk_for_all_eight_directions() -> void:
 	var sprite := _player.get_node("Sprite") as AnimatedSprite2D
 	assert_not_null(sprite.sprite_frames, "sprite frames assigned")
-	for dir in Player.FACING_SUFFIXES:
+	for dir: StringName in Facing.SUFFIXES:
 		assert_true(sprite.sprite_frames.has_animation("idle_%s" % dir), "idle_%s" % dir)
 		assert_true(sprite.sprite_frames.has_animation("walk_%s" % dir), "walk_%s" % dir)
 

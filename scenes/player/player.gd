@@ -16,9 +16,7 @@ signal dodge_started(perfect_window_open: bool)
 signal dodge_finished()
 signal facing_changed(index: int)
 
-## Sprite animation suffix per facing index. Index 0 faces the camera.
-const FACING_SUFFIXES: Array[StringName] = [&"s", &"sw", &"w", &"nw", &"n", &"ne", &"e", &"se"]
-## Degrees past a sector edge before the facing index changes.
+## Degrees past a sector edge before the facing index changes (see Facing).
 const FACING_HYSTERESIS_DEG := 3.0
 
 ## Pixels per second on screen with no modifiers. StatBlock.MOVE_SPEED
@@ -43,7 +41,7 @@ var class_data: Resource
 var facing: Vector2 = Vector2.DOWN
 var facing_index: int = 0:
 	set(value):
-		var clamped := posmod(value, FACING_SUFFIXES.size())
+		var clamped := posmod(value, Facing.count())
 		if clamped == facing_index:
 			return
 		facing_index = clamped
@@ -128,7 +126,7 @@ func set_facing(dir: Vector2) -> void:
 	if dir == Vector2.ZERO:
 		return
 	facing = dir.normalized()
-	facing_index = Iso.facing_index(facing, facing_index, FACING_HYSTERESIS_DEG)
+	facing_index = Facing.index_for(facing, facing_index, FACING_HYSTERESIS_DEG)
 
 
 ## In co-op nobody may leave the shared frame. Limits `velocity` so the next
@@ -174,7 +172,7 @@ func reset_dodge_cooldown() -> void:
 ## Plays `<anim>_<dir>` for the current facing, e.g. "walk" becomes "walk_ne".
 ## Call it on state changes only; facing changes replay it automatically.
 func play_directional(anim: String) -> void:
-	var anim_name := StringName("%s_%s" % [anim, FACING_SUFFIXES[facing_index]])
+	var anim_name := StringName("%s_%s" % [anim, Facing.suffix(facing_index)])
 	if sprite.sprite_frames == null or not sprite.sprite_frames.has_animation(anim_name):
 		if not _missing_anims.has(anim_name):
 			_missing_anims[anim_name] = true

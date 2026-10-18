@@ -24,10 +24,6 @@ const ARROW_COLOR := Color(1.0, 0.95, 0.6)
 const ICON_BG := Color(0.2, 0.2, 0.25)
 const ICON_FG := Color(0.95, 0.9, 0.8)
 
-## Facing order matches Player.facing_index: s, sw, w, nw, n, ne, e, se.
-## Angles are screen-space degrees; diagonals follow the isometric tile axes.
-const FACING_DEGREES: Array[float] = [90.0, 153.435, 180.0, 206.565, 270.0, 333.435, 0.0, 26.565]
-
 const PLACEHOLDER_DIRS: Array[String] = [
 	"res://assets/tilesets/placeholder",
 	"res://assets/sprites/player",
@@ -90,12 +86,14 @@ func _draw_diamond(img: Image, origin: Vector2i, fill: Color, edge: Color) -> vo
 
 
 func _make_player_sheet() -> void:
-	var img := Image.create_empty(SPRITE * FACING_DEGREES.size(), SPRITE, false, Image.FORMAT_RGBA8)
-	for i in FACING_DEGREES.size():
+	# Frame order and arrow angles come from Facing so the sheet always
+	# matches Player.facing_index.
+	var img := Image.create_empty(SPRITE * Facing.count(), SPRITE, false, Image.FORMAT_RGBA8)
+	for i in Facing.count():
 		var ox := i * SPRITE
 		var center := Vector2(ox + SPRITE * 0.5, SPRITE * 0.5)
 		_draw_body(img, ox, center)
-		_draw_arrow(img, center, deg_to_rad(FACING_DEGREES[i]))
+		_draw_arrow(img, center, deg_to_rad(Facing.CENTERS_DEG[i]))
 	_save(img, "res://assets/sprites/player/placeholder_sheet.png")
 
 

@@ -33,6 +33,32 @@ func test_to_tile_matches_tilemaplayer_local_to_map() -> void:
 			assert_eq(Iso.to_tile(center), _layer.local_to_map(center), "center of %s" % tile)
 
 
+func test_to_tile_matches_local_to_map_for_off_center_points() -> void:
+	# Points near diamond edges and corners are where rounding could differ.
+	# Points exactly on an edge (|dx|/32 + |dy|/16 == 1) are excluded: Godot
+	# resolves those ties by its own half-open convention, and a real position
+	# never lands on one.
+	var offsets: Array[Vector2] = [
+		Vector2(31, 0), Vector2(-31, 0), Vector2(0, 15), Vector2(0, -15),
+		Vector2(15.9, 7.9), Vector2(-15.9, -7.9), Vector2(15, -7), Vector2(-15, 7),
+		Vector2(29, 1), Vector2(1, 15), Vector2(31.9, 0), Vector2(0, 15.9),
+	]
+	for x in range(-4, 5):
+		for y in range(-4, 5):
+			var center := _layer.map_to_local(Vector2i(x, y))
+			for offset in offsets:
+				var p := center + offset
+				assert_eq(Iso.to_tile(p), _layer.local_to_map(p), "point %s" % p)
+
+
+func test_to_tile_matches_local_to_map_for_random_points() -> void:
+	var rng := RandomNumberGenerator.new()
+	rng.seed = 7
+	for i in 5000:
+		var p := Vector2(rng.randf_range(-600, 600), rng.randf_range(-400, 400))
+		assert_eq(Iso.to_tile(p), _layer.local_to_map(p), "point %s" % p)
+
+
 func test_round_trip_over_grid_including_negatives() -> void:
 	for x in range(-32, 33):
 		for y in range(-32, 33):

@@ -185,36 +185,72 @@ func test_world_camera_tracks_players_container() -> void:
 	assert_eq(cam.target_count(), 1)
 
 
-# Co-op movement clamp through the real Move state
+# Co-op movement clamp
+#
+# move_and_slide() uses the physics delta only inside a physics frame; from a
+# synchronous test loop it uses the process delta, so positions after N
+# synthetic steps are not deterministic. These tests therefore assert on
+# velocity and on the clamp invariant, never on an exact position.
 
 func test_solo_player_is_never_clamped() -> void:
 	var world := _world_with(1, 0.0)
 	var a := world.players.get_child(0) as Player
-	a.move_input = Vector2(1, 0)
-	for i in 300:
-		a.state_machine.physics_update(DT)
-	assert_gt(a.global_position.x, VIEW.x * 0.5, "ran well past where a co-op clamp would stop")
+	a.global_position = Vector2(50000, 0)
+	a.velocity = Vector2(Player.BASE_MOVE_SPEED, 0)
+	a.apply_coop_clamp(DT)
+	assert_eq(a.velocity, Vector2(Player.BASE_MOVE_SPEED, 0), "one player, no shared frame, no clamp")
 
 
-func test_coop_player_cannot_leave_the_shared_frame() -> void:
-	# At MIN_ZOOM the padded edge sits about 1850 px from a stationary
-	# partner, so run long enough to reach it (120 px/s).
+## The right-hand frame edge is a fixed point of the centroid: once the
+## spread is wide enough for MIN_ZOOM, edge = partner.x + width - 2 * padding.
+func _edge_right_of(partner_x: float) -> float:
+	return partner_x + GameCamera.DESIGN_VIEWPORT.x / GameCamera.MIN_ZOOM - GameCamera.EDGE_PADDING * 2.0
+
+
+func test_edge_fixed_point_matches_coop_bounds() -> void:
+	var positions: Array[Vector2] = [Vector2(_edge_right_of(300.0), 0), Vector2(300, 0)]
+	assert_almost_eq(GameCamera.coop_bounds(positions).end.x, positions[0].x, 0.001)
+
+
+func test_clamp_zeroes_velocity_at_the_padded_edge() -> void:
+	var world := _world_with(2, 300.0)
+	var a := world.players.get_child(0) as Player
+	a.global_position.x = _edge_right_of(300.0)
+	a.velocity = Vector2(Player.BASE_MOVE_SPEED, 0)
+	a.apply_coop_clamp(DT)
+	assert_almost_eq(a.velocity.x, 0.0, 0.001, "pinned at the edge, no leftover velocity")
+
+
+func test_clamp_allows_exactly_the_remaining_distance() -> void:
 	var world := _world_with(2, 300.0)
 	var a := world.players.get_child(0) as Player
 	var b := world.players.get_child(1) as Player
-	a.move_input = Vector2(1, 0)
-	for i in 1200:
-		a.state_machine.physics_update(DT)
+	a.global_position.x = _edge_right_of(300.0) - 1.0
 	var positions: Array[Vector2] = [a.global_position, b.global_position]
-	var rect := GameCamera.coop_bounds(positions)
-	assert_lte(a.global_position.x, rect.end.x + 0.001, "held at the padded edge")
-	assert_gt(a.global_position.x, b.global_position.x, "still moved toward the edge")
+	var remaining := GameCamera.coop_bounds(positions).end.x - a.global_position.x
+	assert_gt(remaining, 0.0, "starts inside")
+	a.velocity = Vector2(Player.BASE_MOVE_SPEED, 0)
+	a.apply_coop_clamp(DT)
+	assert_almost_eq(a.velocity.x, remaining / DT, 0.01, "velocity limited so next position lands on the edge")
 
 
-func test_clamp_limits_velocity_rather_than_teleporting() -> void:
+func test_move_state_holds_player_inside_the_shared_frame() -> void:
+	# Real physics frames so move_and_slide uses the physics delta. Tick rate
+	# raised so 1500 ticks pass in well under a second of wall time.
 	var world := _world_with(2, 300.0)
 	var a := world.players.get_child(0) as Player
+	var b := world.players.get_child(1) as Player
+	a.global_position.x = _edge_right_of(300.0) - 60.0
 	a.move_input = Vector2(1, 0)
-	for i in 1200:
-		a.state_machine.physics_update(DT)
-	assert_almost_eq(a.velocity.x, 0.0, 0.5, "pinned at the edge means no leftover velocity")
+	var prev_tps := Engine.physics_ticks_per_second
+	var prev_steps := Engine.max_physics_steps_per_frame
+	Engine.physics_ticks_per_second = 2000
+	Engine.max_physics_steps_per_frame = 2000
+	await wait_physics_frames(1500)
+	Engine.physics_ticks_per_second = prev_tps
+	Engine.max_physics_steps_per_frame = prev_steps
+	var positions: Array[Vector2] = [a.global_position, b.global_position]
+	var rect := GameCamera.coop_bounds(positions)
+	assert_lte(a.global_position.x, rect.end.x + 0.5, "held at the padded edge")
+	assert_almost_eq(a.global_position.x, rect.end.x, 1.0, "reached it (60 px at 120 px/s in 0.75 s)")
+	assert_eq(a.state_machine.current_name(), &"Move", "still trying to move")

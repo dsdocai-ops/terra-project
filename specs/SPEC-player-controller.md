@@ -21,6 +21,7 @@ The player character that feels good to move before anything else exists: 8-dire
 - Speed from `StatBlock.get_value(Stat.MOVE_SPEED)`; base 120 px/s, tuned in week 2.
 - Acceleration and friction short (reach full speed in ~4 frames) so it feels snappy.
 - Facing: 8 directions from the aim vector (mouse position relative to player) while attacking, from the move vector otherwise. Stored as `facing_index: int` 0 to 7 and `facing: Vector2`.
+- Facing definition (decided 2026-10-18, `scripts/facing.gd`, class `Facing`): index order `s, sw, w, nw, n, ne, e, se` (0 faces the camera). Screen angles are 90, 153.435, 180, 206.565, 270, 333.435, 0, 26.565 degrees, i.e. cardinals screen-aligned and diagonals on the 2:1 tile axes, matching `Iso.input_to_world`. Sector boundaries sit midway between neighbouring facings, so sectors are unequal (e spans 346.7 to 13.3 degrees, se spans 13.3 to 58.3). A 3 degree hysteresis keeps the current index near a boundary. `Facing.SUFFIXES` is the single source for animation suffixes; the placeholder sheet generator and tests read the same tables.
 
 ### Dodge roll
 

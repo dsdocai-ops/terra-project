@@ -1,12 +1,12 @@
 extends GutTest
-## Tests for facing sectors (Iso.facing_index) and Move/Idle movement math.
+## Tests for facing sectors (Facing.index_for) and Move/Idle movement math.
 ## Owned by player-controller.
 
 const PLAYER_SCENE := "res://scenes/player/player.tscn"
 const DT := 1.0 / 60.0
 
-## Screen-space unit vectors for the 8 facings, in Player.FACING_SUFFIXES
-## order: s, sw, w, nw, n, ne, e, se. Diagonals follow the tile axes.
+## Screen-space unit vectors for the 8 facings, in Facing.SUFFIXES order:
+## s, sw, w, nw, n, ne, e, se. Diagonals follow the tile axes.
 const FACING_VECTORS: Array[Vector2] = [
 	Vector2(0, 1), Vector2(-32, 16), Vector2(-1, 0), Vector2(-32, -16),
 	Vector2(0, -1), Vector2(32, -16), Vector2(1, 0), Vector2(32, 16),
@@ -25,33 +25,68 @@ func _step(frames: int) -> void:
 		_player.state_machine.physics_update(DT)
 
 
-# Iso.facing_index
+# Facing.index_for
+
+func _at(degrees: float) -> Vector2:
+	return Vector2.RIGHT.rotated(deg_to_rad(degrees))
+
+
+func test_tables_agree_in_size() -> void:
+	assert_eq(Facing.SUFFIXES.size(), 8)
+	assert_eq(Facing.CENTERS_DEG.size(), 8)
+	assert_eq(Facing.ANGULAR_ORDER.size(), 8)
+	assert_eq(Facing.SECTOR_BOUNDS.size(), 8)
+	assert_eq(Facing.count(), 8)
+
 
 func test_exact_directions_map_to_their_index() -> void:
 	for i in FACING_VECTORS.size():
-		assert_eq(Iso.facing_index(FACING_VECTORS[i].normalized()), i, "facing %s" % Player.FACING_SUFFIXES[i])
+		assert_eq(Facing.index_for(FACING_VECTORS[i].normalized()), i, "facing %s" % Facing.suffix(i))
+
+
+func test_sector_bounds_for_east_wrap_around_zero() -> void:
+	var e := Facing.SECTOR_BOUNDS[6]
+	assert_almost_eq(e.x, 346.717, 0.01, "lower edge, midway to ne")
+	assert_almost_eq(e.y, 13.283, 0.01, "upper edge, midway to se")
 
 
 func test_sector_boundaries_sit_midway_between_neighbours() -> void:
 	# Between e (0 deg) and se (26.565 deg) the boundary is 13.28 deg.
-	assert_eq(Iso.facing_index(Vector2.RIGHT.rotated(deg_to_rad(12.0))), 6, "just below boundary is e")
-	assert_eq(Iso.facing_index(Vector2.RIGHT.rotated(deg_to_rad(15.0))), 7, "just above boundary is se")
+	assert_eq(Facing.index_for(_at(12.0)), 6, "just below boundary is e")
+	assert_eq(Facing.index_for(_at(15.0)), 7, "just above boundary is se")
 	# Between se (26.565) and s (90) the boundary is 58.28 deg.
-	assert_eq(Iso.facing_index(Vector2.RIGHT.rotated(deg_to_rad(57.0))), 7)
-	assert_eq(Iso.facing_index(Vector2.RIGHT.rotated(deg_to_rad(60.0))), 0)
+	assert_eq(Facing.index_for(_at(57.0)), 7)
+	assert_eq(Facing.index_for(_at(60.0)), 0)
+
+
+func test_boundaries_across_the_zero_degree_wrap() -> void:
+	# ne (333.435) and e (0) meet at 346.72 deg.
+	assert_eq(Facing.index_for(_at(343.0)), 5, "just below the wrap boundary is ne")
+	assert_eq(Facing.index_for(_at(350.0)), 6, "just above it is e")
+	assert_eq(Facing.index_for(_at(359.9)), 6)
+	assert_eq(Facing.index_for(_at(-5.0)), 6, "negative angles normalise")
 
 
 func test_hysteresis_keeps_current_sector_near_boundary() -> void:
-	var near_boundary := Vector2.RIGHT.rotated(deg_to_rad(14.5))
-	assert_eq(Iso.facing_index(near_boundary, 6, 3.0), 6, "stays e within hysteresis")
-	assert_eq(Iso.facing_index(near_boundary, 7, 3.0), 7, "stays se within hysteresis")
-	var well_past := Vector2.RIGHT.rotated(deg_to_rad(20.0))
-	assert_eq(Iso.facing_index(well_past, 6, 3.0), 7, "switches once clearly past")
+	var near_boundary := _at(14.5)
+	assert_eq(Facing.index_for(near_boundary, 6, 3.0), 6, "stays e within hysteresis")
+	assert_eq(Facing.index_for(near_boundary, 7, 3.0), 7, "stays se within hysteresis")
+	var well_past := _at(20.0)
+	assert_eq(Facing.index_for(well_past, 6, 3.0), 7, "switches once clearly past")
+
+
+func test_hysteresis_straddling_the_wrap() -> void:
+	# ne's upper edge is 346.72; with 3 deg hysteresis it holds until 349.72.
+	assert_eq(Facing.index_for(_at(348.0), 5, 3.0), 5, "ne holds just past its edge")
+	assert_eq(Facing.index_for(_at(352.0), 5, 3.0), 6, "then gives way to e")
+	# e's lower edge is 346.72; from e, 345 deg is still inside hysteresis.
+	assert_eq(Facing.index_for(_at(345.0), 6, 3.0), 6, "e holds below its lower edge")
+	assert_eq(Facing.index_for(_at(341.0), 6, 3.0), 5, "then gives way to ne")
 
 
 func test_zero_vector_keeps_current() -> void:
-	assert_eq(Iso.facing_index(Vector2.ZERO, 3), 3)
-	assert_eq(Iso.facing_index(Vector2.ZERO), 0)
+	assert_eq(Facing.index_for(Vector2.ZERO, 3), 3)
+	assert_eq(Facing.index_for(Vector2.ZERO), 0)
 
 
 # Movement
