@@ -198,12 +198,12 @@ Week 1 is fully detailed. Weeks 2 to 12 are listed with brief acceptance and are
 **Description:** `scripts/iso.gd` static class `Iso` with `to_screen(tile: Vector2i) -> Vector2`, `to_tile(screen: Vector2) -> Vector2i`, `input_to_world(dir: Vector2) -> Vector2` for 64x32 diamond-down tiles. `input_to_world` rotates WASD onto the isometric axes and normalizes so diagonal and cardinal moves have equal on-screen speed.
 
 **Acceptance criteria:**
-- [ ] `to_tile(to_screen(t)) == t` for every tile in a 64x64 grid including negatives
-- [ ] `input_to_world` of the 8 unit directions all have equal length and point along the expected screen directions
-- [ ] Fully typed, doc comment
+- [x] `to_tile(to_screen(t)) == t` for every tile in a 64x64 grid including negatives
+- [x] `input_to_world` of the 8 unit directions all have equal length and point along the expected screen directions
+- [x] Fully typed, doc comment
 
 **Verification:**
-- [ ] `tests/unit/test_iso.gd` passes
+- [x] `tests/unit/test_iso.gd` passes (10 tests, cross-checked against a real TileMapLayer)
 
 **Dependencies:** None
 **Files likely touched:** `scripts/iso.gd`, `tests/unit/test_iso.gd`
