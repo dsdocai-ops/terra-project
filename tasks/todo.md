@@ -56,13 +56,13 @@ Week 1 is fully detailed. Weeks 2 to 12 are listed with brief acceptance and are
 **Description:** Create the 7 autoload scripts in SPEC-foundation order (`Events`, `TimeManager`, `GameState`, `SaveManager`, `StoryManager`, `AudioManager`, `NetworkManager`) with the public API shapes from their module specs, every method typed and bodied with `pass` or a trivial return, doc comment naming the owning module and the Sync line. Register them. Create `scripts/data/content_data.gd` (`ContentData extends Resource` with `id`, `display_name`, `tags`, `effect_script`, `icon`, `vfx_id`, `sfx_id`).
 
 **Acceptance criteria:**
-- [ ] All 7 autoloads registered in the specified order and reachable by name from a test
-- [ ] Each stub exposes every signal, constant, and method named in its spec's "Interfaces provided" block, fully typed
-- [ ] `ContentData` loads and a test `.tres` extending it round-trips
+- [x] All 7 autoloads registered in the specified order and reachable by name from a test
+- [x] Each stub exposes every signal, constant, and method named in its spec's "Interfaces provided" block, fully typed (base classes with `TODO(module)` markers where the real class does not exist yet; `StoryManager` flags and lore are a working in-memory set)
+- [x] `ContentData` loads and a test `.tres` extending it round-trips
 
 **Verification:**
-- [ ] `tests/unit/test_autoloads.gd`: each autoload is non-null and `has_method()` for every spec method
-- [ ] Import exits 0 with `untyped_declaration` as Error
+- [x] `tests/unit/test_autoloads.gd`: order, every spec method and signal, the full Events signal set with no public methods, constants, ContentData round trip
+- [x] Import exits 0 with `untyped_declaration` as Error
 
 **Dependencies:** W1-B1
 **Files likely touched:** `scripts/autoload/*.gd` (7), `scripts/data/content_data.gd`, `project.godot`, `tests/unit/test_autoloads.gd`
