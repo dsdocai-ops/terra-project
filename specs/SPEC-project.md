@@ -201,7 +201,7 @@ CI (`.github/workflows/ci.yml`): checkout, set up Godot 4.7.2 headless (pin the 
 - Type everything. Treat `untyped_declaration` errors as build failures.
 - Add or extend tests in the same PR as the code they cover.
 - Keep PRs scoped to one module id and name it in the title: `[relics] add On Dodge relics 1 to 6`.
-- Pull `sinkhole` before starting work. Small commits, conventional messages (`feat(relics): ...`, `fix(networking): ...`).
+- Pull `main` before starting work. Small commits, conventional messages (`feat(relics): ...`, `fix(networking): ...`).
 - Write "who owns this, how does it sync" in the doc comment of any script with game state.
 - Keep every week's build playable. If a PR breaks the run loop, revert first, fix second.
 
@@ -231,13 +231,13 @@ CI (`.github/workflows/ci.yml`): checkout, set up Godot 4.7.2 headless (pin the 
 
 ## Git workflow
 
-- `main` holds the archived previous game until the team decides otherwise. `sinkhole` is the integration branch for this project.
-- Feature branches off `sinkhole`: `feat/<module-id>-<short-desc>`, `fix/<module-id>-<short-desc>`.
-- Merge via PR into `sinkhole`. CI must pass.
+- `main` is the integration branch. The previous game was deleted on 2026-10-18 by team decision (last commit `54b10d8`, no longer referenced by any branch).
+- Feature branches off `main`: `feat/<module-id>-<short-desc>`, `fix/<module-id>-<short-desc>`.
+- Merge via PR into `main`. CI must pass.
 - **Required review** from the other developer for shared systems: anything under `scripts/autoload/`, `scripts/components/`, `scripts/data/`, `project.godot`, `.github/`, `addons/`.
 - **Self-merge allowed** for content and scenes inside your own lane's modules once CI passes.
-- Each week's playable build is tagged `week-N` on `sinkhole` after the weekly checklist passes.
-- Never force-push `sinkhole`. Never rebase a branch someone else has checked out.
+- Each week's playable build is tagged `week-N` on `main` after the weekly checklist passes.
+- Never force-push `main`. Never rebase a branch someone else has checked out.
 
 ## Ownership
 
@@ -257,7 +257,7 @@ Project-level, checked at week 12:
 
 - [ ] Every module in the capability map is at status "done" or has a dated cut-list entry.
 - [ ] All 12 weekly tags exist and each matched its "Done when" line.
-- [ ] CI green on `sinkhole`; test command exits 0 locally on both machines.
+- [ ] CI green on `main`; test command exits 0 locally on both machines.
 - [ ] 500-seed floor soak passes for all 6 biomes.
 - [ ] Every content count from the design doc is met and verified by the data-driven tests: 4 characters, 7 classes, 28 Ascensions, 20 weapons, 120 mutations, 30 abilities, 8 ultimates, 88 relics, 12 synergies, 6 biomes, 30 floors, 16 bosses, 11 buildings, 38 skill nodes, 3 endings, 40+ lore pages, 50+ achievements.
 - [ ] 4-player online co-op completes a full 30-floor run on two or more machines.

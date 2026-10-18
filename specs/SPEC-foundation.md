@@ -108,7 +108,7 @@ Helper `Iso` static class in `scripts/iso.gd`: `to_screen(tile: Vector2i) -> Vec
 - `tests/unit/test_iso.gd`: round-trip `to_screen` / `to_tile` on a grid of tiles; `input_to_world` magnitudes.
 - `tests/integration/test_scenes_load.gd`: instantiate every `.tscn` under `scenes/`.
 - `tests/integration/test_data_loads.gd`: load every `.tres` under `data/` (empty in week 1, still runs).
-- `.github/workflows/ci.yml`: on `pull_request` and `push` to `sinkhole`, install Godot 4.7.2 headless, `--import`, run GUT, fail on non-zero exit. Verify the chosen setup action publishes 4.7.2; if not, download the official Linux headless zip by URL.
+- `.github/workflows/ci.yml`: on `pull_request` and `push` to `main`, install Godot 4.7.2 headless, `--import`, run GUT, fail on non-zero exit. Verify the chosen setup action publishes 4.7.2; if not, download the official Linux headless zip by URL.
 
 ## Interfaces provided
 

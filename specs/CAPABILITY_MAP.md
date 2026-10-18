@@ -81,7 +81,7 @@ Week 11  classes-characters (T2, class trees), relics (88, Cursed Altars), weapo
 Week 12  art-audio (final pass), ui-hud (settings, achievements UI), networking (co-op bug fix), balancing, external playtests
 ```
 
-Each week ends with a playable build tagged `week-N` on `sinkhole`.
+Each week ends with a playable build tagged `week-N` on `main`.
 
 ## Scope rule
 

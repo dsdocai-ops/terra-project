@@ -39,4 +39,4 @@ Godot MCP tools (`launch_editor`, `run_project`, `get_debug_output`) are availab
 
 ## Workflow
 
-Branch `feat/<module-id>-<desc>` off `sinkhole`, PR into `sinkhole`, CI green, review required for shared systems. Weekly build tagged `week-N`. Spec-driven: spec, plan, tasks, implement, each gated by human review.
+Branch `feat/<module-id>-<desc>` off `main`, PR into `main`, CI green, review required for shared systems. Weekly build tagged `week-N`. Spec-driven: spec, plan, tasks, implement, each gated by human review.

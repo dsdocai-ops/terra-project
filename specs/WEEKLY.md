@@ -11,7 +11,7 @@ Done when (design doc section 20): <copy the line>
 Met: yes / partial (what is missing)
 
 Checklist
-- [ ] CI green on sinkhole
+- [ ] CI green on main
 - [ ] Two-machine co-op session (who, duration, latency used)
 - [ ] Perf scene FPS min/avg, machine A / machine B (from week 4)
 - [ ] Classes and Ascensions tested solo and co-op this week: ...
