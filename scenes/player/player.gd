@@ -28,8 +28,12 @@ const BASE_MOVE_SPEED := 120.0
 const MOVE_ACCEL := BASE_MOVE_SPEED * 15.0
 const MOVE_FRICTION := BASE_MOVE_SPEED * 15.0
 
-## Multiplayer peer that owns this player's input. 1 is the host.
-var peer_id: int = 0
+## Multiplayer peer that owns this player's input. 1 is the host, 0 means
+## not assigned yet; the spawner sets it before adding the node to the tree.
+var peer_id: int = 0:
+	set(value):
+		peer_id = value
+		refresh_authority()
 
 ## TODO(classes-characters): retype to CharacterData when it exists.
 var character: Resource
@@ -56,6 +60,13 @@ var is_local: bool:
 	get:
 		return is_inside_tree() and peer_id == multiplayer.get_unique_id()
 
+## True where this player's state machine should run: on the host for every
+## player, and on the owning client for its own player (prediction). Remote
+## copies on a client only present what StateSync replicates.
+var simulates: bool:
+	get:
+		return is_inside_tree() and (multiplayer.is_server() or is_local)
+
 var dodge_charges: int = 1
 var dodge_distance_mult: float = 1.0
 var revive_speed_mult: float = 1.0
@@ -80,6 +91,21 @@ var _missing_anims: Dictionary[StringName, bool] = {}
 @onready var input_sync: MultiplayerSynchronizer = $InputSync
 @onready var state_sync: MultiplayerSynchronizer = $StateSync
 @onready var interact_area: Area2D = $InteractArea
+
+
+func _ready() -> void:
+	refresh_authority()
+
+
+## Applies `simulates` and `is_local` to the state machine: only simulating
+## copies step states, and only the owning peer's copy reacts to hardware
+## input. Called when peer_id changes and on ready; networking calls it
+## again if authority ever moves.
+func refresh_authority() -> void:
+	if state_machine == null:
+		return
+	state_machine.set_physics_process(simulates)
+	state_machine.set_process_unhandled_input(is_local)
 
 
 func _physics_process(_delta: float) -> void:

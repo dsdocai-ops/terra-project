@@ -8,6 +8,12 @@ var machine: StateMachine
 var actor: Node
 
 
+## Called once by the machine after `machine` and `actor` are assigned, before
+## any state is entered. Cache typed references to the actor here.
+func _on_setup() -> void:
+	pass
+
+
 func enter(_from: StringName) -> void:
 	pass
 

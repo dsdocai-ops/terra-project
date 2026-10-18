@@ -3,15 +3,27 @@ extends GutTest
 ## Shared component, owned by player-controller.
 
 
+class ReadyActor extends Node2D:
+	@onready var marker: Node = $Marker
+
+
 class SpyState extends State:
 	var entered_from: Array[StringName] = []
 	var exited_to: Array[StringName] = []
 	var updates: Array[float] = []
 	var allow_exit: bool = true
 	var allow_enter: bool = true
+	var setup_actor: Node = null
+	var actor_marker_on_enter: Node = null
+
+	func _on_setup() -> void:
+		setup_actor = actor
 
 	func enter(from: StringName) -> void:
 		entered_from.append(from)
+		var ready_actor := actor as ReadyActor
+		if ready_actor != null:
+			actor_marker_on_enter = ready_actor.marker
 
 	func exit(to: StringName) -> void:
 		exited_to.append(to)
@@ -52,10 +64,30 @@ func test_initial_state_is_entered_on_ready() -> void:
 	assert_eq(_idle.entered_from, [&""])
 
 
+func test_initial_state_enters_after_actor_onready_vars_exist() -> void:
+	var actor := ReadyActor.new()
+	var marker := Node.new()
+	marker.name = "Marker"
+	actor.add_child(marker)
+	var machine := StateMachine.new()
+	var idle := SpyState.new()
+	idle.name = "Idle"
+	machine.add_child(idle)
+	machine.initial_state = &"Idle"
+	actor.add_child(machine)
+	add_child_autofree(actor)
+	assert_eq(idle.actor_marker_on_enter, marker, "actor's @onready marker was set when enter ran")
+
+
 func test_states_know_their_machine_and_actor() -> void:
 	assert_eq(_idle.machine, _machine)
 	assert_eq(_idle.actor, _actor)
 	assert_eq(_run.actor, _actor)
+
+
+func test_on_setup_runs_once_with_actor_assigned() -> void:
+	assert_eq(_idle.setup_actor, _actor)
+	assert_eq(_run.setup_actor, _actor)
 
 
 func test_change_to_exits_then_enters_and_emits() -> void:

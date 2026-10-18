@@ -36,3 +36,30 @@ func test_releasing_input_returns_to_idle() -> void:
 
 func test_state_machine_is_typed_on_player() -> void:
 	assert_true(_player.state_machine is StateMachine)
+
+
+func test_states_are_player_states_with_player_resolved() -> void:
+	var idle := _player.state_machine.get_node("Idle") as PlayerState
+	assert_not_null(idle, "Idle is a PlayerState")
+	assert_eq(idle.player, _player)
+
+
+func test_local_player_simulates_and_takes_input() -> void:
+	_player.peer_id = multiplayer.get_unique_id()
+	assert_true(_player.simulates)
+	assert_true(_player.state_machine.is_physics_processing(), "steps its states")
+	assert_true(_player.state_machine.is_processing_unhandled_input(), "reacts to hardware input")
+
+
+func test_remote_player_never_takes_hardware_input() -> void:
+	_player.peer_id = multiplayer.get_unique_id() + 7
+	assert_false(_player.is_local)
+	assert_false(_player.state_machine.is_processing_unhandled_input(), "remote copies ignore local keypresses")
+
+
+func test_host_simulates_remote_players() -> void:
+	# Offline multiplayer is a server with id 1, same as a hosting peer.
+	assert_true(multiplayer.is_server(), "test runs as the server")
+	_player.peer_id = multiplayer.get_unique_id() + 7
+	assert_true(_player.simulates, "the host runs every player's state machine")
+	assert_true(_player.state_machine.is_physics_processing())

@@ -9,6 +9,12 @@ extends Node
 ## `initial_state` to enter one on ready. States may refuse transitions with
 ## can_exit() / can_enter(). `time_scale` scales the delta passed to the
 ## current state so TimeManager can slow or stop an entity (week 2).
+##
+## The machine steps itself in _physics_process and forwards unhandled input
+## to the current state. The owner decides whether that should happen on
+## this peer: a remote player copy on a client must not simulate or react to
+## local keypresses, so Player calls set_physics_process() and
+## set_process_unhandled_input() on its machine (see Player.refresh_authority).
 
 signal state_changed(from: StringName, to: StringName)
 
@@ -18,7 +24,7 @@ signal state_changed(from: StringName, to: StringName)
 var time_scale: float = 1.0
 var current: State = null
 
-var _states: Dictionary = {}
+var _states: Dictionary[StringName, State] = {}
 
 
 func _ready() -> void:
@@ -30,6 +36,8 @@ func _ready() -> void:
 		state.machine = self
 		state.actor = actor
 		_states[state.name] = state
+	for state: State in _states.values():
+		state._on_setup()
 	if initial_state == &"":
 		return
 	# Children are ready before their parent, so the actor's @onready
@@ -60,7 +68,7 @@ func physics_update(delta: float) -> void:
 ## unknown, is already current, the current state refuses to exit, or the
 ## target refuses to enter.
 func change_to(state_name: StringName) -> bool:
-	var target := _states.get(state_name) as State
+	var target: State = _states.get(state_name)
 	if target == null:
 		push_warning("StateMachine: unknown state %s" % state_name)
 		return false
