@@ -165,7 +165,7 @@ func _is_dead() -> bool:
 
 Conventions:
 
-- **Strict typing everywhere.** Every variable, parameter, and return value is typed. `debug/gdscript/warnings/untyped_declaration` is set to Error in `project.godot`. `inferred_declaration` stays a warning (`:=` is allowed when the right side is obviously typed). Untyped `Array` and `Dictionary` are allowed only at JSON boundaries and are converted to typed arrays or Resources immediately.
+- **Strict typing everywhere.** Every variable, parameter, and return value is typed, including `for` iterator variables over anything not already typed. `debug/gdscript/warnings/untyped_declaration` is set to Error in `project.godot`. `inferred_declaration` is Ignore: `:=` is the normal way to declare when the right side's type is obvious. Untyped `Array` and `Dictionary` are allowed only at JSON boundaries and are converted to typed arrays or Resources immediately.
 - **Naming.** Files and folders snake_case. Classes PascalCase via `class_name`. Functions and variables snake_case. Constants and enum members UPPER_SNAKE. Private members prefixed `_`. Signals are past tense (`died`, `room_cleared`), never imperative.
 - **Order inside a script.** `class_name`, `extends`, doc comment, signals, enums, constants, `@export` vars, public vars, private vars, `@onready` vars, built-in overrides (`_init`, `_ready`, `_process`), public methods, private methods. Two blank lines between functions. Tabs for indentation.
 - **Doc comments.** Every `class_name` script starts with a `##` block stating what it does and which module owns it. Non-obvious public methods get a `##` line.

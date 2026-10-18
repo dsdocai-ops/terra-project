@@ -18,13 +18,13 @@ Week 1 is fully detailed. Weeks 2 to 12 are listed with brief acceptance and are
 **Description:** Set every `project.godot` value from the SPEC-foundation settings table (960x540, canvas_items, keep, integer, gl_compatibility both methods, nearest filter, 2D pixel snap both, 60 physics ticks, `untyped_declaration` Error, `inferred_declaration` Warn, `unsafe_*` Warn, debugger char limit raised). Create the full folder tree from SPEC-project with a `.gdkeep` in each empty folder.
 
 **Acceptance criteria:**
-- [ ] `project.godot` matches the SPEC-foundation table line for line
-- [ ] Every folder under `scenes/`, `scripts/`, `data/`, `assets/`, `tests/` from SPEC-project exists
-- [ ] Headless import produces zero warnings and zero errors
+- [x] `project.godot` matches the SPEC-foundation table line for line (one recorded deviation: `inferred_declaration` Ignore, not Warn; `run/main_scene` is set in W1-B6 when the scene exists; physics layer names added)
+- [x] Every folder under `scenes/`, `scripts/`, `data/`, `assets/`, `tests/` from SPEC-project exists (`.gdkeep` in empty ones)
+- [x] Headless import produces zero warnings and zero errors
 
 **Verification:**
-- [ ] `godot --headless --path . --import` exits 0 with no warnings
-- [ ] Manual: editor opens, viewport 960x540, test window 1920x1080 shows integer-scaled crisp pixels on a placeholder sprite
+- [x] `godot --headless --path . --import` exits 0 with no warnings; `tests/unit/test_project_settings.gd` asserts every table value, the features, the layer names, and the folder tree
+- [ ] Manual: editor opens, viewport 960x540, test window 1920x1080 shows integer-scaled crisp pixels on a placeholder sprite (Alex, when running the game)
 
 **Dependencies:** None
 **Files likely touched:** `project.godot`, `*/.gdkeep`

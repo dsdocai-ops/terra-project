@@ -34,9 +34,10 @@ Turn the empty Godot project into the skeleton every other module builds on: cor
 | `rendering/2d/snap/snap_2d_vertices_to_pixel` | true |
 | `physics/common/physics_ticks_per_second` | 60 |
 | `debug/gdscript/warnings/untyped_declaration` | Error |
-| `debug/gdscript/warnings/inferred_declaration` | Warn |
-| `debug/gdscript/warnings/unsafe_*` | Warn |
-| `network/limits/debugger/max_chars_per_second` | raise so debug console spam does not drop |
+| `debug/gdscript/warnings/inferred_declaration` | Ignore (decided 2026-10-18: Warn would flag every `:=`, which the code style uses throughout, and bury real warnings; Ignore is Godot's default for this reason) |
+| `debug/gdscript/warnings/unsafe_*` (`property_access`, `method_access`, `cast`, `call_argument`) | Warn |
+| `network/limits/debugger/max_chars_per_second` | 131072 (so debug console spam does not drop) |
+| `layer_names/2d_physics/layer_1` to `layer_6` | `world`, `player`, `enemy`, `hitbox_player`, `hitbox_enemy`, `interactable` |
 
 ### Input Map
 
