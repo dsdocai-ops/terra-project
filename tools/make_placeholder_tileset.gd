@@ -12,7 +12,8 @@ const ATLAS_PATH := "res://assets/tilesets/placeholder/atlas.png"
 const OUT_PATH := "res://assets/tilesets/placeholder_iso.tres"
 
 ## Collision diamond in tile-local space (origin at tile center).
-const DIAMOND := [Vector2(0, -16), Vector2(32, 0), Vector2(0, 16), Vector2(-32, 0)]
+const DIAMOND: Array[Vector2] = [Vector2(0, -16), Vector2(32, 0), Vector2(0, 16), Vector2(-32, 0)]
+const TILE_COORDS: Array[Vector2i] = [Tiles.FLOOR, Tiles.WALL, Tiles.PIT]
 
 
 func _init() -> void:
@@ -36,7 +37,7 @@ func _init() -> void:
 	source.texture_region_size = Vector2i(64, 32)
 	tile_set.add_source(source, Tiles.SOURCE)
 
-	for coords in [Tiles.FLOOR, Tiles.WALL, Tiles.PIT]:
+	for coords: Vector2i in TILE_COORDS:
 		source.create_tile(coords)
 
 	source.get_tile_data(Tiles.FLOOR, 0).set_custom_data(Tiles.WALKABLE, true)
@@ -52,5 +53,11 @@ func _init() -> void:
 		push_error("failed to save tileset: %s" % error_string(err))
 		quit(1)
 		return
-	print("tileset written to %s" % OUT_PATH)
+	# Keep the existing UID across regenerations so scenes referencing the
+	# tileset by UID stay valid; only mint one the first time.
+	var uid := ResourceLoader.get_resource_uid(OUT_PATH)
+	if uid == ResourceUID.INVALID_ID:
+		uid = ResourceUID.create_id()
+	ResourceSaver.set_uid(OUT_PATH, uid)
+	print("tileset written to %s (%s)" % [OUT_PATH, ResourceUID.id_to_text(uid)])
 	quit()

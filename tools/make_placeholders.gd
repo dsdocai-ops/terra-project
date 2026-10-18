@@ -28,21 +28,28 @@ const ICON_FG := Color(0.95, 0.9, 0.8)
 ## Angles are screen-space degrees; diagonals follow the isometric tile axes.
 const FACING_DEGREES: Array[float] = [90.0, 153.435, 180.0, 206.565, 270.0, 333.435, 0.0, 26.565]
 
-## 3x5 pixel glyphs for A to Z, rows top to bottom, '#' is lit.
-const GLYPHS := {
-	"A": ["###", "#.#", "###", "#.#", "#.#"], "B": ["##.", "#.#", "##.", "#.#", "##."],
-	"C": ["###", "#..", "#..", "#..", "###"], "D": ["##.", "#.#", "#.#", "#.#", "##."],
-	"E": ["###", "#..", "##.", "#..", "###"], "F": ["###", "#..", "##.", "#..", "#.."],
-	"G": ["###", "#..", "#.#", "#.#", "###"], "H": ["#.#", "#.#", "###", "#.#", "#.#"],
-	"I": ["###", ".#.", ".#.", ".#.", "###"], "J": ["..#", "..#", "..#", "#.#", "###"],
-	"K": ["#.#", "#.#", "##.", "#.#", "#.#"], "L": ["#..", "#..", "#..", "#..", "###"],
-	"M": ["#.#", "###", "###", "#.#", "#.#"], "N": ["##.", "#.#", "#.#", "#.#", "#.#"],
-	"O": ["###", "#.#", "#.#", "#.#", "###"], "P": ["###", "#.#", "###", "#..", "#.."],
-	"Q": ["###", "#.#", "#.#", "###", "..#"], "R": ["###", "#.#", "##.", "#.#", "#.#"],
-	"S": ["###", "#..", "###", "..#", "###"], "T": ["###", ".#.", ".#.", ".#.", ".#."],
-	"U": ["#.#", "#.#", "#.#", "#.#", "###"], "V": ["#.#", "#.#", "#.#", "#.#", ".#."],
-	"W": ["#.#", "#.#", "###", "###", "#.#"], "X": ["#.#", "#.#", ".#.", "#.#", "#.#"],
-	"Y": ["#.#", "#.#", ".#.", ".#.", ".#."], "Z": ["###", "..#", ".#.", "#..", "###"],
+const PLACEHOLDER_DIRS: Array[String] = [
+	"res://assets/tilesets/placeholder",
+	"res://assets/sprites/player",
+	"res://assets/sprites/icons/placeholder",
+]
+
+## 3x5 pixel glyphs for A to Z. Five rows top to bottom separated by '|',
+## '#' is lit.
+const GLYPHS: Dictionary[String, String] = {
+	"A": "###|#.#|###|#.#|#.#", "B": "##.|#.#|##.|#.#|##.",
+	"C": "###|#..|#..|#..|###", "D": "##.|#.#|#.#|#.#|##.",
+	"E": "###|#..|##.|#..|###", "F": "###|#..|##.|#..|#..",
+	"G": "###|#..|#.#|#.#|###", "H": "#.#|#.#|###|#.#|#.#",
+	"I": "###|.#.|.#.|.#.|###", "J": "..#|..#|..#|#.#|###",
+	"K": "#.#|#.#|##.|#.#|#.#", "L": "#..|#..|#..|#..|###",
+	"M": "#.#|###|###|#.#|#.#", "N": "##.|#.#|#.#|#.#|#.#",
+	"O": "###|#.#|#.#|#.#|###", "P": "###|#.#|###|#..|#..",
+	"Q": "###|#.#|#.#|###|..#", "R": "###|#.#|##.|#.#|#.#",
+	"S": "###|#..|###|..#|###", "T": "###|.#.|.#.|.#.|.#.",
+	"U": "#.#|#.#|#.#|#.#|###", "V": "#.#|#.#|#.#|#.#|.#.",
+	"W": "#.#|#.#|###|###|#.#", "X": "#.#|#.#|.#.|#.#|#.#",
+	"Y": "#.#|#.#|.#.|.#.|.#.", "Z": "###|..#|.#.|#..|###",
 }
 
 
@@ -56,12 +63,12 @@ func _init() -> void:
 
 
 func _ensure_dirs() -> void:
-	for dir in ["res://assets/tilesets/placeholder", "res://assets/sprites/player", "res://assets/sprites/icons/placeholder"]:
+	for dir: String in PLACEHOLDER_DIRS:
 		DirAccess.make_dir_recursive_absolute(ProjectSettings.globalize_path(dir))
 
 
 func _make_atlas() -> void:
-	var img := Image.create(TILE_W * 3, TILE_H, false, Image.FORMAT_RGBA8)
+	var img := Image.create_empty(TILE_W * 3, TILE_H, false, Image.FORMAT_RGBA8)
 	_draw_diamond(img, Vector2i(0, 0), FLOOR_COLOR, EDGE_COLOR)
 	_draw_diamond(img, Vector2i(TILE_W, 0), WALL_COLOR, EDGE_COLOR)
 	_draw_diamond(img, Vector2i(TILE_W * 2, 0), PIT_COLOR, EDGE_COLOR)
@@ -83,7 +90,7 @@ func _draw_diamond(img: Image, origin: Vector2i, fill: Color, edge: Color) -> vo
 
 
 func _make_player_sheet() -> void:
-	var img := Image.create(SPRITE * FACING_DEGREES.size(), SPRITE, false, Image.FORMAT_RGBA8)
+	var img := Image.create_empty(SPRITE * FACING_DEGREES.size(), SPRITE, false, Image.FORMAT_RGBA8)
 	for i in FACING_DEGREES.size():
 		var ox := i * SPRITE
 		var center := Vector2(ox + SPRITE * 0.5, SPRITE * 0.5)
@@ -126,12 +133,12 @@ func _plot(img: Image, p: Vector2, c: Color) -> void:
 
 
 func _make_icons() -> void:
-	for letter in GLYPHS:
-		var img := Image.create(16, 16, false, Image.FORMAT_RGBA8)
+	for letter: String in GLYPHS:
+		var img := Image.create_empty(16, 16, false, Image.FORMAT_RGBA8)
 		img.fill(ICON_BG)
-		var rows: Array = GLYPHS[letter]
+		var rows := GLYPHS[letter].split("|")
 		for row in 5:
-			var line: String = rows[row]
+			var line := rows[row]
 			for col in 3:
 				if line[col] == "#":
 					for sy in 2:
