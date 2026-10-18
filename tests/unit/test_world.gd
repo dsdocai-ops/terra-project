@@ -34,10 +34,14 @@ func test_typed_references_point_at_children() -> void:
 	assert_eq(_world.fx, _world.get_node("FX"))
 
 
-func test_y_sort_on_world_walls_and_entities_but_not_fx() -> void:
+func test_y_sort_on_world_walls_entities_and_players_but_not_fx() -> void:
 	assert_true(_world.y_sort_enabled, "World")
 	assert_true(_world.walls_layer.y_sort_enabled, "Walls")
 	assert_true(_world.entities.y_sort_enabled, "Entities")
+	# A child container only interleaves its children with its siblings
+	# when it is Y-sorted itself; otherwise every player would draw as one
+	# unit at the container's y.
+	assert_true(_world.players.y_sort_enabled, "Players")
 	assert_false(_world.fx.y_sort_enabled, "FX")
 
 
@@ -54,6 +58,13 @@ func test_paint_test_floor_fills_interior_and_rings_walls() -> void:
 	assert_true(_world.is_walkable(Vector2i(5, 5)), "interior walkable")
 	assert_false(_world.is_walkable(Vector2i(-1, 5)), "wall not walkable")
 	assert_false(_world.is_walkable(Vector2i(50, 50)), "void not walkable")
+
+
+func test_pit_cell_is_not_walkable_even_without_a_wall() -> void:
+	_world.paint_test_floor(5)
+	_world.floor_layer.set_cell(Vector2i(2, 2), Tiles.SOURCE, Tiles.PIT)
+	assert_false(_world.is_walkable(Vector2i(2, 2)), "pit tile carries walkable = false")
+	assert_true(_world.is_walkable(Vector2i(1, 1)), "neighbouring floor still walkable")
 
 
 func test_paint_test_floor_is_idempotent() -> void:

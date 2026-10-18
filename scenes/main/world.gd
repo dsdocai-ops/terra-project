@@ -6,6 +6,11 @@ extends Node2D
 ## through networking's MultiplayerSpawners.
 ##
 ## Other modules reach these nodes through GameState.world, never by path.
+##
+## Ownership: the scene is foundation (both lanes). The Camera child runs
+## player-controller's GameCamera script, and networking adds the spawners
+## under Players and Entities; those are PRs into this scene with the other
+## lane's review (SPEC-project, Ask first).
 
 ## Paints a square test floor on ready so week 1 has somewhere to walk.
 ## floor-generation turns this off when it starts painting real floors.

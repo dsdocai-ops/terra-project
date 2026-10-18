@@ -94,8 +94,10 @@ Each stub is a typed script with the public API shape its owning module will fil
 World (Node2D, y_sort_enabled = true)
   Floor (TileMapLayer, ground)
   Walls (TileMapLayer, y_sort_enabled, collision)
-  Entities (Node2D, y_sort_enabled)      players, enemies, pickups, projectiles spawn here
-  Players (Node2D)                        MultiplayerSpawner target, see SPEC-networking
+  Entities (Node2D, y_sort_enabled)      enemies, pickups, projectiles spawn here
+  Players (Node2D, y_sort_enabled)       players spawn here (MultiplayerSpawner target, see SPEC-networking).
+                                          Must be Y-sorted itself: Godot only interleaves a child container's
+                                          children with its siblings when that container is Y-sorted too
   Camera (Camera2D)                       owned by player-controller
   FX (Node2D)                             particles, damage numbers, no y-sort
 ```
