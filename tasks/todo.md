@@ -38,13 +38,13 @@ Week 1 is fully detailed. Weeks 2 to 12 are listed with brief acceptance and are
 **Description:** Add every action from the SPEC-foundation Input Map table with its keyboard/mouse binding and a controller binding. Movement is four actions; no deadzone tuning yet.
 
 **Acceptance criteria:**
-- [ ] All 24 action names exist exactly as spelled in SPEC-foundation
-- [ ] Each gameplay action has one keyboard/mouse and one controller event
-- [ ] `debug_console` bound to backtick
+- [x] All 24 action names exist exactly as spelled in SPEC-foundation (written by `tools/configure_input_map.gd`, the canonical list)
+- [x] Each gameplay action has one keyboard/mouse and one controller event; `weapon_1`, `weapon_2`, `debug_console` are keyboard-only by design. Controller deviation recorded in the spec: ability_2 RB, ability_3 R3, ultimate L3 (no chords; A stays on interact)
+- [x] `debug_console` bound to backtick
 
 **Verification:**
-- [ ] `tests/unit/test_input_map.gd`: asserts `InputMap.has_action()` for every name in a constant list and that each has at least 2 events
-- [ ] Manual: Input Map panel shows controller icons next to each
+- [x] `tests/unit/test_input_map.gd`: every name exists, binding classes per action, specific keys/buttons/axes from the table, no joypad button bound twice, and synthetic key and stick events drive the actions through `Input`
+- [ ] Manual: Input Map panel shows controller icons next to each (Alex, in the editor)
 
 **Dependencies:** W1-B1
 **Files likely touched:** `project.godot`, `tests/unit/test_input_map.gd`

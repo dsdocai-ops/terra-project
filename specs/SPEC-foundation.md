@@ -52,8 +52,8 @@ Every action from design doc section 5, exact names below. Keyboard and mouse bi
 | `class_skill` | Shift, LB |
 | `swap_weapon` | wheel, Y |
 | `weapon_1`, `weapon_2` | 1, 2 |
-| `ability_1`, `ability_2`, `ability_3` | Q, R, V, face buttons X / A / RB |
-| `ultimate` | X, L3+R3 |
+| `ability_1`, `ability_2`, `ability_3` | Q, R, V, controller X / RB / R3 (decided 2026-10-18: A was listed for both interact and ability_2; interact keeps A) |
+| `ultimate` | X, L3 (the Input Map has no chords, so L3+R3 is not expressible) |
 | `relic_active_1`, `relic_active_2` | C, B, d-pad left / right |
 | `potion` | E, d-pad up |
 | `interact` | F, A (hold to revive) |
@@ -62,7 +62,7 @@ Every action from design doc section 5, exact names below. Keyboard and mouse bi
 | `pause` | Esc, Start |
 | `debug_console` | backtick |
 
-Movement is 8-direction. Input vector is rotated onto isometric axes in `player-controller`, not here.
+Movement is 8-direction. Input vector is rotated onto isometric axes in `player-controller`, not here. The canonical binding list is `tools/configure_input_map.gd`, which writes `project.godot` through `ProjectSettings.save()`; edit it there and rerun rather than hand-editing the `[input]` section.
 
 ### Folder tree
 
