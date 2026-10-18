@@ -89,33 +89,33 @@ Nothing in the design doc is cut by this map. The cut list (design doc section 2
 
 ## Status
 
-Map approved 2026-10-18. All 24 module specs written 2026-10-18. Status moves to `planned` when `tasks/plan.md` covers the module, `in progress` on first merged PR, `done` when its success criteria are checked.
+Map approved 2026-10-18. All 24 module specs written 2026-10-18. Plan approved 2026-10-18 (`tasks/plan.md`, `tasks/todo.md`). Status is `planned` once the plan covers the module, `in progress` on first merged PR, `done` when its success criteria are checked.
 
 | Module | Spec | Status |
 |---|---|---|
-| `foundation` | [SPEC-foundation.md](SPEC-foundation.md) | spec written |
-| `networking` | [SPEC-networking.md](SPEC-networking.md) | spec written |
-| `player-controller` | [SPEC-player-controller.md](SPEC-player-controller.md) | spec written |
-| `time-manager` | [SPEC-time-manager.md](SPEC-time-manager.md) | spec written |
-| `stats-status` | [SPEC-stats-status.md](SPEC-stats-status.md) | spec written |
-| `combat-core` | [SPEC-combat-core.md](SPEC-combat-core.md) | spec written |
-| `enemies-ai` | [SPEC-enemies-ai.md](SPEC-enemies-ai.md) | spec written |
-| `floor-generation` | [SPEC-floor-generation.md](SPEC-floor-generation.md) | spec written |
-| `run-economy` | [SPEC-run-economy.md](SPEC-run-economy.md) | spec written |
-| `save-system` | [SPEC-save-system.md](SPEC-save-system.md) | spec written |
-| `effect-system` | [SPEC-effect-system.md](SPEC-effect-system.md) | spec written |
-| `relics` | [SPEC-relics.md](SPEC-relics.md) | spec written |
-| `weapons` | [SPEC-weapons.md](SPEC-weapons.md) | spec written |
-| `abilities` | [SPEC-abilities.md](SPEC-abilities.md) | spec written |
-| `classes-characters` | [SPEC-classes-characters.md](SPEC-classes-characters.md) | spec written |
-| `story-dialogue` | [SPEC-story-dialogue.md](SPEC-story-dialogue.md) | spec written |
-| `town` | [SPEC-town.md](SPEC-town.md) | spec written |
-| `progression-trees` | [SPEC-progression-trees.md](SPEC-progression-trees.md) | spec written |
-| `biomes` | [SPEC-biomes.md](SPEC-biomes.md) | spec written |
-| `bosses` | [SPEC-bosses.md](SPEC-bosses.md) | spec written |
-| `ui-hud` | [SPEC-ui-hud.md](SPEC-ui-hud.md) | spec written |
-| `art-audio` | [SPEC-art-audio.md](SPEC-art-audio.md) | spec written |
-| `debug-tools` | [SPEC-debug-tools.md](SPEC-debug-tools.md) | spec written |
-| `endgame` | [SPEC-endgame.md](SPEC-endgame.md) | spec written |
+| `foundation` | [SPEC-foundation.md](SPEC-foundation.md) | planned |
+| `networking` | [SPEC-networking.md](SPEC-networking.md) | planned |
+| `player-controller` | [SPEC-player-controller.md](SPEC-player-controller.md) | planned |
+| `time-manager` | [SPEC-time-manager.md](SPEC-time-manager.md) | planned |
+| `stats-status` | [SPEC-stats-status.md](SPEC-stats-status.md) | planned |
+| `combat-core` | [SPEC-combat-core.md](SPEC-combat-core.md) | planned |
+| `enemies-ai` | [SPEC-enemies-ai.md](SPEC-enemies-ai.md) | planned |
+| `floor-generation` | [SPEC-floor-generation.md](SPEC-floor-generation.md) | planned |
+| `run-economy` | [SPEC-run-economy.md](SPEC-run-economy.md) | planned |
+| `save-system` | [SPEC-save-system.md](SPEC-save-system.md) | planned |
+| `effect-system` | [SPEC-effect-system.md](SPEC-effect-system.md) | planned |
+| `relics` | [SPEC-relics.md](SPEC-relics.md) | planned |
+| `weapons` | [SPEC-weapons.md](SPEC-weapons.md) | planned |
+| `abilities` | [SPEC-abilities.md](SPEC-abilities.md) | planned |
+| `classes-characters` | [SPEC-classes-characters.md](SPEC-classes-characters.md) | planned |
+| `story-dialogue` | [SPEC-story-dialogue.md](SPEC-story-dialogue.md) | planned |
+| `town` | [SPEC-town.md](SPEC-town.md) | planned |
+| `progression-trees` | [SPEC-progression-trees.md](SPEC-progression-trees.md) | planned |
+| `biomes` | [SPEC-biomes.md](SPEC-biomes.md) | planned |
+| `bosses` | [SPEC-bosses.md](SPEC-bosses.md) | planned |
+| `ui-hud` | [SPEC-ui-hud.md](SPEC-ui-hud.md) | planned |
+| `art-audio` | [SPEC-art-audio.md](SPEC-art-audio.md) | planned |
+| `debug-tools` | [SPEC-debug-tools.md](SPEC-debug-tools.md) | planned |
+| `endgame` | [SPEC-endgame.md](SPEC-endgame.md) | planned |
 
 Supporting: [SPEC-project.md](SPEC-project.md), [WEEKLY.md](WEEKLY.md), [content/README.md](content/README.md).
