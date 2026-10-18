@@ -287,13 +287,13 @@ Week 1 is fully detailed. Weeks 2 to 12 are listed with brief acceptance and are
 **Description:** In `Move`: read the four `move_*` actions into a vector, pass through `Iso.input_to_world()`, accelerate to full speed in ~4 frames, friction to stop, base speed 120 px/s constant (StatBlock hookup in week 2). Facing: 8-direction `facing_index` from aim vector (mouse) when attacking later, from move vector now; `play_directional(anim)` picks `<anim>_<dir>`. Placeholder animations `idle_<dir>`, `walk_<dir>` from the diamond+arrow sprites. Local player only reads input; remote players are driven by `StateSync` (W1-B9).
 
 **Acceptance criteria:**
-- [ ] WASD moves along isometric axes; all 8 directions have equal on-screen speed
-- [ ] Facing index updates in 8 sectors with no flicker at boundaries (hysteresis of a few degrees)
-- [ ] Remote player instances do not read local input
+- [x] WASD moves along isometric axes; all 8 directions have equal on-screen speed (cardinals screen-aligned, diagonals on the tile axes)
+- [x] Facing index updates in 8 sectors with no flicker at boundaries (3 degree hysteresis in `Iso.facing_index`)
+- [x] Remote player instances do not read local input (`is_local` gate in `_physics_process`)
 
 **Verification:**
-- [ ] `tests/unit/test_player_facing.gd`: vector to index for all 8 sectors and boundary cases
-- [ ] Manual feel check: snappy start/stop, no diagonal speed-up
+- [x] `tests/unit/test_player_facing.gd` (11): sectors, boundaries, hysteresis, speed in 8 directions, acceleration and friction in 4 frames, facing persists into Idle, remote input untouched
+- [ ] Manual feel check: snappy start/stop, no diagonal speed-up (needs W1-B2 Input Map and W1-B6 main scene to run in-game)
 
 **Dependencies:** W1-A1, W1-A5
 **Files likely touched:** `scenes/player/states/move.gd`, `scenes/player/states/idle.gd`, `scenes/player/player.gd`, `tests/unit/test_player_facing.gd`

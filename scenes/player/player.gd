@@ -18,6 +18,15 @@ signal facing_changed(index: int)
 
 ## Sprite animation suffix per facing index. Index 0 faces the camera.
 const FACING_SUFFIXES: Array[StringName] = [&"s", &"sw", &"w", &"nw", &"n", &"ne", &"e", &"se"]
+## Degrees past a sector edge before the facing index changes.
+const FACING_HYSTERESIS_DEG := 3.0
+
+## Pixels per second on screen with no modifiers. StatBlock.MOVE_SPEED
+## replaces this in week 2; tuned numbers are written back to the spec.
+const BASE_MOVE_SPEED := 120.0
+## Reach full speed, or stop, in about 4 physics frames at 60 Hz.
+const MOVE_ACCEL := BASE_MOVE_SPEED * 15.0
+const MOVE_FRICTION := BASE_MOVE_SPEED * 15.0
 
 ## Multiplayer peer that owns this player's input. 1 is the host.
 var peer_id: int = 0
@@ -64,6 +73,29 @@ var _dodge_cooldown_left: float = 0.0
 @onready var input_sync: MultiplayerSynchronizer = $InputSync
 @onready var state_sync: MultiplayerSynchronizer = $StateSync
 @onready var interact_area: Area2D = $InteractArea
+
+
+func _physics_process(_delta: float) -> void:
+	# Only the owning peer reads hardware input. Remote copies receive
+	# move_input and aim_position through InputSync (W1-B9). Runs before the
+	# StateMachine child steps, so states see this frame's input.
+	if is_local:
+		move_input = Input.get_vector(&"move_left", &"move_right", &"move_up", &"move_down")
+		aim_position = get_global_mouse_position()
+
+
+## Current move speed in px/s. Reads StatBlock.MOVE_SPEED from week 2.
+func move_speed() -> float:
+	return BASE_MOVE_SPEED
+
+
+## Points the character along a screen-space direction, with hysteresis so
+## the sprite does not flicker on a sector boundary.
+func set_facing(dir: Vector2) -> void:
+	if dir == Vector2.ZERO:
+		return
+	facing = dir.normalized()
+	facing_index = Iso.facing_index(facing, facing_index, FACING_HYSTERESIS_DEG)
 
 
 func is_perfect_dodge_window() -> bool:
