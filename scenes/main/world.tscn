@@ -1,8 +1,8 @@
-[gd_scene load_steps=4 format=3]
+[gd_scene format=3 uid="uid://by1cgopdo54yx"]
 
-[ext_resource type="Script" path="res://scenes/main/world.gd" id="1_world"]
-[ext_resource type="TileSet" path="res://assets/tilesets/placeholder_iso.tres" id="2_tiles"]
-[ext_resource type="Script" path="res://scenes/main/camera.gd" id="3_camera"]
+[ext_resource type="Script" uid="uid://bix1usvvbnvu2" path="res://scenes/main/world.gd" id="1_world"]
+[ext_resource type="TileSet" uid="uid://b3p4wi6gx4vcy" path="res://assets/tilesets/placeholder_iso.tres" id="2_tiles"]
+[ext_resource type="Script" uid="uid://bviumtmpmifqg" path="res://scenes/main/camera.gd" id="3_camera"]
 
 [node name="World" type="Node2D"]
 y_sort_enabled = true
