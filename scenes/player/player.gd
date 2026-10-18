@@ -31,9 +31,9 @@ const MOVE_FRICTION := BASE_MOVE_SPEED * 15.0
 ## Multiplayer peer that owns this player's input. 1 is the host.
 var peer_id: int = 0
 
-## CharacterData once classes-characters lands; typed Resource until then.
+## TODO(classes-characters): retype to CharacterData when it exists.
 var character: Resource
-## ClassData once classes-characters lands; typed Resource until then.
+## TODO(classes-characters): retype to ClassData when it exists.
 var class_data: Resource
 
 var facing: Vector2 = Vector2.DOWN
@@ -43,6 +43,7 @@ var facing_index: int = 0:
 		if clamped == facing_index:
 			return
 		facing_index = clamped
+		_replay_directional()
 		facing_changed.emit(facing_index)
 
 ## Raw movement input in input space (W is (0, -1)). Set by the owning
@@ -61,8 +62,14 @@ var revive_speed_mult: float = 1.0
 
 var _perfect_dodge_window_open: bool = false
 var _dodge_cooldown_left: float = 0.0
+## Base animation name ("idle", "walk") currently playing, without suffix.
+var _current_anim: String = ""
+## Animation names already reported missing, so a bad name warns once.
+var _missing_anims: Dictionary[StringName, bool] = {}
 
 ## Components. Typed to their real classes as each module lands.
+## TODO(stats-status): stat_block -> StatBlock, status_effects -> StatusEffects
+## TODO(combat-core): health -> Health, hurtbox -> Hurtbox
 @onready var stat_block: Node = $StatBlock
 @onready var health: Node = $Health
 @onready var hurtbox: Area2D = $Hurtbox
@@ -120,13 +127,22 @@ func reset_dodge_cooldown() -> void:
 
 
 ## Plays `<anim>_<dir>` for the current facing, e.g. "walk" becomes "walk_ne".
+## Call it on state changes only; facing changes replay it automatically.
 func play_directional(anim: String) -> void:
-	var name := StringName("%s_%s" % [anim, FACING_SUFFIXES[facing_index]])
-	if sprite.sprite_frames != null and sprite.sprite_frames.has_animation(name):
-		if sprite.animation != name:
-			sprite.play(name)
-	else:
-		push_warning("Player: missing animation %s" % name)
+	var anim_name := StringName("%s_%s" % [anim, FACING_SUFFIXES[facing_index]])
+	if sprite.sprite_frames == null or not sprite.sprite_frames.has_animation(anim_name):
+		if not _missing_anims.has(anim_name):
+			_missing_anims[anim_name] = true
+			push_warning("Player: missing animation %s" % anim_name)
+		return
+	_current_anim = anim
+	if sprite.animation != anim_name:
+		sprite.play(anim_name)
+
+
+func _replay_directional() -> void:
+	if _current_anim != "" and sprite != null:
+		play_directional(_current_anim)
 
 
 ## Client asks the host to revive `target`. Filled in by networking week 3.

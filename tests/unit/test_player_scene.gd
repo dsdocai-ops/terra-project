@@ -3,6 +3,28 @@ extends GutTest
 
 const PLAYER_SCENE := "res://scenes/player/player.tscn"
 
+const SPEC_NODES: Array[String] = [
+	"StatBlock", "Health", "Hurtbox", "StatusEffects", "StateMachine",
+	"Sprite", "WeaponPivot", "InputSync", "StateSync", "InteractArea",
+]
+const SPEC_FIELDS: Array[String] = [
+	"peer_id", "character", "class_data", "stat_block", "health", "hurtbox",
+	"state_machine", "facing", "facing_index", "aim_position", "is_downed",
+	"is_local", "dodge_charges", "dodge_distance_mult", "revive_speed_mult",
+]
+const SPEC_SIGNALS: Array[String] = ["downed", "revived", "dodge_started", "dodge_finished", "facing_changed"]
+const SPEC_METHODS: Array[String] = [
+	"is_perfect_dodge_window", "consume_perfect_dodge_window", "reset_dodge_cooldown",
+	"play_directional", "request_revive",
+]
+## Fields whose final type is already known. Resource and Node placeholders
+## (character, class_data, stat_block, health) are retyped by later modules.
+const SPEC_FIELD_TYPES: Dictionary[String, int] = {
+	"peer_id": TYPE_INT, "facing": TYPE_VECTOR2, "facing_index": TYPE_INT,
+	"aim_position": TYPE_VECTOR2, "is_downed": TYPE_BOOL, "is_local": TYPE_BOOL,
+	"dodge_charges": TYPE_INT, "dodge_distance_mult": TYPE_FLOAT, "revive_speed_mult": TYPE_FLOAT,
+}
+
 var _player: Player
 
 
@@ -20,8 +42,8 @@ func test_root_is_character_body() -> void:
 
 
 func test_node_layout_matches_spec() -> void:
-	for name in ["StatBlock", "Health", "Hurtbox", "StatusEffects", "StateMachine", "Sprite", "WeaponPivot", "InputSync", "StateSync", "InteractArea"]:
-		assert_not_null(_player.get_node_or_null(name), name)
+	for node_name: String in SPEC_NODES:
+		assert_not_null(_player.get_node_or_null(node_name), node_name)
 
 
 func test_synchronizers_are_multiplayer_synchronizers() -> void:
@@ -30,17 +52,22 @@ func test_synchronizers_are_multiplayer_synchronizers() -> void:
 
 
 func test_public_fields_exist() -> void:
-	for field in ["peer_id", "character", "class_data", "stat_block", "health", "hurtbox", "state_machine", "facing", "facing_index", "aim_position", "is_downed", "is_local", "dodge_charges", "dodge_distance_mult", "revive_speed_mult"]:
+	for field: String in SPEC_FIELDS:
 		assert_true(field in _player, field)
 
 
+func test_public_fields_have_their_final_types() -> void:
+	for field: String in SPEC_FIELD_TYPES:
+		assert_eq(typeof(_player.get(field)), SPEC_FIELD_TYPES[field], field)
+
+
 func test_public_signals_exist() -> void:
-	for sig in ["downed", "revived", "dodge_started", "dodge_finished", "facing_changed"]:
+	for sig: String in SPEC_SIGNALS:
 		assert_true(_player.has_signal(sig), sig)
 
 
 func test_public_methods_exist() -> void:
-	for method in ["is_perfect_dodge_window", "consume_perfect_dodge_window", "reset_dodge_cooldown", "play_directional", "request_revive"]:
+	for method: String in SPEC_METHODS:
 		assert_true(_player.has_method(method), method)
 
 
@@ -76,6 +103,21 @@ func test_play_directional_uses_facing_suffix() -> void:
 	_player.facing_index = 3
 	_player.play_directional("walk")
 	assert_eq(sprite.animation, &"walk_nw")
+
+
+func test_facing_change_replays_current_animation_for_new_direction() -> void:
+	var sprite := _player.get_node("Sprite") as AnimatedSprite2D
+	_player.play_directional("walk")
+	_player.facing_index = 4
+	assert_eq(sprite.animation, &"walk_n", "same animation, new suffix, no extra play call needed")
+
+
+func test_missing_animation_warns_once_and_keeps_playing() -> void:
+	var sprite := _player.get_node("Sprite") as AnimatedSprite2D
+	_player.play_directional("idle")
+	_player.play_directional("nope")
+	_player.play_directional("nope")
+	assert_eq(sprite.animation, &"idle_s", "unknown animation does not change the sprite")
 
 
 func test_component_slots_are_wired() -> void:

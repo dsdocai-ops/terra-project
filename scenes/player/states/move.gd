@@ -19,6 +19,5 @@ func physics_update(delta: float) -> void:
 	var target := dir * _player.move_speed()
 	_player.velocity = _player.velocity.move_toward(target, Player.MOVE_ACCEL * delta)
 	_player.set_facing(dir)
-	_player.play_directional("walk")
 	_player.move_and_slide()
 	_player.clamp_to_camera()
