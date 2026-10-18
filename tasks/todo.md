@@ -215,13 +215,13 @@ Week 1 is fully detailed. Weeks 2 to 12 are listed with brief acceptance and are
 **Description:** `assets/tilesets/placeholder_iso.tres`: TileSet, Isometric shape, Diamond Down layout, 64x32, atlas with floor, wall, pit tiles in flat colors, physics layer on walls, custom data layer `walkable: bool`. `tools/make_placeholders.gd` EditorScript generating the atlas PNG, a colored diamond sprite with a facing arrow for 8 directions, and lettered 16x16 icons. Import preset `pixel` (nearest, no mipmaps, lossless) applied to `assets/`.
 
 **Acceptance criteria:**
-- [ ] TileSet has the three tiles, walls collide, `walkable` is true on floor and false on wall/pit
-- [ ] Generator runs from the editor and writes PNGs with correct sizes
-- [ ] Imported textures use nearest filtering
+- [x] TileSet has the three tiles, walls collide, `walkable` is true on floor and false on wall/pit
+- [x] Generator runs headless from the CLI (not an EditorScript, so CI can regenerate) and writes PNGs with correct sizes
+- [x] Imported textures are lossless with mipmaps off; nearest filtering is the project default set in W1-B1
 
 **Verification:**
-- [ ] `tests/unit/test_tileset.gd`: tile count, custom data values, physics layer present
-- [ ] Manual: 20x20 diamond renders crisp at 1920x1080
+- [x] `tests/unit/test_tileset.gd`: tile count, custom data values, physics layer present
+- [ ] Manual: 20x20 diamond renders crisp at 1920x1080 (after W1-B1 lands the nearest filter setting)
 
 **Dependencies:** W1-B1 (folders)
 **Files likely touched:** `assets/tilesets/placeholder_iso.tres`, `assets/tilesets/placeholder/*.png`, `tools/make_placeholders.gd`, `assets/.import presets`, `tests/unit/test_tileset.gd`
