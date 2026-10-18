@@ -16,5 +16,5 @@ func physics_update(delta: float) -> void:
 	var target := dir * player.move_speed()
 	player.velocity = player.velocity.move_toward(target, Player.MOVE_ACCEL * delta)
 	player.set_facing(dir)
+	player.apply_coop_clamp(delta)
 	player.move_and_slide()
-	player.clamp_to_camera()

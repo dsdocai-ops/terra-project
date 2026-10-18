@@ -41,6 +41,14 @@ func test_root_is_character_body() -> void:
 	assert_true(_player is CharacterBody2D)
 
 
+func test_body_collides_with_world_but_not_other_players() -> void:
+	# Layer 1 = world (walls), layer 2 = players. Players never block each
+	# other; they only collide with walls.
+	assert_eq(_player.collision_layer, 2, "on the player layer")
+	assert_eq(_player.collision_mask, 1, "collides with the world layer only")
+	assert_false(_player.get_collision_mask_value(2), "does not collide with other players")
+
+
 func test_node_layout_matches_spec() -> void:
 	for node_name: String in SPEC_NODES:
 		assert_not_null(_player.get_node_or_null(node_name), node_name)

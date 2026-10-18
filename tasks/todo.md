@@ -30,6 +30,8 @@ Week 1 is fully detailed. Weeks 2 to 12 are listed with brief acceptance and are
 **Files likely touched:** `project.godot`, `*/.gdkeep`
 **Estimated scope:** S
 
+**Ask from Alex (W1-A7 follow-up):** add 2D physics layer names so scenes read clearly: `layer_names/2d_physics/layer_1 = "world"`, `layer_2 = "player"`, `layer_3 = "enemy"`, `layer_4 = "hitbox_player"`, `layer_5 = "hitbox_enemy"`, `layer_6 = "interactable"`. `player.tscn` already uses layer 2 / mask 1 so players pass through each other and collide with walls only.
+
 ## Task W1-B2: Input Map
 
 **Module:** `foundation`

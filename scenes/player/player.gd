@@ -131,13 +131,32 @@ func set_facing(dir: Vector2) -> void:
 	facing_index = Iso.facing_index(facing, facing_index, FACING_HYSTERESIS_DEG)
 
 
-## In co-op nobody may leave the shared frame: pulls this player back inside
-## the camera's view when the camera is framing more than one target.
-func clamp_to_camera() -> void:
-	var cam := get_viewport().get_camera_2d() as GameCamera
-	if cam == null or cam.target_count() < 2:
+## In co-op nobody may leave the shared frame. Limits `velocity` so the next
+## position stays inside GameCamera.coop_bounds() of every player under the
+## same container. Call before move_and_slide(). Depends only on replicated
+## player positions, never on a camera, so host and predicting client agree.
+func apply_coop_clamp(delta: float) -> void:
+	if delta <= 0.0:
 		return
-	global_position = cam.clamp_to_view(global_position)
+	var positions := _sibling_player_positions()
+	if positions.size() < 2:
+		return
+	var rect := GameCamera.coop_bounds(positions)
+	var next := global_position + velocity * delta
+	var clamped := next.clamp(rect.position, rect.end)
+	velocity = (clamped - global_position) / delta
+
+
+func _sibling_player_positions() -> Array[Vector2]:
+	var positions: Array[Vector2] = []
+	var container := get_parent()
+	if container == null:
+		return positions
+	for child in container.get_children():
+		var p := child as Player
+		if p != null:
+			positions.append(p.global_position)
+	return positions
 
 
 func is_perfect_dodge_window() -> bool:

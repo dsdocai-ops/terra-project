@@ -13,4 +13,5 @@ func physics_update(delta: float) -> void:
 		return
 	if player.velocity != Vector2.ZERO:
 		player.velocity = player.velocity.move_toward(Vector2.ZERO, Player.MOVE_FRICTION * delta)
+		player.apply_coop_clamp(delta)
 		player.move_and_slide()

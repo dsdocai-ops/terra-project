@@ -4,31 +4,41 @@ extends Camera2D
 ## Owned by player-controller. Sync: none, each peer runs its own camera
 ## over the replicated player positions.
 ##
-## Targets come from set_targets(), or, when none were set, from the Node2D
+## Targets come from set_targets(), or, when none were set, from the Player
 ## children of `track_container` (World/Players), so spawning a player is
-## enough to be framed. Movement clamping (Player.clamp_to_camera) keeps
-## everyone inside view_rect() when there is more than one target.
+## enough to be framed.
+##
+## The co-op movement limit is NOT derived from this node's state. It is the
+## pure function coop_bounds(positions), computed from player positions and
+## the fixed design viewport, so host and predicting client agree on it
+## regardless of smoothing, zoom easing, or which camera is current
+## (Player.apply_coop_clamp). The camera merely displays the same framing.
 
 const MIN_ZOOM := 0.6
 const MAX_ZOOM := 1.0
+## Base viewport the game is designed and stretched from (SPEC-foundation).
+const DESIGN_VIEWPORT := Vector2(960, 540)
 ## World pixels kept free around the players' bounding box when fitting.
 const FIT_MARGIN := 96.0
 ## World pixels inside the view edge that players are clamped to.
 const EDGE_PADDING := 24.0
 const ZOOM_LERP_SPEED := 6.0
+## Offset in pixels at full trauma.
+const MAX_SHAKE_PX := 12.0
 
-## Node whose Node2D children are tracked when no explicit targets are set.
+## Node whose Player children are tracked when no explicit targets are set.
 @export var track_container: NodePath
 ## Settings slider, 0 disables shake, 1 is full strength.
 @export_range(0.0, 1.0) var screen_shake: float = 1.0
 
 ## Seedable so tests can make shake deterministic.
 var rng := RandomNumberGenerator.new()
+## Accumulated shake, 0 to 1. Offset amplitude is MAX_SHAKE_PX * trauma^2.
+var trauma: float = 0.0
 
-var _targets: Array[Node2D] = []
-var _shake_strength: float = 0.0
-var _shake_time_left: float = 0.0
-var _shake_duration: float = 0.0
+var _targets: Array[Player] = []
+var _trauma_decay_per_second: float = 0.0
+var _was_shaking: bool = false
 
 
 func _process(delta: float) -> void:
@@ -36,16 +46,18 @@ func _process(delta: float) -> void:
 
 
 ## Explicit targets. An empty array falls back to `track_container`.
-func set_targets(targets: Array[Node2D]) -> void:
-	_targets = targets.duplicate()
+func set_targets(players: Array[Player]) -> void:
+	_targets = players.duplicate()
 
 
-func current_targets() -> Array[Node2D]:
-	var result: Array[Node2D] = []
+## TODO(player-controller, week 3): exclude dead players once Dead exists;
+## downed players stay framed so teammates can reach them.
+func current_targets() -> Array[Player]:
+	var result: Array[Player] = []
 	if not _targets.is_empty():
-		for t in _targets:
-			if is_instance_valid(t) and t.is_inside_tree():
-				result.append(t)
+		for p in _targets:
+			if is_instance_valid(p) and p.is_inside_tree():
+				result.append(p)
 		return result
 	if track_container.is_empty():
 		return result
@@ -53,14 +65,21 @@ func current_targets() -> Array[Node2D]:
 	if container == null:
 		return result
 	for child in container.get_children():
-		var node := child as Node2D
-		if node != null:
-			result.append(node)
+		var p := child as Player
+		if p != null:
+			result.append(p)
 	return result
 
 
 func target_count() -> int:
 	return current_targets().size()
+
+
+func target_positions() -> Array[Vector2]:
+	var positions: Array[Vector2] = []
+	for p in current_targets():
+		positions.append(p.global_position)
+	return positions
 
 
 ## Zoom (1 = native, smaller = further out) that fits `bounds` plus
@@ -71,68 +90,75 @@ static func fit_zoom(bounds: Rect2, viewport_size: Vector2) -> float:
 	return clampf(z, MIN_ZOOM, MAX_ZOOM)
 
 
-static func focus_point(targets: Array[Node2D]) -> Vector2:
-	if targets.is_empty():
+static func focus_point(positions: Array[Vector2]) -> Vector2:
+	if positions.is_empty():
 		return Vector2.ZERO
 	var sum := Vector2.ZERO
-	for t in targets:
-		sum += t.global_position
-	return sum / targets.size()
+	for p in positions:
+		sum += p
+	return sum / positions.size()
 
 
-static func bounds_of(targets: Array[Node2D]) -> Rect2:
-	if targets.is_empty():
+static func bounds_of(positions: Array[Vector2]) -> Rect2:
+	if positions.is_empty():
 		return Rect2()
-	var rect := Rect2(targets[0].global_position, Vector2.ZERO)
-	for t in targets:
-		rect = rect.expand(t.global_position)
+	var rect := Rect2(positions[0], Vector2.ZERO)
+	for p in positions:
+		rect = rect.expand(p)
 	return rect
+
+
+## World rectangle every player must stay inside when playing together:
+## the design viewport at the un-eased fit zoom, centered on the centroid,
+## shrunk by EDGE_PADDING. Deterministic across peers.
+static func coop_bounds(positions: Array[Vector2]) -> Rect2:
+	var zoom_level := fit_zoom(bounds_of(positions), DESIGN_VIEWPORT)
+	var size := DESIGN_VIEWPORT / zoom_level
+	return Rect2(focus_point(positions) - size * 0.5, size).grow(-EDGE_PADDING)
 
 
 ## One framing step: centroid position, eased zoom, shake offset.
 ## Public so tests and cutscenes can step it manually.
 func update_framing(delta: float) -> void:
-	var targets := current_targets()
-	if not targets.is_empty():
-		global_position = focus_point(targets)
-		var target_zoom := fit_zoom(bounds_of(targets), get_viewport_rect().size)
+	var positions := target_positions()
+	if not positions.is_empty():
+		global_position = focus_point(positions)
+		var target_zoom := fit_zoom(bounds_of(positions), get_viewport_rect().size)
 		var t := 1.0 - exp(-ZOOM_LERP_SPEED * delta)
 		zoom = zoom.lerp(Vector2.ONE * target_zoom, t)
 	_update_shake(delta)
 
 
-## World-space rectangle currently visible.
+## World-space rectangle currently on screen. Uses the smoothed screen
+## center, which lags global_position while position smoothing is on.
 func view_rect() -> Rect2:
 	var size := get_viewport_rect().size / zoom
-	return Rect2(global_position - size * 0.5, size)
+	return Rect2(get_screen_center_position() - size * 0.5, size)
 
 
-## Clamps a world position so it stays EDGE_PADDING inside the view.
-func clamp_to_view(point: Vector2) -> Vector2:
-	var rect := view_rect().grow(-EDGE_PADDING)
-	return point.clamp(rect.position, rect.end)
-
-
-## Trauma-style shake: offset up to `strength` pixels, fading out
-## quadratically over `duration` seconds. Repeated calls take the larger
-## values rather than stacking.
+## Trauma-style shake: each call adds `strength` / MAX_SHAKE_PX trauma
+## (capped at 1) and decays at a rate that lets that amount fade over
+## `duration` seconds. Amplitude is MAX_SHAKE_PX * trauma^2, so stacked hits
+## shake harder but fade quickly.
 func shake(strength: float, duration: float) -> void:
-	_shake_strength = maxf(_shake_strength, strength)
-	_shake_duration = maxf(_shake_duration, duration)
-	_shake_time_left = maxf(_shake_time_left, duration)
+	var added := clampf(strength / MAX_SHAKE_PX, 0.0, 1.0)
+	trauma = minf(trauma + added, 1.0)
+	if duration > 0.0:
+		_trauma_decay_per_second = maxf(_trauma_decay_per_second, added / duration)
 
 
 func _update_shake(delta: float) -> void:
-	if _shake_time_left <= 0.0:
-		offset = Vector2.ZERO
+	if trauma <= 0.0:
+		if _was_shaking:
+			offset = Vector2.ZERO
+			_was_shaking = false
 		return
-	_shake_time_left -= delta
-	if _shake_time_left <= 0.0:
-		_shake_time_left = 0.0
-		_shake_strength = 0.0
-		_shake_duration = 0.0
+	trauma = maxf(trauma - _trauma_decay_per_second * delta, 0.0)
+	if trauma <= 0.0:
+		_trauma_decay_per_second = 0.0
 		offset = Vector2.ZERO
+		_was_shaking = false
 		return
-	var t := _shake_time_left / _shake_duration
-	var amplitude := _shake_strength * t * t * screen_shake
+	var amplitude := MAX_SHAKE_PX * trauma * trauma * screen_shake
 	offset = Vector2(rng.randf_range(-amplitude, amplitude), rng.randf_range(-amplitude, amplitude))
+	_was_shaking = true
