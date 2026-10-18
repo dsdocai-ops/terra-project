@@ -7,7 +7,7 @@ Cross-cutting engineering rules (stack, commands, structure, code style, testing
 
 ## Modules
 
-Owner is the developer lane from design doc section 19. **Which person is Dev A and which is Dev B is TBD**; fill in [SPEC-project.md, Ownership](SPEC-project.md#ownership) when decided. Weeks are from design doc section 20; a module listed as `4, 8, 11` ships its system in week 4 and its content batches in weeks 8 and 11.
+Owner is the developer lane from design doc section 19: **Dev A is Alex, Dev B is Daniel** (see [SPEC-project.md, Ownership](SPEC-project.md#ownership)). Weeks are from design doc section 20; a module listed as `4, 8, 11` ships its system in week 4 and its content batches in weeks 8 and 11.
 
 | Module id | Responsibility | Depends on | Owner | Weeks | Design doc |
 |---|---|---|---|---|---|

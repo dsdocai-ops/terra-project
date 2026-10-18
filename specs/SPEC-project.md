@@ -241,12 +241,12 @@ CI (`.github/workflows/ci.yml`): checkout, set up Godot 4.7.2 headless (pin the 
 
 ## Ownership
 
-Lanes from design doc section 19. Names to be filled in when decided.
+Lanes from design doc section 19.
 
 | Lane | Developer | Modules |
 |---|---|---|
-| **Dev A: The Pit** | TBD | `player-controller`, `combat-core`, `enemies-ai`, `floor-generation`, `weapons`, `abilities`, `classes-characters`, `biomes`, `bosses` |
-| **Dev B: The Surface + Systems** | TBD | `networking`, `time-manager`, `stats-status`, `save-system`, `run-economy`, `effect-system`, `relics`, `story-dialogue`, `town`, `progression-trees`, `ui-hud`, `endgame` |
+| **Dev A: The Pit** | Alex | `player-controller`, `combat-core`, `enemies-ai`, `floor-generation`, `weapons`, `abilities`, `classes-characters`, `biomes`, `bosses` |
+| **Dev B: The Surface + Systems** | Daniel | `networking`, `time-manager`, `stats-status`, `save-system`, `run-economy`, `effect-system`, `relics`, `story-dialogue`, `town`, `progression-trees`, `ui-hud`, `endgame` |
 | **Both** | | `foundation`, `art-audio`, `debug-tools`, bulk content data files, balancing, playtesting |
 
 Cross-owner seams are listed in [CAPABILITY_MAP.md](CAPABILITY_MAP.md#cross-owner-seams). The owning module's developer reviews contributions from the other lane.
@@ -266,6 +266,5 @@ Project-level, checked at week 12:
 
 ## Open questions
 
-- Which developer is Dev A and which is Dev B. Fill in Ownership when decided.
 - Exact GUT release to vendor (latest 9.x compatible with 4.7 at week 1).
 - GitHub Actions Godot setup action and whether it already publishes 4.7.2; verified in week 1 during `foundation`.
