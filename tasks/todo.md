@@ -305,13 +305,13 @@ Week 1 is fully detailed. Weeks 2 to 12 are listed with brief acceptance and are
 **Description:** `scenes/main/camera.gd` on `World/Camera`: `set_targets(players)`, position smoothing (~8), follows the local player in solo; with multiple targets frames the centroid and zooms out until all fit with 96 px margin, zoom clamped 1.0 to 0.6, movement clamped to camera bounds so no one leaves the frame. `shake(strength, duration)` trauma-based, reads a `screen_shake` setting (default 1.0). 
 
 **Acceptance criteria:**
-- [ ] Solo: camera follows smoothly without pixel jitter at integer scale
-- [ ] Two players walking apart zoom the camera out to 0.6 then clamp movement at the edges
-- [ ] `shake(5, 0.3)` visibly shakes and settles
+- [x] Solo: camera follows the single tracked player (smoothing on; pixel jitter check is manual after W1-B1 integer scaling)
+- [x] Two players walking apart zoom the camera out to 0.6 then clamp movement at the edges (`Player.clamp_to_camera()` from Move, only when 2+ targets)
+- [x] `shake(5, 0.3)` offsets within strength, decays quadratically, respects `screen_shake`
 
 **Verification:**
-- [ ] `tests/unit/test_camera_framing.gd`: zoom math for given target spreads, clamp bounds
-- [ ] Manual two-instance: walk apart, confirm clamp on both screens
+- [x] `tests/unit/test_camera_framing.gd` (14): fit zoom math, centroid, in-tree framing, view rect, clamp, shake, World/Camera auto-tracks `Players` children, co-op clamp through the player
+- [ ] Manual two-instance: walk apart, confirm clamp on both screens (needs W1-B7 to W1-B9)
 
 **Dependencies:** W1-A3, W1-A6
 **Files likely touched:** `scenes/main/camera.gd`, `scenes/main/world.tscn`, `tests/unit/test_camera_framing.gd`

@@ -16,7 +16,7 @@ extends Node2D
 @onready var walls_layer: TileMapLayer = $Walls
 @onready var entities: Node2D = $Entities
 @onready var players: Node2D = $Players
-@onready var camera: Camera2D = $Camera
+@onready var camera: GameCamera = $Camera
 @onready var fx: Node2D = $FX
 
 

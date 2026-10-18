@@ -1,7 +1,8 @@
-[gd_scene load_steps=3 format=3]
+[gd_scene load_steps=4 format=3]
 
 [ext_resource type="Script" path="res://scenes/main/world.gd" id="1_world"]
 [ext_resource type="TileSet" path="res://assets/tilesets/placeholder_iso.tres" id="2_tiles"]
+[ext_resource type="Script" path="res://scenes/main/camera.gd" id="3_camera"]
 
 [node name="World" type="Node2D"]
 y_sort_enabled = true
@@ -23,5 +24,7 @@ y_sort_enabled = true
 [node name="Camera" type="Camera2D" parent="."]
 position_smoothing_enabled = true
 position_smoothing_speed = 8.0
+script = ExtResource("3_camera")
+track_container = NodePath("../Players")
 
 [node name="FX" type="Node2D" parent="."]

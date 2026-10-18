@@ -98,6 +98,15 @@ func set_facing(dir: Vector2) -> void:
 	facing_index = Iso.facing_index(facing, facing_index, FACING_HYSTERESIS_DEG)
 
 
+## In co-op nobody may leave the shared frame: pulls this player back inside
+## the camera's view when the camera is framing more than one target.
+func clamp_to_camera() -> void:
+	var cam := get_viewport().get_camera_2d() as GameCamera
+	if cam == null or cam.target_count() < 2:
+		return
+	global_position = cam.clamp_to_view(global_position)
+
+
 func is_perfect_dodge_window() -> bool:
 	return _perfect_dodge_window_open
 

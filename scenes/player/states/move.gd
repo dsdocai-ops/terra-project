@@ -21,3 +21,4 @@ func physics_update(delta: float) -> void:
 	_player.set_facing(dir)
 	_player.play_directional("walk")
 	_player.move_and_slide()
+	_player.clamp_to_camera()
