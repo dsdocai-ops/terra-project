@@ -112,7 +112,7 @@ Unlocks: Warrior, Ranger, and Mage at start. The other 4 are unlocked by rescuin
 
 #### Necromancer
 - **Role:** Summoner
-- **Affinity:** Grave Scythe, Blood Grimoire, Spore Tome (kills always drop souls)
+- **Affinity:** Grave Scythe, Reaper’s Chain, Spore Tome (kills always drop souls)
 - **Passive: Soul Harvest.** Kills drop souls. Every 5 souls raises a skeleton minion (max 3, more with upgrades)
 - **Class skill: Corpse Burst.** Detonate a minion or corpse for big AoE damage. A minion detonated this way rises again after 10s
 - **Ascensions:**
