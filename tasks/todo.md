@@ -128,13 +128,13 @@ Week 1 is fully detailed. Weeks 2 to 12 are listed with brief acceptance and are
 **Description:** Replace the stub with the real `NetworkManager`: `host(port)`, `join(ip, port)`, `start_solo()`, `disconnect_all()`, `is_host`, `local_peer_id`, `peer_ids`, `players`, `player_count()`, `enemy_hp_multiplier()`, constants, signals `player_joined`, `player_left`, `connection_failed`, `host_disconnected`. ENet, port 7777, max 4. Solo is a host with one peer.
 
 **Acceptance criteria:**
-- [ ] Two instances on one machine connect; host logs `player_joined(peer_id)`; client logs connection
-- [ ] Closing the client fires `player_left` on host; closing the host fires `host_disconnected` on client
-- [ ] `start_solo()` sets `is_host` true with `peer_ids == [1]`
+- [ ] Two instances on one machine connect; host logs `player_joined(peer_id)`; client logs connection (headless smoke in W1-B10)
+- [ ] Closing the client fires `player_left` on host; closing the host fires `host_disconnected` on client (headless smoke in W1-B10)
+- [x] `start_solo()` sets `is_host` true with `peer_ids == [1]`; host() and join() refuse while a session is active; malformed addresses are rejected before ENet
 
 **Verification:**
-- [ ] `tests/unit/test_network_manager.gd`: `enemy_hp_multiplier()` for 1 to 4 players (1.0, 1.5, 2.0, 2.5), `start_solo()` state
-- [ ] Manual two-instance connect/disconnect via W1-B6 args
+- [x] `tests/unit/test_network_manager.gd` (12): multiplier table, inactive state, solo, host, refusals, disconnect reset, address validation, pending client
+- [ ] Two-instance connect/disconnect via the headless smoke (W1-B10)
 
 **Dependencies:** W1-B3, W1-B6
 **Files likely touched:** `scripts/autoload/network_manager.gd`, `tests/unit/test_network_manager.gd`
