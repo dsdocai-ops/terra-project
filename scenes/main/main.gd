@@ -26,6 +26,41 @@ func _ready() -> void:
 
 	apply_options(LaunchArgs.parse(OS.get_cmdline_user_args()))
 	_start_from_options()
+	if options.smoke_seconds > 0.0:
+		_start_smoke(options.smoke_seconds)
+
+
+## Headless smoke support: the local player walks right as soon as its node
+## arrives (on a client that is after the spawner delivers it, well after
+## player_joined), every player's position is logged once a second, and the
+## instance quits by itself after `seconds`.
+func _start_smoke(seconds: float) -> void:
+	world.players.child_entered_tree.connect(_arm_autowalk_if_local)
+	for child in world.players.get_children():
+		_arm_autowalk_if_local(child)
+	var log_timer := Timer.new()
+	log_timer.wait_time = 1.0
+	log_timer.autostart = true
+	log_timer.timeout.connect(_log_smoke)
+	add_child(log_timer)
+	get_tree().create_timer(seconds).timeout.connect(func() -> void:
+		print("[smoke] done, quitting")
+		get_tree().quit())
+
+
+func _arm_autowalk_if_local(node: Node) -> void:
+	var player := node as Player
+	if player != null and player.peer_id == NetworkManager.local_peer_id:
+		player.debug_autowalk = Vector2(1, 0)
+		print("[smoke] autowalk armed on %s" % player.name)
+
+
+func _log_smoke() -> void:
+	var parts: PackedStringArray = []
+	for peer_id: int in NetworkManager.players:
+		var p := NetworkManager.players[peer_id]
+		parts.append("%s=%s" % [p.name, p.position.round()])
+	print("[smoke] peer %d sees %d player(s): %s" % [NetworkManager.local_peer_id, parts.size(), " ".join(parts)])
 
 
 ## Records the parsed options: forced seed into GameState, menu shown only

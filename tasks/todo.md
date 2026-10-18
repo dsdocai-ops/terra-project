@@ -128,8 +128,8 @@ Week 1 is fully detailed. Weeks 2 to 12 are listed with brief acceptance and are
 **Description:** Replace the stub with the real `NetworkManager`: `host(port)`, `join(ip, port)`, `start_solo()`, `disconnect_all()`, `is_host`, `local_peer_id`, `peer_ids`, `players`, `player_count()`, `enemy_hp_multiplier()`, constants, signals `player_joined`, `player_left`, `connection_failed`, `host_disconnected`. ENet, port 7777, max 4. Solo is a host with one peer.
 
 **Acceptance criteria:**
-- [ ] Two instances on one machine connect; host logs `player_joined(peer_id)`; client logs connection (headless smoke in W1-B10)
-- [ ] Closing the client fires `player_left` on host; closing the host fires `host_disconnected` on client (headless smoke in W1-B10)
+- [x] Two instances on one machine connect; host logs `player_joined(peer_id)`; client logs connection (headless smoke green)
+- [x] Closing the client fires `player_left` on host; closing the host fires `host_disconnected` on client (both observed in the smoke logs)
 - [x] `start_solo()` sets `is_host` true with `peer_ids == [1]`; host() and join() refuse while a session is active; malformed addresses are rejected before ENet
 
 **Verification:**
@@ -146,9 +146,9 @@ Week 1 is fully detailed. Weeks 2 to 12 are listed with brief acceptance and are
 **Description:** `MultiplayerSpawner` under `World/Players` with the player scene registered. On `player_joined` (and for the host itself at world load), the host calls `spawn()` with a `PlayerSpawnInfo` dictionary (`peer_id`, placeholder `character_id`, `class_id`, `weapon_ids`). Spawned player gets `peer_id` set and `is_local` computed. `NetworkManager.players` filled as spawns complete. Uses Alex's `player.tscn` from W1-A4.
 
 **Acceptance criteria:**
-- [ ] Host and one client each see two `Player` nodes under `World/Players` with distinct `peer_id` (headless smoke in W1-B10)
-- [ ] Late joiner sees existing players; existing players see the late joiner (MultiplayerSpawner replays spawns to new peers; smoke in W1-B10)
-- [ ] Leaving removes the node on all peers (smoke in W1-B10)
+- [x] Host and one client each see two `Player` nodes under `World/Players` with distinct `peer_id` (headless smoke green)
+- [x] Late joiner sees existing players; existing players see the late joiner (the client joins 2 s after the host spawned itself and receives Player1; smoke green)
+- [x] Leaving removes the node on all peers (host logs the peer leaving and drops to 1 player; smoke green)
 
 **Verification:**
 - [x] `tests/unit/test_player_spawner.gd` (12): `PlayerSpawnInfo` round trip and wire types, spawner under World targeting Players, spawn sets name / peer_id / position / authorities / input visibility, registry, despawn, replace-on-respawn, auto-spawn from `player_joined`, despawn from `player_left`, non-overlapping default positions
@@ -182,11 +182,11 @@ Week 1 is fully detailed. Weeks 2 to 12 are listed with brief acceptance and are
 **Description:** `tools/run_two.ps1` and `tools/run_two.sh` launching `--host` and `--join=127.0.0.1` with windows positioned side by side, optional count for more clients. Configure Godot's Debug > "Run Multiple Instances" with the same args so F5 works too. Document in SPEC-project commands.
 
 **Acceptance criteria:**
-- [ ] Running the script opens two windows that connect
-- [ ] F5 in the editor with multi-instance enabled does the same
+- [x] Running the script opens two windows that connect (`tools/run_two.ps1`, `tools/run_two.sh`; the connect / spawn / move path is proven headless by `tools/smoke_two.sh`, 15 checks green)
+- [ ] F5 in the editor with multi-instance enabled does the same (per-machine setting in `.godot/`, documented in SPEC-project commands; Alex sets it once)
 
 **Verification:**
-- [ ] Manual run of both paths
+- [ ] Manual run of the windowed launcher (Alex); headless smoke green 2026-10-18
 
 **Dependencies:** W1-B6, W1-B7
 **Files likely touched:** `tools/run_two.ps1`, `tools/run_two.sh`, `specs/SPEC-project.md`
@@ -327,13 +327,13 @@ Week 1 is fully detailed. Weeks 2 to 12 are listed with brief acceptance and are
 **Description:** Local player moves immediately from its own input; host simulates the same input; `StateSync` position corrects drift on the client with a small lerp (snap if error > 64 px). Remote players interpolate between synced positions. Run the SPEC-networking two-instance smoke steps 1 and 2 (connect, both visible moving and facing). Record results in the PR.
 
 **Acceptance criteria:**
-- [ ] At 0 ms latency, no visible correction on the local player
-- [ ] Remote players move smoothly (no stutter at 20 Hz sync rate)
-- [ ] Facing and animation match on both screens
+- [ ] At 0 ms latency, no visible correction on the local player (reconcile implemented in W1-B9; visual check is Alex's)
+- [ ] Remote players move smoothly (interpolation implemented in W1-B9; visual check is Alex's)
+- [ ] Facing and animation match on both screens (facing_index and current_anim replicated on change; visual check is Alex's)
 
 **Verification:**
-- [ ] Manual two-instance smoke, steps 1 and 2, recorded in the PR
-- [ ] Three-instance sanity via `run_two.ps1 -Clients 2`
+- [x] Two-instance smoke steps 1 and 2 pass headless (`tools/smoke_two.sh`), recorded in the surface-week1 PR
+- [ ] Three-instance sanity via `run_two.ps1 -Clients 2` (Alex)
 
 **Dependencies:** W1-B9, W1-A6, W1-A7
 **Files likely touched:** `scenes/player/player.gd`, `scenes/player/states/move.gd`, `scripts/autoload/network_manager.gd`

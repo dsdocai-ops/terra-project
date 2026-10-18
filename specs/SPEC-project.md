@@ -46,6 +46,11 @@ godot --path .
 # Run two networked instances on one machine (required before any sync PR)
 godot --path . -- --host
 godot --path . -- --join=127.0.0.1
+.\tools\run_two.ps1 -Clients 1          # same thing, windows placed side by side (tools/run_two.sh on Linux/macOS)
+GODOT=C:/Godot/Godot_v4.7.2-stable_win64_console.exe bash tools/smoke_two.sh   # headless: connect, spawn, move in both directions, exit 0 on pass
+
+# In the editor, Debug > Run Multiple Instances (set 2, args "-- --host" and "-- --join=127.0.0.1")
+# gives the same result from F5. That setting lives in .godot/ and is per machine.
 
 # Run all tests (what CI does second; must exit 0)
 godot --headless --path . -s addons/gut/gut_cmdln.gd -gdir=res://tests -ginclude_subdirs -gexit

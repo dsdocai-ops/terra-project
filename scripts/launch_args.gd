@@ -4,15 +4,23 @@ extends RefCounted
 ##   --host            host a game and skip the menu
 ##   --join=<ip[:port]> join a host and skip the menu
 ##   --seed=<int>      force the run seed
+##   --smoke[=<sec>]   headless two-instance smoke: the local player walks
+##                     right, positions are logged every second, quit after
+##                     <sec> seconds (default DEFAULT_SMOKE_SECONDS).
+##                     See tools/smoke_two.sh
 ## Owned by foundation. Sync: none.
 
 enum Mode { MENU, HOST, JOIN }
+
+const DEFAULT_SMOKE_SECONDS := 8.0
 
 var mode: Mode = Mode.MENU
 var host: bool = false
 var join_ip: String = ""
 var port: int = NetworkManager.DEFAULT_PORT
 var run_seed: int = 0
+## 0 means not a smoke run.
+var smoke_seconds: float = 0.0
 ## Human-readable problems with the arguments; main.gd logs them.
 var errors: Array[String] = []
 
@@ -22,6 +30,14 @@ static func parse(args: PackedStringArray) -> LaunchArgs:
 	for arg: String in args:
 		if arg == "--host":
 			opts.host = true
+		elif arg == "--smoke":
+			opts.smoke_seconds = DEFAULT_SMOKE_SECONDS
+		elif arg.begins_with("--smoke="):
+			var value := arg.trim_prefix("--smoke=")
+			if value.is_valid_float() and float(value) > 0.0:
+				opts.smoke_seconds = float(value)
+			else:
+				opts.errors.append("--smoke needs a positive number of seconds, got '%s'" % value)
 		elif arg.begins_with("--join="):
 			opts._parse_join(arg.trim_prefix("--join="))
 		elif arg.begins_with("--seed="):

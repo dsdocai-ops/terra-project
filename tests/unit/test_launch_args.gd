@@ -65,6 +65,23 @@ func test_non_numeric_seed_is_an_error() -> void:
 	assert_gt(opts.errors.size(), 0)
 
 
+func test_smoke_flag_uses_default_seconds() -> void:
+	var opts := LaunchArgs.parse(PackedStringArray(["--host", "--smoke"]))
+	assert_eq(opts.smoke_seconds, LaunchArgs.DEFAULT_SMOKE_SECONDS)
+	assert_eq(opts.mode, LaunchArgs.Mode.HOST, "smoke does not change the mode")
+
+
+func test_smoke_seconds_can_be_set() -> void:
+	assert_eq(LaunchArgs.parse(PackedStringArray(["--smoke=5"])).smoke_seconds, 5.0)
+	var bad := LaunchArgs.parse(PackedStringArray(["--smoke=soon"]))
+	assert_eq(bad.smoke_seconds, 0.0)
+	assert_gt(bad.errors.size(), 0)
+
+
+func test_no_smoke_by_default() -> void:
+	assert_eq(LaunchArgs.parse(PackedStringArray()).smoke_seconds, 0.0)
+
+
 func test_unknown_args_are_ignored() -> void:
 	var opts := LaunchArgs.parse(PackedStringArray(["--verbose", "--host", "extra"]))
 	assert_eq(opts.mode, LaunchArgs.Mode.HOST)
