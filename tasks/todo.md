@@ -146,13 +146,13 @@ Week 1 is fully detailed. Weeks 2 to 12 are listed with brief acceptance and are
 **Description:** `MultiplayerSpawner` under `World/Players` with the player scene registered. On `player_joined` (and for the host itself at world load), the host calls `spawn()` with a `PlayerSpawnInfo` dictionary (`peer_id`, placeholder `character_id`, `class_id`, `weapon_ids`). Spawned player gets `peer_id` set and `is_local` computed. `NetworkManager.players` filled as spawns complete. Uses Alex's `player.tscn` from W1-A4.
 
 **Acceptance criteria:**
-- [ ] Host and one client each see two `Player` nodes under `World/Players` with distinct `peer_id`
-- [ ] Late joiner sees existing players; existing players see the late joiner
-- [ ] Leaving removes the node on all peers
+- [ ] Host and one client each see two `Player` nodes under `World/Players` with distinct `peer_id` (headless smoke in W1-B10)
+- [ ] Late joiner sees existing players; existing players see the late joiner (MultiplayerSpawner replays spawns to new peers; smoke in W1-B10)
+- [ ] Leaving removes the node on all peers (smoke in W1-B10)
 
 **Verification:**
-- [ ] `tests/unit/test_spawn_info.gd`: `PlayerSpawnInfo` to/from dictionary round trip
-- [ ] Manual two-instance: spawn, late join (start client after host has been running), leave
+- [x] `tests/unit/test_player_spawner.gd` (12): `PlayerSpawnInfo` round trip and wire types, spawner under World targeting Players, spawn sets name / peer_id / position / authorities / input visibility, registry, despawn, replace-on-respawn, auto-spawn from `player_joined`, despawn from `player_left`, non-overlapping default positions
+- [ ] Two-instance: spawn, late join, leave (headless smoke in W1-B10)
 
 **Dependencies:** W1-B7, W1-A4
 **Files likely touched:** `scenes/main/world.tscn` (Players spawner node; coordinate with Alex, owner), `scripts/network/player_spawn_info.gd`, `scripts/autoload/network_manager.gd`, `tests/unit/test_spawn_info.gd`
