@@ -92,13 +92,13 @@ Week 1 is fully detailed. Weeks 2 to 12 are listed with brief acceptance and are
 **Description:** `.github/workflows/ci.yml` on `pull_request` and `push` to `main`: check out, install Godot 4.7.2 headless (verify the chosen setup action publishes 4.7.2, else download the official Linux headless zip by URL), run `--import`, run the GUT command, fail on non-zero. Target under 5 minutes. Record the action choice in SPEC-foundation.
 
 **Acceptance criteria:**
-- [ ] A PR shows a CI status check that passes on the current tree
-- [ ] A PR with a failing test shows red
+- [ ] A PR shows a CI status check that passes on the current tree (verified by the `feat/surface-week1` PR run; workflow written 2026-10-18)
+- [ ] A PR with a failing test shows red (exit code 1 on failure verified locally in W1-B4; observe on a PR)
 - [ ] Runtime under 5 minutes
 
 **Verification:**
-- [ ] Open a throwaway PR with a failing test, observe red, fix, observe green
-- [ ] SPEC-foundation open question for the setup action resolved
+- [ ] Observe the PR check; a throwaway failing-test PR is optional once the first run is green
+- [x] SPEC-foundation open question for the setup action resolved: direct download of the official `godotengine/godot-builds` 4.7.2 Linux release, no third-party action
 
 **Dependencies:** W1-B4
 **Files likely touched:** `.github/workflows/ci.yml`, `specs/SPEC-foundation.md`

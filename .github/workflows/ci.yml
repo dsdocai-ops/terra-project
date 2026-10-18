@@ -1,0 +1,39 @@
+# Sinkhole CI (SPEC-foundation, W1-B5): headless import, then GUT.
+# The import step is not optional: it refreshes the global class cache, and
+# without it every test file fails to parse. No export check yet.
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+jobs:
+  test:
+    name: Import and run GUT
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      GODOT_VERSION: 4.7.2
+    steps:
+      - name: Check out
+        uses: actions/checkout@v4
+
+      - name: Download Godot ${{ env.GODOT_VERSION }} (official Linux build, kept outside the project)
+        run: |
+          mkdir -p "$RUNNER_TEMP/godot"
+          cd "$RUNNER_TEMP/godot"
+          curl -sSL --fail -o godot.zip \
+            "https://github.com/godotengine/godot-builds/releases/download/${GODOT_VERSION}-stable/Godot_v${GODOT_VERSION}-stable_linux.x86_64.zip"
+          unzip -q godot.zip
+          chmod +x "Godot_v${GODOT_VERSION}-stable_linux.x86_64"
+          mv "Godot_v${GODOT_VERSION}-stable_linux.x86_64" godot
+          ./godot --version
+
+      - name: Import project (refreshes the class cache)
+        run: "$RUNNER_TEMP/godot/godot" --headless --path . --import
+
+      - name: Run tests
+        run: >
+          "$RUNNER_TEMP/godot/godot" --headless --path .
+          -s addons/gut/gut_cmdln.gd -gdir=res://tests -ginclude_subdirs -gexit
