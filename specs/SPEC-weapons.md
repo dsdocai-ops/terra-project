@@ -121,3 +121,4 @@ Sync: host-authoritative, client-predicted animation.
 ## Open questions
 
 - Leviathan's Tooth design (Dev A, before week 11). Recorded in `specs/content/mutations.md` with its 6 mutations.
+- **Reaper's Chain.** Referenced as a Necromancer affinity weapon in the design doc since commit `92f268d` but absent from the section 7 weapon list. If it becomes a 20th weapon, the counts in this spec (19 weapons, 114 mutations) and in SPEC-project success criteria change. See the open question in SPEC-classes-characters.
