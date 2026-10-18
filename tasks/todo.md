@@ -164,13 +164,13 @@ Week 1 is fully detailed. Weeks 2 to 12 are listed with brief acceptance and are
 **Description:** Configure the two `MultiplayerSynchronizer` nodes Alex placed in `player.tscn` (W1-A4). `InputSync`: authority = owning peer, replicates `move_input: Vector2`, `aim_position: Vector2`, pressed-action bitmask, to host. `StateSync`: authority = host (1), replicates `position`, `velocity`, `facing_index`, animation name, to all. Set per-peer authority in the spawn path from W1-B8. Document the convention in `player.gd` doc comment ("Sync:" line).
 
 **Acceptance criteria:**
-- [ ] Client input moves the client's player on the host
-- [ ] Host position updates appear on the client for both players
-- [ ] A third instance joining sees both others moving
+- [x] Client input moves the client's player on the host (headless smoke: InputSync check passes)
+- [x] Host position updates appear on the client for both players (headless smoke: StateSync check passes; remote copies interpolate, the local player reconciles)
+- [ ] A third instance joining sees both others moving (manual, `tools/run_two.ps1 -Clients 2`)
 
 **Verification:**
-- [ ] Manual three-instance test (host + 2 clients) with `tools/run_two.ps1` extended to accept a count
-- [ ] Grep check: `player.gd` doc comment contains "Sync:"
+- [x] `tests/unit/test_player_sync.gd` (12): replication configs, publish, roles, reconcile, interpolate, anim replay; `tools/smoke_two.sh` green
+- [x] `player.gd` doc comment contains "Sync:"
 
 **Dependencies:** W1-B8, W1-A4, W1-A6
 **Files likely touched:** `scenes/player/player.tscn`, `scenes/player/player.gd`, `scripts/autoload/network_manager.gd`

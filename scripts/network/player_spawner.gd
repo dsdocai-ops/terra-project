@@ -57,6 +57,7 @@ func _spawn_from_data(data: Variant) -> Node:
 	player.name = "Player%d" % info.peer_id
 	player.peer_id = info.peer_id
 	player.position = info.spawn_position
+	player.synced_position = info.spawn_position
 	# Input is the owning peer's; it is sent to the host only.
 	var input_sync := player.get_node("InputSync") as MultiplayerSynchronizer
 	input_sync.set_multiplayer_authority(info.peer_id)

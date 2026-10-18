@@ -6,6 +6,28 @@
 [ext_resource type="Script" uid="uid://dqr7re3q06tjd" path="res://scenes/player/states/idle.gd" id="4_idle"]
 [ext_resource type="Script" uid="uid://t750fwxr173v" path="res://scenes/player/states/move.gd" id="5_move"]
 
+[sub_resource type="SceneReplicationConfig" id="SceneReplicationConfig_input"]
+properties/0/path = NodePath(".:move_input")
+properties/0/spawn = false
+properties/0/replication_mode = 1
+properties/1/path = NodePath(".:aim_position")
+properties/1/spawn = false
+properties/1/replication_mode = 1
+
+[sub_resource type="SceneReplicationConfig" id="SceneReplicationConfig_state"]
+properties/0/path = NodePath(".:synced_position")
+properties/0/spawn = true
+properties/0/replication_mode = 1
+properties/1/path = NodePath(".:synced_velocity")
+properties/1/spawn = false
+properties/1/replication_mode = 1
+properties/2/path = NodePath(".:facing_index")
+properties/2/spawn = true
+properties/2/replication_mode = 2
+properties/3/path = NodePath(".:current_anim")
+properties/3/spawn = true
+properties/3/replication_mode = 2
+
 [sub_resource type="CircleShape2D" id="CircleShape2D_body"]
 radius = 8.0
 
@@ -47,8 +69,12 @@ animation = &"idle_s"
 [node name="WeaponPivot" type="Node2D" parent="."]
 
 [node name="InputSync" type="MultiplayerSynchronizer" parent="."]
+root_path = NodePath("..")
+replication_config = SubResource("SceneReplicationConfig_input")
 
 [node name="StateSync" type="MultiplayerSynchronizer" parent="."]
+root_path = NodePath("..")
+replication_config = SubResource("SceneReplicationConfig_state")
 
 [node name="InteractArea" type="Area2D" parent="."]
 

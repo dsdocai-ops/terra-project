@@ -16,6 +16,21 @@ signal dodge_started(perfect_window_open: bool)
 signal dodge_finished()
 signal facing_changed(index: int)
 
+## Who this copy of the player is on this peer (SPEC-networking).
+enum SyncRole {
+	HOST_PUBLISHES,       ## the host simulates and writes synced_* every frame
+	LOCAL_PREDICTS,       ## the owning client simulates and reconciles toward synced_*
+	REMOTE_INTERPOLATES,  ## another peer's copy: follows synced_* and plays synced anims
+}
+
+## Prediction error beyond which the local player snaps to the host position.
+const SNAP_DISTANCE := 64.0
+## Remote copies snap when they fall this far behind (spawn, teleport).
+const INTERPOLATE_SNAP_DISTANCE := 512.0
+## Per-second rates for the exponential approach toward the synced pose.
+const RECONCILE_RATE := 10.0
+const INTERPOLATE_RATE := 15.0
+
 ## Degrees past a sector edge before the facing index changes (see Facing).
 const FACING_HYSTERESIS_DEG := 3.0
 
@@ -70,10 +85,25 @@ var dodge_charges: int = 1
 var dodge_distance_mult: float = 1.0
 var revive_speed_mult: float = 1.0
 
+## Host-written pose, replicated by StateSync. Clients reconcile or
+## interpolate toward it; nobody replicates `position` directly.
+var synced_position: Vector2 = Vector2.ZERO
+var synced_velocity: Vector2 = Vector2.ZERO
+## Base animation name ("idle", "walk") without the facing suffix. Replicated
+## by StateSync so remote copies play what the host plays.
+var current_anim: String = "":
+	set(value):
+		if value == current_anim:
+			return
+		current_anim = value
+		_replay_directional()
+
+## Debug hook for the headless smoke (--smoke): when non-zero on a local
+## player it replaces hardware input.
+var debug_autowalk: Vector2 = Vector2.ZERO
+
 var _perfect_dodge_window_open: bool = false
 var _dodge_cooldown_left: float = 0.0
-## Base animation name ("idle", "walk") currently playing, without suffix.
-var _current_anim: String = ""
 ## Animation names already reported missing, so a bad name warns once.
 var _missing_anims: Dictionary[StringName, bool] = {}
 
@@ -108,12 +138,56 @@ func refresh_authority() -> void:
 
 
 func _physics_process(_delta: float) -> void:
-	# Only the owning peer reads hardware input. Remote copies receive
-	# move_input and aim_position through InputSync (W1-B9). Runs before the
+	# Only the owning peer reads hardware input. The host receives
+	# move_input and aim_position through InputSync. Runs before the
 	# StateMachine child steps, so states see this frame's input.
 	if is_local:
-		move_input = Input.get_vector(&"move_left", &"move_right", &"move_up", &"move_down")
-		aim_position = get_global_mouse_position()
+		if debug_autowalk != Vector2.ZERO:
+			move_input = debug_autowalk
+		else:
+			move_input = Input.get_vector(&"move_left", &"move_right", &"move_up", &"move_down")
+			aim_position = get_global_mouse_position()
+
+
+func _process(delta: float) -> void:
+	match sync_role():
+		SyncRole.HOST_PUBLISHES:
+			publish_state()
+		SyncRole.LOCAL_PREDICTS:
+			reconcile_toward(synced_position, delta)
+		SyncRole.REMOTE_INTERPOLATES:
+			interpolate_toward(synced_position, delta)
+			velocity = synced_velocity
+
+
+func sync_role() -> SyncRole:
+	if multiplayer.is_server():
+		return SyncRole.HOST_PUBLISHES
+	return SyncRole.LOCAL_PREDICTS if is_local else SyncRole.REMOTE_INTERPOLATES
+
+
+## Host: copy the simulated pose into the replicated fields.
+func publish_state() -> void:
+	synced_position = position
+	synced_velocity = velocity
+
+
+## Owning client: pull the predicted position toward the host's. Small
+## errors ease out; large ones snap.
+func reconcile_toward(target: Vector2, delta: float) -> void:
+	var error := target - position
+	if error.length() > SNAP_DISTANCE:
+		position = target
+		return
+	position += error * (1.0 - exp(-RECONCILE_RATE * delta))
+
+
+## Remote copy: follow the host's pose smoothly, snapping if far behind.
+func interpolate_toward(target: Vector2, delta: float) -> void:
+	if position.distance_to(target) > INTERPOLATE_SNAP_DISTANCE:
+		position = target
+		return
+	position = position.lerp(target, 1.0 - exp(-INTERPOLATE_RATE * delta))
 
 
 ## Current move speed in px/s. Reads StatBlock.MOVE_SPEED from week 2.
@@ -189,14 +263,14 @@ func play_directional(anim: String) -> void:
 			_missing_anims[anim_name] = true
 			push_warning("Player: missing animation %s" % anim_name)
 		return
-	_current_anim = anim
+	current_anim = anim
 	if sprite.animation != anim_name:
 		sprite.play(anim_name)
 
 
 func _replay_directional() -> void:
-	if _current_anim != "" and sprite != null:
-		play_directional(_current_anim)
+	if current_anim != "" and sprite != null:
+		play_directional(current_anim)
 
 
 ## Client asks the host to revive `target`. Filled in by networking week 3.
