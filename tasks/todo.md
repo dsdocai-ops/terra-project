@@ -233,13 +233,13 @@ Week 1 is fully detailed. Weeks 2 to 12 are listed with brief acceptance and are
 **Description:** `scenes/main/world.tscn` per SPEC-foundation: `World` (Y-sort) with `Floor` and `Walls` `TileMapLayer`s, `Entities` (Y-sort), `Players`, `Camera`, `FX`. A 20x20 test floor with a wall ring painted so week 1 has somewhere to walk. `world.gd` exposes typed references to the child nodes for `GameState.world`.
 
 **Acceptance criteria:**
-- [ ] Node layout matches the spec; `Players` is ready to receive a `MultiplayerSpawner` (W1-B8)
-- [ ] Walls block movement; Y-sort orders a test sprite behind and in front of a wall correctly
-- [ ] Scene instantiates headless
+- [x] Node layout matches the spec; `Players` is ready to receive a `MultiplayerSpawner` (W1-B8)
+- [ ] Walls block movement; Y-sort orders a test sprite behind and in front of a wall correctly (manual, after W1-A6 gives something that moves)
+- [x] Scene instantiates headless
 
 **Verification:**
-- [ ] `test_scenes_load` passes with `world.tscn` present
-- [ ] Manual: walk a placeholder sprite around the wall ring
+- [x] `tests/unit/test_world.gd` (layout, typed refs, Y-sort flags, test floor painting, `is_walkable`); `test_scenes_load` arrives with W1-B4
+- [ ] Manual: walk a placeholder sprite around the wall ring (after W1-A6)
 
 **Dependencies:** W1-A2
 **Files likely touched:** `scenes/main/world.tscn`, `scenes/main/world.gd`
