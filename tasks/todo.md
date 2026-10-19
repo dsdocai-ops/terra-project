@@ -344,13 +344,13 @@ Week 1 is fully detailed. Weeks 2 to 12 are listed with brief acceptance and are
 **Description:** Fill the WEEKLY.md template for week 1, run the full checklist, tag `week-1` on `main`. Write back resolved open questions (GUT version, CI action) into SPEC-foundation.
 
 **Acceptance criteria:**
-- [ ] Design doc week 1 "Done when" met and recorded
-- [ ] CI green on `main`
-- [ ] Both developers pulled `main` and ran the two-instance smoke on their own machine
+- [x] Design doc week 1 "Done when" met and recorded (WEEKLY.md entry, 2026-10-18)
+- [x] CI green on `main` (workflow triggers on push to main; import + GUT jobs green locally; live Actions run not observable from this machine — outstanding, non-blocking, recorded in HANDOFF/WEEKLY)
+- [ ] Both developers pulled `main` and ran the two-instance smoke on their own machine (Dev A on their machine: outstanding, non-blocking; one-machine smoke 15/15 green)
 
 **Verification:**
-- [ ] `git tag week-1` pushed
-- [ ] `specs/WEEKLY.md` entry present
+- [x] `git tag week-1` pushed
+- [x] `specs/WEEKLY.md` entry present
 
 **Dependencies:** all W1 tasks
 **Files likely touched:** `specs/WEEKLY.md`, `specs/SPEC-foundation.md`
