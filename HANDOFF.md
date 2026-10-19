@@ -1,15 +1,18 @@
-# HANDOFF — Week 1 (W1-B1 .. W1-B10)
+# HANDOFF — Weeks 1 and 2 (W1-B1 .. W1-B10, W2-B1 .. W2-B6)
 
 A plain-language rundown of what the Dev B (Surface + Systems) lane shipped in
-week 1, how each piece works, every decision that was made without a human in
-the loop, and how to run the build solo and in co-op. Written for Dev A and the
-human who review this handoff; the week-1 task list is `tasks/todo.md`.
+week 1 and week 2, how each piece works, every decision that was made without a
+human in the loop, and how to run the build solo and in co-op. Written for Dev
+A and the human who review this handoff; the task list is `tasks/todo.md`.
 
-**Verified baseline (2026-10-18)** on `main` @ `75ed7c2`:
+**Verified baselines:**
 
-- `godot --headless --path . --import` exits 0 with no warnings or errors.
-- Full GUT suite: **18 scripts, 204 tests, all passing** in ~7 s.
-- `tools/smoke_two.sh`: **15/15 checks pass**, exit 0.
+- Week 1 (2026-10-18) on `main` @ `75ed7c2`: import exit 0; 18 GUT scripts /
+  204 tests green in ~7 s; `tools/smoke_two.sh` 15/15 (steps 1 + 2).
+- Week 2 (2026-10-19) on `main` @ `ee62cb7`: import exit 0 with no errors;
+  27 GUT scripts / 338 tests green in ~14 s; `tools/smoke_two.sh` 28/28
+  (steps 1 + 2 + 3). `week-2` tag held off until Dev A's W2 tasks land (see
+  `specs/WEEKLY.md`).
 
 ---
 
@@ -142,6 +145,110 @@ movement must cross the wire in both directions, and the client leaves first so
 the host sees the peer go — 15 checks, exit 0 on pass. This is the two-instance
 smoke required before any PR that touches sync.
 
+### W2-B1 — TimeManager: group/per-entity scaling, slow/stop stack, hit-stop, scaled timers (`time-manager`)
+
+`scripts/autoload/time_manager.gd` is the one answer to "how fast does time
+move for this entity right now". Enemies and enemy projectiles multiply their
+delta by `scale_for(self)`; the engine's global time scale is never touched
+(the `Engine.time_scale` grep over `scripts/`/`scenes/` is empty).
+
+- `set_group(node, Group)` — player and enemy scripts register in `_ready`
+  (`Group.PLAYER` / `Group.ENEMY`).
+- `scale_for(node)` — a per-entity override always wins (hit-stop, single-target
+  slows); otherwise PLAYER-group and unregistered nodes run at normal speed and
+  only ENEMY-group nodes take the global slow/stop stack. So `slow_enemies` /
+  `stop_enemies` never touch players, while an entity-level effect still can.
+- Global stack is min-of-factor with replace-on-same-source: `slow_enemies(0.5)`
+  then `stop_enemies` gives 0.0; each effect is `{source, factor,
+  expires_on_frame}` and expiry is **physics-frame based**, not scaled seconds,
+  so a slow that runs out during a stop still expires on the stopped world.
+- `clear_source(source)` removes every global and per-entity effect carrying
+  that source (e.g. Deadeye release).
+- `hit_stop(a, b, frames)` freezes exactly the two nodes for N physics frames
+  (3 light / 6 heavy / 10 boss-kill per spec); the camera, HUD, and everyone
+  else keep running.
+- `timer(node, seconds)` returns a signal that fires once after `seconds` of
+  time *scaled by* `scale_for(node)` — plain `Timer`/`create_timer` are
+  forbidden for enemy gameplay because they ignore time effects. The timer
+  stores the node by instance id and reads it back with the global
+  `instance_from_id()` (not a static call, which does not exist), so a freed
+  node cannot keep a timer alive.
+- Rewind hooks (`register_rewindable` / `unregister_rewindable` / `rewind`) are
+  stubbed for week 4's Time Hourglass per spec scope.
+- Sync: host-authoritative. The host decides every effect and broadcasts the
+  start as reliable authority RPCs — `time_effect_applied(group, factor,
+  seconds, source)` for the group stacks, `entity_time_applied(world-relative
+  path, ...)` for per-entity effects — and clients apply the same duration
+  locally, so expiry stays in lockstep and a frozen entity keeps reporting the
+  same pose through MultiplayerSynchronizer.
+- Tests: `tests/unit/test_time_manager.gd` (14) plus
+  `tests/integration/test_time_scale_movement.gd` (2), which proves a scripted
+  mover travels 0 px during a 1 s stop and resumes afterward.
+
+### W2-B2 — StatBlock + Damage.compute + golden table (`stats-status`)
+
+`scripts/components/stat_block.gd` (`StatBlock extends Node`) is the math layer
+every stat change flows through. It defines the 11-stat enum (MAX_HP, ATTACK,
+DEFENSE, MOVE_SPEED, ATTACK_SPEED, DODGE_COOLDOWN, CRIT_CHANCE, CRIT_DAMAGE,
+ABILITY_POWER, COOLDOWN_REDUCTION, LUCK) and computes
+`(base + sum(flat)) * (1 + sum(percent))` per stat, clamped (CRIT_CHANCE 0–1,
+COOLDOWN_REDUCTION ≤ 0.6, ATTACK_SPEED ≥ 0.2). Base values are written once at
+spawn setup from CharacterData/ClassData/EnemyData via `set_base`; every other
+change is a modifier carrying an int handle: `add_modifier(stat, flat, percent,
+source)` returns the handle, `remove_modifier(handle)` and `remove_source` back
+it out (a removed relic drops all its modifiers at once), `snapshot()` serves
+effect-system. `current_hp_ratio` lives on the block (kept by Health) so a
+MAX_HP change never alters the fill fraction, and `stat_changed(stat, value)`
+signals the HUD. Sync: modifier lists are host-only; the host ships the 11
+values + HP ratio in StateSync and clients render the same numbers.
+
+`scripts/components/damage.gd` (`Damage.compute`, static, host-only) is the
+single damage formula:
+`raw = base_damage * ATTACK/100 * ability_power_scale(AP)`, crit rolled against
+CRIT_CHANCE + bonus (forced when the target has MARK — shipped as a `force_crit`
+flag on HitData, the week-2 seam StatusEffects sets in week 4), crit multiplier
+`1.5 + CRIT_DAMAGE`, `status_mult` a literal 1.0 (BURN/PERMAFROST/UNRAVEL terms
+land with week-4 StatusEffects), defense mitigation `100/(100+DEF)`, final
+rounded and min 1 on a connecting hit. `hit` is `scripts/components/hit_data.gd`
+— the week-2 mirror of Dev A's combat-core `HitInfo`; the formula reads the
+spec'd fields by name, so the swap-in is mechanical (blocked on Dev A, W2-A1).
+`tests/unit/damage_table.json` is a 12-row hand-computed golden the formula test
+reads; deterministic rows use crit chance 0/1 or `force_crit`, and the
+in-between chance band is covered by a seeded 400-roll test.
+
+### W2-B3 — Enemy/projectile spawners + enemy StateSync (`networking`)
+
+`EnemySpawner` and `ProjectileSpawner` (`scripts/network/`, `MultiplayerSpawner`
+subclasses) are wired under `World/Entities` in `scenes/main/world.tscn`
+(y-sorted, `spawn_path = ..`). The host calls `spawn_enemy(EnemySpawnInfo)` /
+`spawn_projectile(ProjectileSpawnInfo)`; the custom spawn function replays the
+plain-type info dict on every peer including late joiners, names the node
+(`Enemy<fight_id>` / `Projectile<N>`), and MultiplayerSpawner despawns it when
+the host frees the root. Spawning is host-gated through an overridable
+`_can_spawn()` seam (default `multiplayer.is_server()`); a client call gets a
+`push_warning` refusal and returns null, never a spawn. The info types
+(`scripts/network/enemy_spawn_info.gd`, `projectile_spawn_info.gd`) are plain
+wire dicts following `player_spawn_info.gd`: `EnemySpawnInfo` carries
+enemy_id/fight_id/position/elite (affixes slot in when Dev A's affix system
+lands), `ProjectileSpawnInfo` carries projectile_id/position/velocity/
+owner_peer_id; `fight_id` of 0 gets one assigned so every enemy names itself.
+
+Dev A's `enemy_base.tscn` (W2-A9), `Projectile` base (W2-A6), and `Health`/
+`HitInfo` (W2-A1) have not landed, so the spawners preload placeholder scenes
+under `scenes/network/` (`placeholder_enemy.tscn`, `placeholder_projectile.tscn`)
+and tests use `tests/helpers/enemy_base_stub.gd`, a CharacterBody2D with
+`synced_position` / `current_anim` / `current_hp` / `fight_id` / `elite` — the
+spec'd node shape — plus `apply_hit(amount)` with an overridable
+`_resolves_hits()` seam (host-only by default) so unit tests can drive the
+client-refusal path without a second instance (an unstarted ENet peer still
+reports `is_server() == true`, so the true client check lives in the
+two-instance smoke). Swap-in is mechanical and data-only: point
+`EnemySpawner.enemy_scene` / `ProjectileSpawner.projectile_scene` at Dev A's
+scenes, which must keep the replicated-prop names `synced_position` /
+`current_anim` / `current_hp` (enemy) and `synced_position` / `synced_velocity`
+/ `owner_peer_id` (projectile). Tests: `tests/unit/test_entity_spawners.gd`
+(13); smoke step 3 drives the stub end to end.
+
 ### W2-B4 — Debug console, parser, core commands, `request_debug` (`debug-tools`)
 
 `scripts/debug/debug_console.gd` is a `CanvasLayer` UI: a scrollback +
@@ -168,6 +275,39 @@ filters `scripts/debug/` out never references it. There is no
 lazy-load seam above is the part that must be in place by then (recorded in
 `specs/SPEC-debug-tools.md` open items).
 
+### W2-B5 — HUD v0, HudModel, Theme (`ui-hud`)
+
+`scripts/ui/hud_model.gd` (`HudModel`, pure presentation, never queries
+gameplay nodes by path) is the typed adapter the HUD widgets bind to:
+`local_hp_ratio` / `local_is_downed` / `local_slot`, a `teammates` list of
+`HudTeammate` (peer_id, name, hp_ratio, is_downed, slot), two `HudWeaponSlot`
+entries (name, active, cooldown_fraction), and `floor_label`. It binds a
+callable player registry (`NetworkManager.players` in game, a fake in tests);
+`refresh(local_peer_id)` recomputes from that registry and emits `changed`.
+HP is duck-read from the player's `Health` node with a full-bar fallback while
+Dev A's W2-A1 hasn't landed. `cooldown_fraction(time_left, total)` is a static
+helper; `set_weapon_cooldown(slot_index, tl, total)`,
+`set_weapon_active(slot_index)`, and `set_floor_label(text)` drive the widgets.
+
+`scenes/ui/hud.tscn` + `scenes/ui/hud.gd` (widget scripts `hp_bar.gd`,
+`weapon_slot.gd`) is a CanvasLayer HUD: own HP bar, teammate bars with names
+and a downed tint, two weapon-slot frames with an active gold border + cooldown
+sweep, and a "FLOOR -" placeholder label. It wires `Events.player_*`,
+`weapon_swapped`, `GameState.floor_changed`, and
+`NetworkManager.player_joined/left` with **exact-arity handlers** (a shared
+0-arg callback errors at runtime when a signal emits more args than the method
+accepts — a bug the headless launch caught, not the GUT suite), plus a 0.25 s
+poll. `main.gd` instantiates it lazily over the world flow via
+`ResourceLoader.exists()` + `load()`, never preloaded. `assets/ui/theme.tres`
+is the Theme v0: placeholder pixel font at 8 px (and 16 px) generated by
+`tools/make_placeholder_font.gd` — the spec's CC0 m5x7 download is JS-gated on
+itch.io, so a generated 5x7 atlas (CC0 by construction) ships now and a sourced
+OFL font swap is the art-audio lane's recorded continuation — plus panel
+styleboxes and the rarity/element palettes from SPEC-ui-hud. Tests:
+`tests/unit/test_hud_model.gd` (15) + `tests/integration/test_ui_scenes.gd`
+(6, instantiates the HUD with a fake `HudModel`); visual on-screen
+confirmation is recorded as a manual check.
+
 ### W2-B6 — AudioManager real implementation + SfxBank placeholders (`art-audio`)
 
 `scripts/autoload/audio_manager.gd` replaces the week-1 stub with the real
@@ -190,9 +330,9 @@ touching the bank. Tests: `tests/unit/test_audio_manager.gd` (21).
 
 ## Decisions made without a human
 
-These are the judgment calls taken during week 1 that were not dictated by a
-spec, so the accountability contract is explicit. Where a decision is already
-recorded in a spec or a comment, the location is given.
+These are the judgment calls taken during weeks 1 and 2 that were not dictated
+by a spec, so the accountability contract is explicit. Where a decision is
+already recorded in a spec or a comment, the location is given.
 
 1. **`physics_interpolation = true` in `project.godot`** — not in the
    SPEC-foundation settings table. Turned on so networked movement (positions
@@ -296,6 +436,45 @@ recorded in a spec or a comment, the location is given.
     until Dev A's weapons land (blocked on Dev A, W2-A7); the real synth SFX
     (W2-B7 / W2-A13) swap in by replacing the wav files, without touching the
     bank.
+18. **W2-B1 TimeManager expiry is physics-frame based, not wall-clock** — each
+    effect is `{source, factor, expires_on_frame}` where the frame is
+    `Engine.get_physics_frames() + frames`, so a stop on the ENEMY stack does
+    not freeze the stack that manages it (a slow expiring mid-stop still
+    expires). The RPC broadcast is start-only (`time_effect_applied` /
+    `entity_time_applied`); clients re-derive the same expiry from the shared
+    duration, keeping lockstep without a second round trip. Rewind hooks stay
+    stubbed for week 4. A scaled `timer()` stores nodes by instance id and
+    resolves them with the global `instance_from_id()` — `Object.instance_from_id`
+    is not a static call in GDScript (a G5 gotcha).
+19. **W2-B2 damage-deviations and the mirror type** — the ability-power scale is
+    applied only when `hit.scales_with_ability_power` is set, so weapon hits
+    are unaffected; the MARK-forced crit requirement ships as `HitData.force_crit`
+    (StatusEffects sets it in week 4 — the term is in the formula now);
+    `status_mult` is a literal 1.0 with its week-4 terms documented in the
+    formula's doc comment; `current_hp_ratio` lives on `StatBlock` so MAX_HP
+    base changes keep the fill fraction. Dev A's `HitInfo` (W2-A1) is mirrored
+    by `HitData` with matching field names — blocked on Dev A, mechanical swap.
+20. **W2-B3 placeholders and the host-only seam** — `EnemySpawner` /
+    `ProjectileSpawner` live under `World/Entities` (y-sorted, `spawn_path = ..`)
+    as `MultiplayerSpawner` subclasses; clients are refused via an overridable
+    `_can_spawn()` seam and `push_warning` (push_error would trip GUT's
+    error-counting). Dev A's assets haven't landed (W2-A9/A6/A1), so
+    `scenes/network/placeholder_{enemy,projectile}.tscn` stand in and
+    `tests/helpers/enemy_base_stub.gd` drives tests + smoke step 3; the stub's
+    `apply_hit` is host-gated through `_resolves_hits()`. Swap-in is data-only:
+    Dev A points their scenes at the spawner exports, keeping the replicated
+    prop names. No files were created in Dev A's `scenes/enemies/`,
+    `scenes/projectiles/`, or combat-core.
+21. **W2-B5 HUD wiring and font** — Events → HUD uses exact-arity named
+    handlers only (a shared 0-arg callback errors at runtime when a signal
+    emits more args than the method accepts; the headless launch caught it,
+    the synthetic GUT tree does not). HP is duck-read from the player's Health
+    node with a full-bar fallback until W2-A1. The Theme's pixel font is a
+    generated 5x7 placeholder (CC0 by construction) because the spec's m5x7
+    download is JS-gated; an OFL font swap is the art-audio continuation — no
+    acceptance criterion depends on the specific font. HUD is added lazily by
+    `main.gd` and "visible in test room" is met by the fake-HudModel scene test
+    + headless launch; the on-screen pointer check is manual.
 
 ---
 
@@ -342,14 +521,14 @@ godot --path . -- --join=127.0.0.1
 GODOT=/c/Users/Dsedg/Downloads/Godot_v4.7.2-stable_win64.exe/Godot_v4.7.2-stable_win64_console.exe bash tools/smoke_two.sh
 ```
 
-Expect 15 `ok` lines and exit 0. On Linux/macOS, `tools/run_two.sh` is the
+Expect 28 `ok` lines (steps 1 + 2 + 3) and exit 0. On Linux/macOS, `tools/run_two.sh` is the
 windowed launcher and `smoke_two.sh` needs `GODOT` pointing at a 4.7.2 binary.
 
 ### Tests and import (what CI runs)
 
 ```powershell
 godot --headless --path . --import                                                         # must exit 0, no errors
-godot --headless --path . -s addons/gut/gut_cmdln.gd -gdir=res://tests -ginclude_subdirs -gexit   # 204 tests, exit 0
+godot --headless --path . -s addons/gut/gut_cmdln.gd -gdir=res://tests -ginclude_subdirs -gexit   # 338 tests, exit 0
 ```
 
 ---
@@ -386,8 +565,10 @@ short checklist for Dev A and the human; none of them block week 2.
 
 ---
 
-Everything above was verified on this machine on 2026-10-18: import exit 0,
-204/204 GUT tests green, 15/15 smoke checks green, on `main` @ `75ed7c2`.
-Week 1's remaining close-out (WEEKLY entry, SPEC-foundation write-backs, CI
-confirmation, `week-1` tag) is tracked in `.goals/PLAN.md` and the handoff to
-week 2 continues from there.
+Everything above was verified on this machine on 2026-10-18 (week 1) and
+2026-10-19 (week 2): import exit 0 with no errors, 338/338 GUT tests green
+(~14 s), 28/28 smoke checks green, on `main` @ `ee62cb7`. The week-1 close-out
+(WEEKLY entry, SPEC-foundation write-backs, CI confirmation, `week-1` tag) and
+the week-2 checkpoint (smoke steps 1–3, feel-pass checklist, WEEKLY entry, the
+`week-2` tag once Dev A's tasks land) are tracked in `.goals/PLAN.md` and
+`specs/WEEKLY.md`.

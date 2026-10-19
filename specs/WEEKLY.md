@@ -90,7 +90,7 @@ Feel pass (manual, non-blocking — headless on one machine cannot judge these; 
 Decisions and spec updates
 - Smoke step 3 ships against the W2-B3 placeholder enemy (`scenes/network/placeholder_enemy.gd`, HP 10, no AI) because Dev A's `enemy_base.tscn` (W2-A9) has not landed. The step is specified in `SPEC-networking.md`; swapping in the real enemy is data-only: `EnemySpawner.enemy_scene` points at Dev A's scene once it keeps the replicated-prop names `synced_position` / `current_anim` / `current_hp`. The `kill` command routes through `request_debug` + the host DebugConsole, so step 3 also exercises the whole debug-tools round trip.
 - New `--smoke3=<sec>` launch arg (LaunchArgs) mirrors `--smoke`; `tools/smoke_two.sh` runs steps 1+2, then a second host/client pair for step 3 on the same port after a socket-release beat. The host resolves the partial hit only after the client has joined and the enemy has sat at full HP for ~1 s, so the HP drop is observed on both screens before the kill.
-- No base stats, `Engine.time_scale`, Dev A `.tscn`, or project.godot changes in this week; all W2-B decisions are recorded per-task in `.goals/LOG.md` (handles API, golden table, host-only refusal paths, lazy HUD/console loading, runtime audio buses).
+- No base stats, `Engine.time_scale`, Dev A `.tscn`, or project.godot changes in this week; all W2-B decisions are recorded per-task in `.goals/LOG.md` and in `HANDOFF.md` decisions 15–21 (handles API, golden table, host-only refusal paths, lazy HUD/console loading, runtime audio buses).
 
 Cut list actions (should be empty)
 - none — placeholder-backed stubs (enemy, projectile, SFX, font) are tracked swaps, not cuts; each is recorded as blocked on Dev A or as a placeholder-first pipeline decision.
