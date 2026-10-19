@@ -1,0 +1,152 @@
+"""Regenerates every generated asset, or checks the committed ones.
+
+    python tools/art/build_all.py            write every generator's output into the repo
+    python tools/art/build_all.py --check    exit 1 if a committed file differs from fresh
+                                             output or a PNG uses a color outside its palette
+
+Generators register in GENERATORS. Each one writes its files under the root
+it is given, at their repo-relative paths (assets/...). --check runs them into
+a temp folder and compares: PNGs by decoded RGBA pixels (so a different zlib
+or Pillow version does not fail the check), everything else by bytes.
+
+Week 1 has no generators yet (SPEC-art-audio: placeholders stay on the Godot
+tools), so --check passes on an empty set. Generators land from W2-A11.
+"""
+
+from __future__ import annotations
+
+import argparse
+import shutil
+import sys
+import tempfile
+from collections.abc import Callable, Sequence
+from dataclasses import dataclass
+from pathlib import Path
+
+from PIL import Image
+
+REPO_ROOT = Path(__file__).resolve().parents[2]
+_MAX_LISTED_COLORS = 8
+
+
+@dataclass(frozen=True)
+class Generator:
+    """name: shown in reports. allowed_colors: RGB tuples every opaque pixel
+    of every PNG it writes must use (palette.biome(id).rgb() or a union of
+    palette tables). run: writes the outputs under the given root."""
+
+    name: str
+    allowed_colors: frozenset[tuple[int, int, int]]
+    run: Callable[[Path], None]
+
+
+GENERATORS: tuple[Generator, ...] = ()
+
+
+def _files_under(root: Path) -> list[Path]:
+    return sorted(p.relative_to(root) for p in root.rglob("*") if p.is_file())
+
+
+@dataclass(frozen=True)
+class _Output:
+    generator: Generator
+    fresh: Path
+
+
+def _generate(out_root: Path, generators: Sequence[Generator]) -> tuple[dict[Path, _Output], list[str]]:
+    """Runs each generator into its own folder under out_root, then returns
+    relative path -> output, plus problems for paths two generators both wrote."""
+    outputs: dict[Path, _Output] = {}
+    problems: list[str] = []
+    for index, gen in enumerate(generators):
+        gen_root = out_root / str(index)
+        gen_root.mkdir(parents=True)
+        gen.run(gen_root)
+        for rel in _files_under(gen_root):
+            if rel in outputs:
+                problems.append(f"{rel.as_posix()}: written by both {outputs[rel].generator.name} and {gen.name}")
+                continue
+            outputs[rel] = _Output(gen, gen_root / rel)
+    return outputs, problems
+
+
+def build(root: Path, generators: Sequence[Generator] = GENERATORS) -> list[Path]:
+    """Writes every generator's output into root. Returns the relative paths written."""
+    with tempfile.TemporaryDirectory() as tmp:
+        outputs, problems = _generate(Path(tmp), generators)
+        if problems:
+            raise RuntimeError("; ".join(problems))
+        for rel, out in outputs.items():
+            dest = root / rel
+            dest.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copyfile(out.fresh, dest)
+        return sorted(outputs)
+
+
+def _rgba(path: Path) -> tuple[tuple[int, int], bytes]:
+    with Image.open(path) as img:
+        rgba = img.convert("RGBA")
+        return rgba.size, rgba.tobytes()
+
+
+def _off_palette(path: Path, allowed: frozenset[tuple[int, int, int]]) -> list[tuple[int, int, int]]:
+    """Distinct RGB values of non-transparent pixels that are not in allowed."""
+    with Image.open(path) as img:
+        colors = img.convert("RGBA").getcolors(maxcolors=1 << 24) or []
+    return sorted({(r, g, b) for _, (r, g, b, a) in colors if a > 0 and (r, g, b) not in allowed})
+
+
+def _hex(color: tuple[int, int, int]) -> str:
+    return "#{:02X}{:02X}{:02X}".format(*color)
+
+
+def check(root: Path, generators: Sequence[Generator] = GENERATORS) -> list[str]:
+    """Returns one problem string per failing file; empty means clean."""
+    with tempfile.TemporaryDirectory() as tmp:
+        outputs, problems = _generate(Path(tmp), generators)
+        for rel, out in outputs.items():
+            gen, fresh, name = out.generator, out.fresh, rel.as_posix()
+            committed = root / rel
+            if not committed.is_file():
+                problems.append(f"{name}: missing (run build_all.py and commit the output) [{gen.name}]")
+                continue
+            if rel.suffix.lower() == ".png":
+                same = _rgba(fresh) == _rgba(committed)
+            else:
+                same = fresh.read_bytes() == committed.read_bytes()
+            if not same:
+                problems.append(f"{name}: differs from fresh output of {gen.name}")
+                continue
+            if rel.suffix.lower() == ".png":
+                off = _off_palette(committed, gen.allowed_colors)
+                if off:
+                    listed = ", ".join(_hex(c) for c in off[:_MAX_LISTED_COLORS])
+                    more = f" (+{len(off) - _MAX_LISTED_COLORS} more)" if len(off) > _MAX_LISTED_COLORS else ""
+                    problems.append(f"{name}: {len(off)} color(s) outside palette of {gen.name}: {listed}{more}")
+        return problems
+
+
+def main(
+    argv: Sequence[str] | None = None,
+    root: Path = REPO_ROOT,
+    generators: Sequence[Generator] = GENERATORS,
+) -> int:
+    parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
+    parser.add_argument("--check", action="store_true", help="verify committed outputs instead of writing them")
+    args = parser.parse_args(argv)
+
+    if args.check:
+        problems = check(root, generators)
+        for problem in problems:
+            print(f"FAIL {problem}")
+        status = "FAILED" if problems else "OK"
+        print(f"build_all --check: {len(generators)} generator(s), {len(problems)} problem(s): {status}")
+        return 1 if problems else 0
+
+    written = build(root, generators)
+    print(f"build_all: {len(generators)} generator(s) wrote {len(written)} file(s)")
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

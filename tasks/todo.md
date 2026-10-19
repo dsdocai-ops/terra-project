@@ -362,13 +362,13 @@ Every week carries `[art-audio]` tasks: Claude Code generates or sources every a
 **Description:** Claude Code produces every asset from this point on (SPEC-art-audio, decision 2026-10-19). Create `tools/art/` (`requirements.txt`, `palette.py` with the 7 locked biome palettes, `pixel.py` stub, `build_all.py` stub, `README.md` with the run commands), `tools/audio/` (`README.md`, `sfx/` and `music/` folders), `CREDITS.md` at repo root with the schema header, `docs/asset-review/INDEX.md`. No real assets yet; week 1 stays on the Godot placeholders.
 
 **Acceptance criteria:**
-- [ ] `python -m pip install -r tools/art/requirements.txt` then `python tools/art/build_all.py --check` exits 0 on an empty asset set
-- [ ] `palette.py` exposes every color named in SPEC-art-audio
-- [ ] `CREDITS.md` has the six-column header and a row for every third-party file already under `assets/` or `addons/` fonts (expected: none yet)
-- [ ] WEEKLY.md template gains the "asset review sheets approved" line
+- [x] `python -m pip install -r tools/art/requirements.txt` then `python tools/art/build_all.py --check` exits 0 on an empty asset set
+- [x] `palette.py` exposes every color named in SPEC-art-audio
+- [x] `CREDITS.md` has the six-column header and a row for every third-party file already under `assets/` or `addons/` fonts (expected: none yet; found: the three OFL font families under `addons/gut/fonts/` plus `addons/gut/source_code_pro.fnt`, all bundled with GUT)
+- [x] WEEKLY.md template gains the "asset review sheets approved" line
 
 **Verification:**
-- [ ] `pytest tools/art` runs (a single smoke test is enough)
+- [x] `pytest tools/art` runs (a single smoke test is enough)
 - [ ] Reviewer skims `palette.py` hex values against the spec table
 
 **Dependencies:** W1-B1 (folders)
@@ -385,7 +385,7 @@ Every week carries `[art-audio]` tasks: Claude Code generates or sources every a
 - [ ] `--host` + `--join` connect; two `Player` nodes visible on both screens
 
 ## Checkpoint: Week 1 end
-- [ ] `tools/art/`, `tools/audio/`, `CREDITS.md` skeletons exist (W1-AB3)
+- [x] `tools/art/`, `tools/audio/`, `CREDITS.md` skeletons exist (W1-AB3)
 - [ ] All W1 tasks merged; `test_iso`, `test_player_facing`, `test_state_machine`, `test_camera_framing`, `test_network_manager`, `test_scenes_load`, `test_data_loads`, `test_autoloads`, and `test_input_map` pass
 - [ ] Two-instance smoke steps 1 and 2 pass; `week-1` tagged
 
