@@ -5,6 +5,7 @@
 [ext_resource type="Script" uid="uid://bjea7scc16d1c" path="res://scripts/components/state_machine.gd" id="3_machine"]
 [ext_resource type="Script" uid="uid://dqr7re3q06tjd" path="res://scenes/player/states/idle.gd" id="4_idle"]
 [ext_resource type="Script" uid="uid://t750fwxr173v" path="res://scenes/player/states/move.gd" id="5_move"]
+[ext_resource type="Script" uid="uid://bx8myavf68dko" path="res://scenes/player/slot_ring.gd" id="6_ring"]
 
 [sub_resource type="SceneReplicationConfig" id="SceneReplicationConfig_input"]
 properties/0/path = NodePath(".:move_input")
@@ -66,6 +67,9 @@ script = ExtResource("4_idle")
 
 [node name="Move" type="Node" parent="StateMachine"]
 script = ExtResource("5_move")
+
+[node name="SlotRing" type="Node2D" parent="."]
+script = ExtResource("6_ring")
 
 [node name="Sprite" type="AnimatedSprite2D" parent="."]
 position = Vector2(0, -20)

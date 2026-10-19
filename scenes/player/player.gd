@@ -36,7 +36,16 @@ const INTERPOLATE_SNAP_DISTANCE := 512.0
 const RECONCILE_RATE := 10.0
 const INTERPOLATE_RATE := 15.0
 
+## One color per co-op slot (P1 to P4), shown by the SlotRing at the feet.
+const SLOT_COLORS: Array[Color] = [
+	Color(0.30, 0.65, 1.00),  # P1 blue
+	Color(1.00, 0.35, 0.35),  # P2 red
+	Color(0.40, 0.90, 0.40),  # P3 green
+	Color(1.00, 0.85, 0.25),  # P4 yellow
+]
+
 ## Degrees past a sector edge before the facing index changes (see Facing).
+
 const FACING_HYSTERESIS_DEG := 3.0
 
 ## Pixels per second on screen with no modifiers. StatBlock.MOVE_SPEED
@@ -54,7 +63,16 @@ var peer_id: int = 0:
 		peer_id = value
 		refresh_authority()
 
+## Co-op slot, 0 to MAX_PLAYERS - 1, picked by the host at spawn and sent to
+## every peer in PlayerSpawnInfo. Peer ids are random, so color follows the
+## slot, never the id.
+var slot: int = 0:
+	set(value):
+		slot = value
+		_apply_slot_color()
+
 ## TODO(classes-characters): retype to CharacterData when it exists.
+
 var character: Resource
 ## TODO(classes-characters): retype to ClassData when it exists.
 var class_data: Resource
@@ -137,10 +155,21 @@ var _missing_anims: Dictionary[StringName, bool] = {}
 @onready var input_sync: MultiplayerSynchronizer = $InputSync
 @onready var state_sync: MultiplayerSynchronizer = $StateSync
 @onready var interact_area: Area2D = $InteractArea
+@onready var slot_ring: SlotRing = $SlotRing
 
 
 func _ready() -> void:
 	refresh_authority()
+	_apply_slot_color()
+
+
+static func slot_color(for_slot: int) -> Color:
+	return SLOT_COLORS[posmod(for_slot, SLOT_COLORS.size())]
+
+
+func _apply_slot_color() -> void:
+	if slot_ring != null:
+		slot_ring.color = slot_color(slot)
 
 
 ## Applies `simulates` and `is_local` to the state machine: only simulating

@@ -28,6 +28,19 @@ static func default_spawn_position(peer_id: int) -> Vector2:
 	return Iso.to_screen(SPAWN_CENTER_TILE) + Vector2(offset.x, offset.y * 0.5)
 
 
+## Host only. Lowest co-op slot no spawned player holds, so a peer that
+## leaves frees its color for the next one to join.
+func free_slot() -> int:
+	var taken: Dictionary[int, bool] = {}
+	for player: Player in NetworkManager.players.values():
+		if is_instance_valid(player):
+			taken[player.slot] = true
+	for candidate in NetworkManager.MAX_PLAYERS:
+		if not taken.has(candidate):
+			return candidate
+	return 0
+
+
 ## Host only. Replaces any existing player for the same peer.
 func spawn_player(info: PlayerSpawnInfo) -> Player:
 	if not multiplayer.is_server():
@@ -56,6 +69,7 @@ func _spawn_from_data(data: Variant) -> Node:
 	var player := PLAYER_SCENE.instantiate() as Player
 	player.name = "Player%d" % info.peer_id
 	player.peer_id = info.peer_id
+	player.slot = info.slot
 	player.position = info.spawn_position
 	player.synced_position = info.spawn_position
 	# Input is the owning peer's; it is sent to the host only.
@@ -79,7 +93,7 @@ func _on_player_joined(peer_id: int) -> void:
 		return
 	if GameState.world != get_parent():
 		return
-	spawn_player(PlayerSpawnInfo.new(peer_id, PlayerSpawnInfo.DEFAULT_CHARACTER, PlayerSpawnInfo.DEFAULT_CLASS, [], default_spawn_position(peer_id)))
+	spawn_player(PlayerSpawnInfo.new(peer_id, PlayerSpawnInfo.DEFAULT_CHARACTER, PlayerSpawnInfo.DEFAULT_CLASS, [], default_spawn_position(peer_id), free_slot()))
 
 
 func _on_player_left(peer_id: int) -> void:

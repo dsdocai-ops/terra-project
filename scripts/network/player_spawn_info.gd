@@ -14,6 +14,8 @@ var character_id: StringName = DEFAULT_CHARACTER
 var class_id: StringName = DEFAULT_CLASS
 var weapon_ids: Array[StringName] = []
 var spawn_position: Vector2 = Vector2.ZERO
+## Co-op slot (P1 to P4), chosen by the host; decides the player's color.
+var slot: int = 0
 
 
 func _init(
@@ -22,12 +24,14 @@ func _init(
 	p_class_id: StringName = DEFAULT_CLASS,
 	p_weapon_ids: Array[StringName] = [],
 	p_spawn_position: Vector2 = Vector2.ZERO,
+	p_slot: int = 0,
 ) -> void:
 	peer_id = p_peer_id
 	character_id = p_character_id
 	class_id = p_class_id
 	weapon_ids = p_weapon_ids.duplicate() if not p_weapon_ids.is_empty() else DEFAULT_WEAPONS.duplicate()
 	spawn_position = p_spawn_position
+	slot = p_slot
 
 
 func to_dict() -> Dictionary:
@@ -40,6 +44,7 @@ func to_dict() -> Dictionary:
 		"class_id": String(class_id),
 		"weapon_ids": weapons,
 		"spawn_position": spawn_position,
+		"slot": slot,
 	}
 
 
@@ -57,4 +62,5 @@ static func from_dict(data: Dictionary) -> PlayerSpawnInfo:
 		StringName(str(data.get("class_id", String(DEFAULT_CLASS)))),
 		weapons,
 		pos,
+		int(data.get("slot", 0)),
 	)

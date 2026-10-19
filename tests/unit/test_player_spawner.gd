@@ -40,6 +40,13 @@ func test_spawn_info_round_trips_through_dictionary() -> void:
 	assert_eq(copy.spawn_position, Vector2(320, 160))
 
 
+func test_spawn_info_carries_the_slot() -> void:
+	assert_eq(PlayerSpawnInfo.new(7).slot, 0, "defaults to P1")
+	var info := PlayerSpawnInfo.new(3, &"wren", &"warrior", [] as Array[StringName], Vector2.ZERO, 2)
+	assert_eq(PlayerSpawnInfo.from_dict(info.to_dict()).slot, 2)
+	assert_eq(typeof(info.to_dict()["slot"]), TYPE_INT, "plain int on the wire")
+
+
 func test_spawn_info_dictionary_uses_plain_types_for_the_wire() -> void:
 	var d := PlayerSpawnInfo.new(2).to_dict()
 	assert_eq(typeof(d["peer_id"]), TYPE_INT)
@@ -110,6 +117,44 @@ func test_network_manager_player_joined_spawns_on_the_host() -> void:
 	var player := NetworkManager.get_player(1)
 	assert_not_null(player, "host player spawned from player_joined")
 	assert_eq(player.get_parent(), _world.players)
+
+
+func test_spawned_player_takes_the_slot_from_spawn_info() -> void:
+	NetworkManager.start_solo()
+	var player := _world.player_spawner.spawn_player(PlayerSpawnInfo.new(5, &"wren", &"warrior", [] as Array[StringName], Vector2.ZERO, 3))
+	assert_eq(player.slot, 3)
+	assert_eq(player.slot_ring.color, Player.SLOT_COLORS[3])
+
+
+func test_joining_peers_get_distinct_slots_and_colors() -> void:
+	# ENet client ids are large and random; slots must not depend on them.
+	NetworkManager.start_solo()
+	await wait_process_frames(1)
+	for peer_id: int in [1620275862, 87, 400000001]:
+		NetworkManager.player_joined.emit(peer_id)
+	var slots: Array[int] = []
+	var colors: Array[Color] = []
+	for player: Player in NetworkManager.players.values():
+		slots.append(player.slot)
+		colors.append(player.slot_ring.color)
+	slots.sort()
+	assert_eq(slots, [0, 1, 2, 3] as Array[int], "host is P1, joiners fill P2 to P4 in order")
+	for i in colors.size():
+		assert_eq(colors.count(colors[i]), 1, "color %d is unique" % i)
+	assert_eq(NetworkManager.get_player(1).slot, 0, "host keeps P1")
+
+
+func test_a_leaving_peer_frees_its_slot_for_the_next_joiner() -> void:
+	NetworkManager.start_solo()
+	await wait_process_frames(1)
+	NetworkManager.player_joined.emit(50)
+	NetworkManager.player_joined.emit(60)
+	assert_eq(NetworkManager.get_player(50).slot, 1)
+	NetworkManager.player_left.emit(50)
+	await wait_process_frames(1)
+	NetworkManager.player_joined.emit(70)
+	assert_eq(NetworkManager.get_player(70).slot, 1, "lowest free slot reused")
+	assert_eq(NetworkManager.get_player(60).slot, 2, "others keep theirs")
 
 
 func test_player_left_despawns() -> void:
