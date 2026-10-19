@@ -13,7 +13,7 @@
 
 ## Commands
 
-Godot binary: `C:\Godot\Godot_v4.7.2-stable_win64.exe`. Full list in [SPEC-project.md](specs/SPEC-project.md#commands).
+Godot is installed locally and should be added to PATH. Full list in [SPEC-project.md](specs/SPEC-project.md#commands).
 
 ```powershell
 godot --headless --path . --import                                                        # import, surfaces parse errors
