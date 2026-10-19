@@ -1,10 +1,10 @@
 # Spec: Sinkhole, project-wide engineering contract
 
-Applies to every module in [CAPABILITY_MAP.md](CAPABILITY_MAP.md). Module specs add objective, interfaces, and success criteria on top of this; they never override it. Design content comes from [SINKHOLE_SPEC.md](../SINKHOLE_SPEC.md) and is locked at v3 (Godot 4.7 instead of 4.4 is the only change).
+Applies to every module in [CAPABILITY_MAP.md](CAPABILITY_MAP.md). Module specs add objective, interfaces, and success criteria on top of this; they never override it. Design content comes from [SINKHOLE_SPEC.md](../SINKHOLE_SPEC.md).
 
 ## Objective
 
-Ship the full Sinkhole design in 12 weeks with two developers using Claude Code heavily: 2D isometric action roguelike, 7 classes with Ascensions, 4 characters, 20 weapons with 120 mutations, 30 abilities, 88 relics, 6 biomes with 30 floors and 16 bosses, extraction loop, town meta-progression, skill tree, story with 3 endings, and 1 to 4 player online co-op built in from week 1.
+Ship the full Sinkhole design in 12 weeks with a small team using Claude Code heavily: 2D isometric action roguelike, 7 classes with Ascensions, 4 characters, 20 weapons with 120 mutations, 30 abilities, and a co-op progression loop.
 
 Success for the project as a whole:
 
@@ -22,7 +22,7 @@ Success for the project as a whole:
 | Resolution | 960x540 base viewport, `canvas_items` stretch, `keep` aspect, integer scale where possible, nearest texture filter, 2D pixel snap on |
 | Tiles | Isometric 2:1, 64x32 base, `TileMapLayer` nodes |
 | Multiplayer | ENet high-level multiplayer, host-authoritative, `MultiplayerSpawner` + `MultiplayerSynchronizer` + RPCs. Local co-op only as fallback if online fails (cut list item 5) |
-| Data | Custom `Resource` classes saved as `.tres` for all content (weapons, relics, abilities, enemies, classes, bosses, biomes, skills, mutations, synergies). JSON for dialogue and lore, loaded into `DialogueData` at runtime |
+| Data | Custom `Resource` classes saved as `.tres` for all content (weapons, relics, abilities, enemies, classes, bosses, biomes, skills, mutations, synergies). JSON for dialogue and lore, loaded from `res://data` |
 | Save | `user://save.json`, Godot `JSON`, `save_version` field, migrations |
 | Tests | GUT 9.x (latest 4.x-compatible release) under `addons/gut/` |
 | CI | GitHub Actions on every PR: headless import + GUT tests. No export check yet |
@@ -31,7 +31,7 @@ Success for the project as a whole:
 
 ## Commands
 
-Godot lives at `C:\Godot\Godot_v4.7.2-stable_win64.exe` on both machines (moved there from Downloads; the Godot MCP `GODOT_PATH` points at it). Commands below assume that path is on `PATH` as `godot`; otherwise use the full path. Run from the repo root.
+Godot is installed in the project environment and should be available on `PATH` as `godot`. Commands below assume that path is available.
 
 ```powershell
 # Open the editor (also runs import)
@@ -57,7 +57,7 @@ godot --headless --path . -s addons/gut/gut_cmdln.gd -gtest=res://tests/unit/tes
 godot --headless --path . -s addons/gut/gut_cmdln.gd -gtest=res://tests/integration/test_floor_generation_seeds.gd -gexit
 ```
 
-Launch args `--host` and `--join=<ip>` are read with `OS.get_cmdline_user_args()` in `NetworkManager` (see `SPEC-networking.md`). The Godot MCP (`launch_editor`, `run_project`, `get_debug_output`) is the preferred way for Claude Code to open the editor and read runtime errors; use the CLI for tests and CI.
+Launch args `--host` and `--join=<ip>` are read with `OS.get_cmdline_user_args()` in `NetworkManager` (see `SPEC-networking.md`). The Godot MCP (`launch_editor`, `run_project`, `get_debug_output`) is available for editor and runtime inspection.
 
 ## Project structure
 
@@ -163,16 +163,16 @@ func _is_dead() -> bool:
 
 Conventions:
 
-- **Strict typing everywhere.** Every variable, parameter, and return value is typed. `debug/gdscript/warnings/untyped_declaration` is set to Error in `project.godot`. `inferred_declaration` stays a warning (`:=` is allowed when the right side is obviously typed). Untyped `Array` and `Dictionary` are allowed only at JSON boundaries and are converted to typed arrays or Resources immediately.
-- **Naming.** Files and folders snake_case. Classes PascalCase via `class_name`. Functions and variables snake_case. Constants and enum members UPPER_SNAKE. Private members prefixed `_`. Signals are past tense (`died`, `room_cleared`), never imperative.
-- **Order inside a script.** `class_name`, `extends`, doc comment, signals, enums, constants, `@export` vars, public vars, private vars, `@onready` vars, built-in overrides (`_init`, `_ready`, `_process`), public methods, private methods. Two blank lines between functions. Tabs for indentation.
+- **Strict typing everywhere.** Every variable, parameter, and return value is typed. `debug/gdscript/warnings/untyped_declaration` is set to Error in `project.godot`. `inferred_declaration` stays consistent with the project's typed style.
+- **Naming.** Files and folders snake_case. Classes PascalCase via `class_name`. Functions and variables snake_case. Constants and enum members UPPER_SNAKE. Private members prefixed `_`. Signals use past tense or event verbs.
+- **Order inside a script.** `class_name`, `extends`, doc comment, signals, enums, constants, `@export` vars, public vars, private vars, `@onready` vars, built-in overrides (`_init`, `_ready`, `_process`, etc.).
 - **Doc comments.** Every `class_name` script starts with a `##` block stating what it does and which module owns it. Non-obvious public methods get a `##` line.
-- **Composition over inheritance.** Player, enemies, and bosses share `Health`, `Hitbox`, `Hurtbox`, `StatusEffects`, `StatBlock` as child nodes. Inheritance is used only for `State` subclasses and `Effect` subclasses.
+- **Composition over inheritance.** Player, enemies, and bosses share `Health`, `Hitbox`, `Hurtbox`, `StatusEffects`, `StatBlock` as child nodes. Inheritance is used only for `State` subclasses and fixed resource types.
 - **Signals over references.** Cross-module communication goes through `Events` (global bus) or node-local signals. No module reaches into another's scene tree by path.
 - **Resources are data.** `Resource` subclasses hold `@export` fields and at most trivial helper methods. Behavior lives in effect scripts and components.
 - **Stats.** Nothing edits a base stat. All modifiers go through `StatBlock.add_modifier()` and are removed with the handle it returns.
 - **Time.** Nothing touches `Engine.time_scale`. Slow and stop effects multiply `TimeManager` values.
-- **Multiplayer.** Every script that holds game state answers "who owns this, how does it sync" in its doc comment. Gameplay decisions (damage, loot rolls, generation, effect procs) run only where `multiplayer.is_server()` is true. Clients send inputs and play presentation.
+- **Multiplayer.** Every script that holds game state answers "who owns this, how does it sync" in its doc comment. Gameplay decisions (damage, loot rolls, generation, effect procs) run only where the host owns the state.
 - **Magic numbers** live in `const` or `@export`, never inline.
 - **Content ids** are the snake_case file name (`ember_boots`), used for save data, debug console, and codex. Display names live in the Resource.
 
@@ -182,15 +182,15 @@ Framework: GUT 9.x. Tests live in `tests/`, run headless by the command above, a
 
 | Level | What | Where | Rule |
 |---|---|---|---|
-| Unit | Pure logic: StatBlock math, damage and crit formula, status stacking and combos, currency rules on death and extract, save migrations, proc depth cap, skill tree cost scaling, dialogue condition evaluation, floor grid algorithms | `tests/unit/` | Required for every pure-logic script. Written in the same PR |
-| Integration | Floor generator 500-seed soak (every room reachable, exit reachable, rope rooms where the design says), relic trigger harness (instantiate relic, fire Events signal, assert spawn or stat change), save round trip, dialogue JSON schema validation over every file in `data/dialogue/` and `data/lore/`, every `.tres` in `data/` loads and has required fields | `tests/integration/` | Required. Content batches extend the data-driven tests, not hand-written per item |
+| Unit | Pure logic: StatBlock math, damage and crit formula, status stacking and combos, currency rules on death and extract, save migrations, proc depth cap, skill tree cost scaling, dialogue conditions | `tests/unit/` | Required |
+| Integration | Floor generator 500-seed soak, relic trigger harness, save migration checks, run-state transitions | `tests/integration/` | Required |
 | Scene smoke | Headless instantiate of every `.tscn` under `scenes/` to catch broken references | `tests/integration/test_scenes_load.gd` | Required |
-| Manual, per PR | Two-instance co-op smoke on one machine for any PR touching sync (spawn, synchronizer, RPC, host-only logic, time effects). Checklist in `SPEC-networking.md` | PR description | Required, recorded in the PR |
-| Manual, weekly | Two-machine co-op session, simulated latency, perf scene at 60 units, each class and Ascension solo and co-op | Weekly build notes in `specs/WEEKLY.md` | Required before tagging `week-N` |
+| Manual, per PR | Two-instance co-op smoke on one machine for any PR touching sync | PR description | Required |
+| Manual, weekly | Two-machine co-op session, simulated latency, perf scene at 60 units, each class and Ascension solo and co-op | Weekly build notes in `specs/WEEKLY.md` | Required before tagging |
 
-Coverage is defined by rules, not a percentage, since GDScript has no coverage tooling worth the setup cost: every file under `scripts/components/`, `scripts/data/`, `scripts/generation/`, `scripts/autoload/` has a test file; every content item passes the data-driven tests; every relic, mutation, and ability has at least one trigger-harness case.
+Coverage is defined by rules, not a percentage, since GDScript has no coverage tooling worth the setup cost: every file under `scripts/components/`, `scripts/data/`, `scripts/generation/`, `scripts/effects/`, and relevant `tests/` cases must have explicit verifications.
 
-CI (`.github/workflows/ci.yml`): checkout, set up Godot 4.7.2 headless (pin the exact version; verify the setup action supports 4.7.2 in week 1), run import, run GUT, fail on non-zero exit. Target under 5 minutes.
+CI (`.github/workflows/ci.yml`): checkout, set up Godot 4.7.2 headless, run import, run GUT, fail on non-zero exit. Target windows-only local and CI path is not a public security boundary.
 
 ## Boundaries
 
@@ -205,7 +205,7 @@ CI (`.github/workflows/ci.yml`): checkout, set up Godot 4.7.2 headless (pin the 
 - Write "who owns this, how does it sync" in the doc comment of any script with game state.
 - Keep every week's build playable. If a PR breaks the run loop, revert first, fix second.
 
-**Ask first** (the other developer, or the human if Claude Code is driving)
+**Ask first** (the designated reviewer, or the human if Claude Code is driving)
 
 - Changing `project.godot` settings, the Input Map, or autoload list.
 - Adding or updating an addon or any dependency, including GUT version bumps.
@@ -231,10 +231,10 @@ CI (`.github/workflows/ci.yml`): checkout, set up Godot 4.7.2 headless (pin the 
 
 ## Git workflow
 
-- `main` is the integration branch. The previous game was deleted on 2026-10-18 by team decision (last commit `54b10d8`, no longer referenced by any branch).
-- Feature branches off `main`: `feat/<module-id>-<short-desc>`, `fix/<module-id>-<short-desc>`.
+- `main` is the integration branch. The previous game has been retired by team decision; older references are not used.
+- Feature branches off `main`: `feat/<module-id>-<desc>`, `fix/<module-id>-<desc>`.
 - Merge via PR into `main`. CI must pass.
-- **Required review** from the other developer for shared systems: anything under `scripts/autoload/`, `scripts/components/`, `scripts/data/`, `project.godot`, `.github/`, `addons/`.
+- **Required review** from the designated reviewer for shared systems: anything under `scripts/autoload/`, `scripts/components/`, `scripts/data/`, `project.godot`, `.github/`, `addons/`.
 - **Self-merge allowed** for content and scenes inside your own lane's modules once CI passes.
 - Each week's playable build is tagged `week-N` on `main` after the weekly checklist passes.
 - Never force-push `main`. Never rebase a branch someone else has checked out.
@@ -245,11 +245,11 @@ Lanes from design doc section 19.
 
 | Lane | Developer | Modules |
 |---|---|---|
-| **Dev A: The Pit** | Alex | `player-controller`, `combat-core`, `enemies-ai`, `floor-generation`, `weapons`, `abilities`, `classes-characters`, `biomes`, `bosses` |
-| **Dev B: The Surface + Systems** | Daniel | `networking`, `time-manager`, `stats-status`, `save-system`, `run-economy`, `effect-system`, `relics`, `story-dialogue`, `town`, `progression-trees`, `ui-hud`, `endgame` |
+| **Dev A: The Pit** | Developer A | `player-controller`, `combat-core`, `enemies-ai`, `floor-generation`, `weapons`, `abilities`, `classes-characters`, `biomes`, `bosses` |
+| **Dev B: The Surface + Systems** | Developer B | `networking`, `time-manager`, `stats-status`, `save-system`, `run-economy`, `effect-system`, `relics`, `story-dialogue`, `town`, `progression-trees`, `ui-hud`, `debug-tools`, `endgame` |
 | **Both** | | `foundation`, `art-audio`, `debug-tools`, bulk content data files, balancing, playtesting |
 
-Cross-owner seams are listed in [CAPABILITY_MAP.md](CAPABILITY_MAP.md#cross-owner-seams). The owning module's developer reviews contributions from the other lane.
+Cross-owner seams are listed in [CAPABILITY_MAP.md](CAPABILITY_MAP.md#cross-owner-seams). The owning module's designated reviewer checks contributions from the other lane.
 
 ## Success criteria
 
@@ -259,7 +259,7 @@ Project-level, checked at week 12:
 - [ ] All 12 weekly tags exist and each matched its "Done when" line.
 - [ ] CI green on `main`; test command exits 0 locally on both machines.
 - [ ] 500-seed floor soak passes for all 6 biomes.
-- [ ] Every content count from the design doc is met and verified by the data-driven tests: 4 characters, 7 classes, 28 Ascensions, 20 weapons, 120 mutations, 30 abilities, 8 ultimates, 88 relics, 12 synergies, 6 biomes, 30 floors, 16 bosses, 11 buildings, 38 skill nodes, 3 endings, 40+ lore pages, 50+ achievements.
+- [ ] Every content count from the design doc is met and verified by the data-driven tests: 4 characters, 7 classes, 28 Ascensions, 20 weapons, 120 mutations, 30 abilities, 8 ultimates, 88 relics, 12 synergies, 6 biomes, 16 bosses, 40+ lore entries.
 - [ ] 4-player online co-op completes a full 30-floor run on two or more machines.
 - [ ] 60 FPS with 60+ units in the perf scene on the Compatibility renderer.
 - [ ] At least 5 external playtesters from week 9 on, with notes in `specs/WEEKLY.md`.
@@ -267,4 +267,4 @@ Project-level, checked at week 12:
 ## Open questions
 
 - Exact GUT release to vendor (latest 9.x compatible with 4.7 at week 1).
-- GitHub Actions Godot setup action and whether it already publishes 4.7.2; verified in week 1 during `foundation`.
+- GitHub Actions Godot setup action and whether it already publishes 4.7.2; verified during the initial setup milestone.

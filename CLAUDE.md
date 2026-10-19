@@ -1,6 +1,6 @@
 # Sinkhole
 
-2D isometric action roguelike. Godot 4.7.2, GDScript, Compatibility renderer. Two developers, 12 weeks, 1 to 4 player online co-op built in from week 1.
+2D isometric action roguelike. Godot 4.7.2, GDScript, Compatibility renderer. A small team, 12 weeks, 1 to 4 player online co-op built in from week 1.
 
 ## Read these first
 
