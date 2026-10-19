@@ -142,6 +142,32 @@ movement must cross the wire in both directions, and the client leaves first so
 the host sees the peer go — 15 checks, exit 0 on pass. This is the two-instance
 smoke required before any PR that touches sync.
 
+### W2-B4 — Debug console, parser, core commands, `request_debug` (`debug-tools`)
+
+`scripts/debug/debug_console.gd` is a `CanvasLayer` UI: a scrollback +
+`LineEdit` toggled by the backtick (`debug_console`) action, plus the command
+registry (`register(name, callable, help)`). `scripts/debug/debug_parser.gd`
+tokenizes a line (whitespace split, double-quoted args keep spaces, `\"`
+escapes). `scripts/debug/debug_commands.gd` installs the core set: `help`,
+`spawn <enemy_id> [count] [elite] [affix]`, `give <type> <id> [stacks]`,
+`gold <n>`, `skip` (stub), `seed <n>`, `god`, `kill`, `heal`, `timestop <s>`,
+`timeslow <factor> <s>`, `fps`, `dump`. Commands run on the **host**: a client's
+console sends the line through `NetworkManager.request_debug(cmd, peer_id)`
+(a validated `any_peer`/`call_remote`/`reliable` RPC that emits
+`debug_command_requested`); the host's console executes and targets the issuing
+peer (spawn at that player, gold/heal/god on that player).
+
+Where a command touches a system that has not landed yet it validates its input
+and reports the deferral rather than failing: `give`/`heal` wait on
+weapons/abilities/relics/run-economy/combat-core (weeks 4-5), `skip` on
+floor-generation (week 3), and `spawn`/`kill` work today against the W2-B3
+enemy placeholders. The console is added by `main.gd` in debug builds or with
+`--debug-tools`, loaded lazily (never preloaded) so a release export that
+filters `scripts/debug/` out never references it. There is no
+`export_presets.cfg` yet, so the actual export filter is a week-12 step; the
+lazy-load seam above is the part that must be in place by then (recorded in
+`specs/SPEC-debug-tools.md` open items).
+
 ---
 
 ## Decisions made without a human
@@ -211,6 +237,28 @@ recorded in a spec or a comment, the location is given.
     The workflow config was reviewed, and the same import + test jobs are run
     locally and green. Confirmation of a live green Actions run is outstanding
     and non-blocking.
+15. **W2-B4 debug console design** — (a) the console is wired into `main.gd`
+    (foundation, both lanes) behind `OS.is_debug_build() or --debug-tools`,
+    loaded with `load()` + `ResourceLoader.exists()` rather than `preload` so a
+    release export that filters `scripts/debug/` never references it (no
+    `export_presets.cfg` exists yet, so the export-filter step itself is
+    week-12; the lazy-load seam is what must be ready now). (b) `request_debug`
+    lives on `NetworkManager` per SPEC-networking's `request_*` convention and
+    emits a new `debug_command_requested(command_line, peer_id)` signal for the
+    console; the host validates `get_remote_sender_id() == peer_id` and only
+    then executes. (c) Command handlers live on a `DebugCommands` instance the
+    console holds (not a static/transient object) so bound callables never
+    dangle. (d) Backtick is polled in `_process` instead of `_unhandled_input`
+    so the toggle still works while the `LineEdit` has focus (the key would
+    otherwise be eaten as text). (e) The command result is shown on the
+    **host's** console; a client's own console echoes "sent to host: <line>"
+    — a result round-trip RPC was judged not worth the extra surface for week 2
+    and is recorded as a possible polish. (f) `--debug-tools` was added to
+    `LaunchArgs` (a user arg, no `project.godot` change) because
+    SPEC-debug-tools names it. Blocked-on-Dev-A seams are recorded in
+    `.goals/LOG.md`: `give`/`heal` need run-economy/relics/weapons/combat-core,
+    `skip` needs floor-generation, `god` is debug-local state until Health
+    consumes it.
 
 ---
 
@@ -291,6 +339,13 @@ short checklist for Dev A and the human; none of them block week 2.
   "no visible rubber-banding at 0 ms" visual check from W1-AB1.
 - **CI live run** — push to `main` and watch the Actions run complete green
   under 5 minutes (see decision 14 for why it isn't visible from here).
+- **Debug console feel** — in a windowed run press backtick to open/close the
+  console, type `help`, `spawn grub 3`, `seed 7`, `timestop 2` and see the
+  scrollback respond; in a two-instance co-op, issue `gold 50` from the client
+  window and confirm the host grants it to that peer (W2-B4 manual
+  verification; the headless suite covers the parser, registry, and every
+  command's logic, but not the visual toggle or the cross-window RPC round
+  trip).
 
 ---
 

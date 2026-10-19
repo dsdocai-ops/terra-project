@@ -82,6 +82,16 @@ func test_no_smoke_by_default() -> void:
 	assert_eq(LaunchArgs.parse(PackedStringArray()).smoke_seconds, 0.0)
 
 
+func test_debug_tools_flag() -> void:
+	var opts := LaunchArgs.parse(PackedStringArray(["--debug-tools"]))
+	assert_true(opts.debug_tools)
+	assert_eq(opts.mode, LaunchArgs.Mode.MENU, "debug-tools does not change the mode")
+
+
+func test_no_debug_tools_by_default() -> void:
+	assert_false(LaunchArgs.parse(PackedStringArray()).debug_tools)
+
+
 func test_unknown_args_are_ignored() -> void:
 	var opts := LaunchArgs.parse(PackedStringArray(["--verbose", "--host", "extra"]))
 	assert_eq(opts.mode, LaunchArgs.Mode.HOST)

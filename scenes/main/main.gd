@@ -25,6 +25,7 @@ func _ready() -> void:
 	NetworkManager.host_disconnected.connect(_on_host_disconnected)
 
 	apply_options(LaunchArgs.parse(OS.get_cmdline_user_args()))
+	_maybe_add_debug_console()
 	_start_from_options()
 	if options.smoke_seconds > 0.0:
 		_start_smoke(options.smoke_seconds)
@@ -72,6 +73,20 @@ func apply_options(opts: LaunchArgs) -> void:
 		push_warning("launch args: %s" % problem)
 	GameState.forced_seed = opts.run_seed
 	menu.visible = opts.mode == LaunchArgs.Mode.MENU
+
+
+## Adds the debug console (SPEC-debug-tools) in debug builds or when launched
+## with --debug-tools. Loaded lazily (never preloaded) so a release export
+## that filters scripts/debug/ out of the pack never references it.
+func _maybe_add_debug_console() -> void:
+	if options == null or not (OS.is_debug_build() or options.debug_tools):
+		return
+	var script_path := "res://scripts/debug/debug_console.gd"
+	if not ResourceLoader.exists(script_path):
+		return
+	var console: CanvasLayer = (load(script_path) as GDScript).new()
+	console.name = "DebugConsole"
+	add_child(console)
 
 
 func _start_from_options() -> void:

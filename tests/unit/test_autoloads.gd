@@ -12,7 +12,7 @@ const METHODS: Dictionary[String, Array] = {
 	"SaveManager": ["save", "load", "reset_profile", "export_debug"],
 	"StoryManager": ["has_flag", "set_flag", "flags", "act", "unlock_lore", "lore_unlocked_count", "evaluate", "start_dialogue"],
 	"AudioManager": ["play_music", "play_sfx", "set_bus_volume", "stop_music"],
-	"NetworkManager": ["host", "join", "start_solo", "disconnect_all", "get_player", "player_count", "enemy_hp_multiplier"],
+	"NetworkManager": ["host", "join", "start_solo", "disconnect_all", "get_player", "player_count", "enemy_hp_multiplier", "request_debug"],
 }
 
 ## Signals from each spec.

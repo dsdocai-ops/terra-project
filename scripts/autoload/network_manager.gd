@@ -13,6 +13,10 @@ signal player_joined(peer_id: int)
 signal player_left(peer_id: int)
 signal connection_failed(reason: String)
 signal host_disconnected()
+## A client asked the host to run a debug console line on its behalf
+## (SPEC-debug-tools). The debug console listens and executes; it is absent in
+## release exports, where nothing listens and the request is a no-op.
+signal debug_command_requested(command_line: String, peer_id: int)
 
 const DEFAULT_PORT: int = 7777
 const MAX_PLAYERS: int = 4
@@ -105,6 +109,23 @@ func player_count() -> int:
 
 func enemy_hp_multiplier() -> float:
 	return enemy_hp_multiplier_for(player_count())
+
+
+## Client -> host: asks the host to run a debug console command line on behalf
+## of `peer_id` (SPEC-debug-tools). The host validates that the caller really
+## is that peer, then emits debug_command_requested for the local debug
+## console to execute. In a release export the console is excluded, so the
+## signal has no listener and the request is a no-op.
+## Sync: host-authoritative — clients never run commands; the host validates
+## the sender and applies.
+@rpc("any_peer", "call_remote", "reliable")
+func request_debug(command_line: String, peer_id: int) -> void:
+	if not is_host:
+		return
+	if multiplayer.get_remote_sender_id() != peer_id:
+		push_warning("[net] request_debug refused: sender %d != claimed peer %d" % [multiplayer.get_remote_sender_id(), peer_id])
+		return
+	debug_command_requested.emit(command_line, peer_id)
 
 
 ## 1.0 + 0.5 per player beyond the first; never below solo.

@@ -4,6 +4,8 @@ extends RefCounted
 ##   --host            host a game and skip the menu
 ##   --join=<ip[:port]> join a host and skip the menu
 ##   --seed=<int>      force the run seed
+##   --debug-tools     force the debug console on even in a build where
+##                     OS.is_debug_build() is false (SPEC-debug-tools)
 ##   --smoke[=<sec>]   headless two-instance smoke: the local player walks
 ##                     right, positions are logged every second, quit after
 ##                     <sec> seconds (default DEFAULT_SMOKE_SECONDS).
@@ -19,6 +21,8 @@ var host: bool = false
 var join_ip: String = ""
 var port: int = NetworkManager.DEFAULT_PORT
 var run_seed: int = 0
+## True when --debug-tools was passed: force the debug console on.
+var debug_tools: bool = false
 ## 0 means not a smoke run.
 var smoke_seconds: float = 0.0
 ## Human-readable problems with the arguments; main.gd logs them.
@@ -42,6 +46,8 @@ static func parse(args: PackedStringArray) -> LaunchArgs:
 			opts._parse_join(arg.trim_prefix("--join="))
 		elif arg.begins_with("--seed="):
 			opts._parse_seed(arg.trim_prefix("--seed="))
+		elif arg == "--debug-tools":
+			opts.debug_tools = true
 	if opts.host and not opts.join_ip.is_empty():
 		opts.errors.append("--host and --join given together; hosting")
 		opts.join_ip = ""
