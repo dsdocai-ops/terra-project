@@ -4,6 +4,8 @@
 [ext_resource type="TileSet" uid="uid://b3p4wi6gx4vcy" path="res://assets/tilesets/placeholder_iso.tres" id="2_tiles"]
 [ext_resource type="Script" uid="uid://bviumtmpmifqg" path="res://scenes/main/camera.gd" id="3_camera"]
 [ext_resource type="Script" uid="uid://22duy1f0toov" path="res://scripts/network/player_spawner.gd" id="4_spawner"]
+[ext_resource type="Script" uid="uid://dwjoudgpu51nr" path="res://scripts/network/enemy_spawner.gd" id="5_espawn"]
+[ext_resource type="Script" uid="uid://b3iqalpdnbd1j" path="res://scripts/network/projectile_spawner.gd" id="6_pspawn"]
 
 [node name="World" type="Node2D"]
 y_sort_enabled = true
@@ -19,6 +21,14 @@ tile_set = ExtResource("2_tiles")
 
 [node name="Entities" type="Node2D" parent="."]
 y_sort_enabled = true
+
+[node name="EnemySpawner" type="MultiplayerSpawner" parent="Entities"]
+spawn_path = NodePath("..")
+script = ExtResource("5_espawn")
+
+[node name="ProjectileSpawner" type="MultiplayerSpawner" parent="Entities"]
+spawn_path = NodePath("..")
+script = ExtResource("6_pspawn")
 
 [node name="Players" type="Node2D" parent="."]
 y_sort_enabled = true
