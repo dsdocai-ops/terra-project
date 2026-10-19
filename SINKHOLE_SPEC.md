@@ -750,7 +750,7 @@ Persistent only: town, skill tree, unlocks, characters, classes, Class XP and ma
 
 ## 19. Team Split
 
-| Developer A: The Pit | Developer B: The Surface + Systems |
+| Dev A: The Pit | Dev B: The Surface + Systems |
 |---|---|
 | Player controller, combat feel | Networking (NetworkManager, sync) |
 | Weapons, mutations, classes and Ascensions | Relic effect/trigger system, synergies |

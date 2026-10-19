@@ -36,6 +36,7 @@ Godot MCP tools (`launch_editor`, `run_project`, `get_debug_output`) are availab
 - Never edit a `.tscn` owned by the other lane without asking. Ownership table in [SPEC-project.md](specs/SPEC-project.md#ownership).
 - Any PR touching sync runs the two-instance smoke test first.
 - Nothing from the design doc is cut without an explicit human decision recorded in the capability map.
+- Never use real names in files, comments, commits, or PRs. Refer to the developers only as Dev A and Dev B.
 
 ## Workflow
 

@@ -1,6 +1,6 @@
 # Sinkhole task list
 
-Lanes: **A** = Developer A (Pit lane), **B** = Developer B (Systems lane), **AB** = both. Module ids from `specs/CAPABILITY_MAP.md`. Branch name: `feat/<module-id>-<task-id-lowercase>-<short-desc>`.
+Lanes: **A** = Dev A (Pit lane), **B** = Dev B (Systems lane), **AB** = both. Module ids from `specs/CAPABILITY_MAP.md`. Branch name: `feat/<module-id>-<task-id-lowercase>-<short-desc>`.
 
 Week 1 is fully detailed. Weeks 2 to 12 are listed with brief acceptance and are expanded into the week 1 format at the start of each week.
 
@@ -24,13 +24,13 @@ Week 1 is fully detailed. Weeks 2 to 12 are listed with brief acceptance and are
 
 **Verification:**
 - [x] `godot --headless --path . --import` exits 0 with no warnings; `tests/unit/test_project_settings.gd` asserts every table value, the features, the layer names, and the folder tree
-- [ ] Manual: editor opens, viewport 960x540, test window 1920x1080 shows integer-scaled crisp pixels on a placeholder sprite (Alex, when running the game)
+- [ ] Manual: editor opens, viewport 960x540, test window 1920x1080 shows integer-scaled crisp pixels on a placeholder sprite (Dev A, when running the game)
 
 **Dependencies:** None
 **Files likely touched:** `project.godot`, `*/.gdkeep`
 **Estimated scope:** S
 
-**Ask from Alex (W1-A7 follow-up):** add 2D physics layer names so scenes read clearly: `layer_names/2d_physics/layer_1 = "world"`, `layer_2 = "player"`, `layer_3 = "enemy"`, `layer_4 = "hitbox_player"`, `layer_5 = "hitbox_enemy"`, `layer_6 = "interactable"`. `player.tscn` already uses layer 2 / mask 1 so players pass through each other and collide with walls only.
+**Ask from Dev A (W1-A7 follow-up):** add 2D physics layer names so scenes read clearly: `layer_names/2d_physics/layer_1 = "world"`, `layer_2 = "player"`, `layer_3 = "enemy"`, `layer_4 = "hitbox_player"`, `layer_5 = "hitbox_enemy"`, `layer_6 = "interactable"`. `player.tscn` already uses layer 2 / mask 1 so players pass through each other and collide with walls only.
 
 ## Task W1-B2: Input Map
 
@@ -44,7 +44,7 @@ Week 1 is fully detailed. Weeks 2 to 12 are listed with brief acceptance and are
 
 **Verification:**
 - [x] `tests/unit/test_input_map.gd`: every name exists, binding classes per action, specific keys/buttons/axes from the table, no joypad button bound twice, and synthetic key and stick events drive the actions through `Input`
-- [ ] Manual: Input Map panel shows controller icons next to each (Alex, in the editor)
+- [ ] Manual: Input Map panel shows controller icons next to each (Dev A, in the editor)
 
 **Dependencies:** W1-B1
 **Files likely touched:** `project.godot`, `tests/unit/test_input_map.gd`
@@ -116,7 +116,7 @@ Week 1 is fully detailed. Weeks 2 to 12 are listed with brief acceptance and are
 
 **Verification:**
 - [x] `tests/unit/test_launch_args.gd` (11) and `tests/unit/test_main_scene.gd` (7); `application/run/main_scene` asserted in `test_project_settings`
-- [ ] Manual: launch each variant (covered by the headless two-instance smoke in W1-B10 and Alex's walkabout)
+- [ ] Manual: launch each variant (covered by the headless two-instance smoke in W1-B10 and Dev A's walkabout)
 
 **Dependencies:** W1-B1, W1-B3 (NetworkManager stub), W1-A3 (world scene path; can use a placeholder until A3 lands)
 **Files likely touched:** `scenes/main/main.tscn`, `scenes/main/main.gd`, `project.godot` (main_scene), `tests/unit/test_launch_args.gd`
@@ -155,13 +155,13 @@ Week 1 is fully detailed. Weeks 2 to 12 are listed with brief acceptance and are
 - [ ] Two-instance: spawn, late join, leave (headless smoke in W1-B10)
 
 **Dependencies:** W1-B7, W1-A4
-**Files likely touched:** `scenes/main/world.tscn` (Players spawner node; coordinate with Alex, owner), `scripts/network/player_spawn_info.gd`, `scripts/autoload/network_manager.gd`, `tests/unit/test_spawn_info.gd`
+**Files likely touched:** `scenes/main/world.tscn` (Players spawner node; coordinate with Dev A, owner), `scripts/network/player_spawn_info.gd`, `scripts/autoload/network_manager.gd`, `tests/unit/test_spawn_info.gd`
 **Estimated scope:** M
 
 ## Task W1-B9: InputSync and StateSync configuration
 
-**Module:** `networking` (PR into Alex's `player.tscn`, Alex reviews)
-**Description:** Configure the two `MultiplayerSynchronizer` nodes Alex placed in `player.tscn` (W1-A4). `InputSync`: authority = owning peer, replicates `move_input: Vector2`, `aim_position: Vector2`; `StateSync`: position, facing, animation and health.
+**Module:** `networking` (PR into Dev A's `player.tscn`, Dev A reviews)
+**Description:** Configure the two `MultiplayerSynchronizer` nodes Dev A placed in `player.tscn` (W1-A4). `InputSync`: authority = owning peer, replicates `move_input: Vector2`, `aim_position: Vector2`; `StateSync`: position, facing, animation and health.
 
 **Acceptance criteria:**
 - [x] Client input moves the client's player on the host (headless smoke: InputSync check passes)
@@ -183,10 +183,10 @@ Week 1 is fully detailed. Weeks 2 to 12 are listed with brief acceptance and are
 
 **Acceptance criteria:**
 - [x] Running the script opens two windows that connect (`tools/run_two.ps1`, `tools/run_two.sh`; the connect / spawn / move path is proven headless by `tools/smoke_two.sh`, 15 checks green)
-- [ ] F5 in the editor with multi-instance enabled does the same (per-machine setting in `.godot/`, documented in SPEC-project commands; Alex sets it once)
+- [ ] F5 in the editor with multi-instance enabled does the same (per-machine setting in `.godot/`, documented in SPEC-project commands; Dev A sets it once)
 
 **Verification:**
-- [ ] Manual run of the windowed launcher (Alex); headless smoke green 2026-10-18
+- [ ] Manual run of the windowed launcher (Dev A); headless smoke green 2026-10-18
 
 **Dependencies:** W1-B6, W1-B7
 **Files likely touched:** `tools/run_two.ps1`, `tools/run_two.sh`, `specs/SPEC-project.md`
@@ -267,7 +267,7 @@ Week 1 is fully detailed. Weeks 2 to 12 are listed with brief acceptance and are
 
 ## Task W1-A5: StateMachine and State components, Idle and Move
 
-**Modules:** `player-controller` (component is shared under `scripts/components/`, Daniel reviews)
+**Modules:** `player-controller` (component is shared under `scripts/components/`, Dev B reviews)
 **Description:** `scripts/components/state_machine.gd` and `state.gd`: node-based, `change_to(name)` with states able to refuse, `enter`, `exit`, `physics_update(delta)`, `handle_input`. Player states `Idle` and `Move` are implemented in `scenes/player/states/`.
 
 **Acceptance criteria:**
@@ -327,13 +327,13 @@ Week 1 is fully detailed. Weeks 2 to 12 are listed with brief acceptance and are
 **Description:** Local player moves immediately from its own input; host simulates the same input; `StateSync` position corrects drift on the client with a small lerp (snap if error > 64 px). Remote players are smooth and authoritative.
 
 **Acceptance criteria:**
-- [ ] At 0 ms latency, no visible correction on the local player (reconcile implemented in W1-B9; visual check is Alex's)
-- [ ] Remote players move smoothly (interpolation implemented in W1-B9; visual check is Alex's)
-- [ ] Facing and animation match on both screens (facing_index and current_anim replicated on change; visual check is Alex's)
+- [ ] At 0 ms latency, no visible correction on the local player (reconcile implemented in W1-B9; visual check is Dev A's)
+- [ ] Remote players move smoothly (interpolation implemented in W1-B9; visual check is Dev A's)
+- [ ] Facing and animation match on both screens (facing_index and current_anim replicated on change; visual check is Dev A's)
 
 **Verification:**
 - [x] Two-instance smoke steps 1 and 2 pass headless (`tools/smoke_two.sh`), recorded in the surface-week1 PR
-- [ ] Three-instance sanity via `run_two.ps1 -Clients 2` (Alex)
+- [ ] Three-instance sanity via `run_two.ps1 -Clients 2` (Dev A)
 
 **Dependencies:** W1-B9, W1-A6, W1-A7
 **Files likely touched:** `scenes/player/player.gd`, `scenes/player/states/move.gd`, `scripts/autoload/network_manager.gd`
@@ -629,15 +629,15 @@ Week 1 is fully detailed. Weeks 2 to 12 are listed with brief acceptance and are
 **Done when:** Final art/audio/VFX pass, balancing, co-op bug fixing, achievements, settings, external playtests.
 
 ### Dev A
-- [ ] W12-A1 `[stats-status]`/`[weapons]` Balance pass: damage golden file review with Daniel, weapon feel on Training Grounds, enemy HP/damage curve, boss timings.
+- [ ] W12-A1 `[stats-status]`/`[weapons]` Balance pass: damage golden file review with Dev B, weapon feel on Training Grounds, enemy HP/damage curve, boss timings.
 - [ ] W12-A2 `[art-audio]` Final enemy, boss, biome tile art per priority list; VFX per element/ability/relic proc complete.
-- [ ] W12-A3 `[networking]` Co-op bug fixing from playtests (Alex's modules). Accept: issue list closed or deferred with notes.
+- [ ] W12-A3 `[networking]` Co-op bug fixing from playtests (Dev A's modules). Accept: issue list closed or deferred with notes.
 
 ### Dev B
 - [ ] W12-B1 `[ui-hud]` Settings: audio buses, video (window, scale, vsync), screen shake, damage numbers toggle, full key rebinding with conflict detection, controller deadzone; persisted.
 - [ ] W12-B2 `[progression-trees]`/`[town]`/`[run-economy]` Economy tuning: tree total in 25 to 40 runs, town ore costs matched, Echo curve, shop prices (`economy.md`).
 - [ ] W12-B3 `[debug-tools]` Release export preset excluding `scripts/debug/`, Windows export verified, debug console absent in export.
-- [ ] W12-B4 `[networking]` Co-op bug fixing (Daniel's modules), simulated-latency pass.
+- [ ] W12-B4 `[networking]` Co-op bug fixing (Dev B's modules), simulated-latency pass.
 
 ### Both
 - [ ] W12-AB1 `[art-audio]` Final music tracks, full SFX list, portraits, icons, `CREDITS.md`.

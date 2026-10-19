@@ -252,8 +252,8 @@ Lanes from design doc section 19.
 
 | Lane | Developer | Modules |
 |---|---|---|
-| **Dev A: The Pit** | Developer A | `player-controller`, `combat-core`, `enemies-ai`, `floor-generation`, `weapons`, `abilities`, `classes-characters`, `biomes`, `bosses` |
-| **Dev B: The Surface + Systems** | Developer B | `networking`, `time-manager`, `stats-status`, `save-system`, `run-economy`, `effect-system`, `relics`, `story-dialogue`, `town`, `progression-trees`, `ui-hud`, `debug-tools`, `endgame` |
+| **Dev A: The Pit** | Dev A | `player-controller`, `combat-core`, `enemies-ai`, `floor-generation`, `weapons`, `abilities`, `classes-characters`, `biomes`, `bosses` |
+| **Dev B: The Surface + Systems** | Dev B | `networking`, `time-manager`, `stats-status`, `save-system`, `run-economy`, `effect-system`, `relics`, `story-dialogue`, `town`, `progression-trees`, `ui-hud`, `debug-tools`, `endgame` |
 | **Both** | | `foundation`, `art-audio`, `debug-tools`, bulk content data files, balancing, playtesting |
 
 Cross-owner seams are listed in [CAPABILITY_MAP.md](CAPABILITY_MAP.md#cross-owner-seams). The owning module's designated reviewer checks contributions from the other lane.

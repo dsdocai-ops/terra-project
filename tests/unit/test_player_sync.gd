@@ -1,7 +1,7 @@
 extends GutTest
 ## Tests for the InputSync / StateSync configuration and the Player-side
 ## publish, tick-acknowledged reconcile, and interpolate logic (W1-B9, W1-AB1).
-## Owned by networking (PR into player.tscn, Alex reviews).
+## Owned by networking (PR into player.tscn, Dev A reviews).
 
 const PLAYER_SCENE := "res://scenes/player/player.tscn"
 const DT := 1.0 / 60.0
