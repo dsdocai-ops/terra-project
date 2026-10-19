@@ -1,0 +1,28 @@
+[gd_resource type="Resource" script_class="SfxBank" format=3]
+
+[ext_resource type="Script" path="res://scripts/data/sfx_bank.gd" id="1_fk0h4"]
+
+[resource]
+script = ExtResource("1_fk0h4")
+entries = Dictionary[StringName, String]({
+&"crit": "res://assets/audio/sfx/crit.wav",
+&"dodge": "res://assets/audio/sfx/dodge.wav",
+&"enemy_death": "res://assets/audio/sfx/enemy_death.wav",
+&"enemy_hurt_large": "res://assets/audio/sfx/enemy_hurt_large.wav",
+&"enemy_hurt_small": "res://assets/audio/sfx/enemy_hurt_small.wav",
+&"hit_heavy": "res://assets/audio/sfx/hit_heavy.wav",
+&"hit_light": "res://assets/audio/sfx/hit_light.wav",
+&"perfect_dodge": "res://assets/audio/sfx/perfect_dodge.wav",
+&"pickup_echo": "res://assets/audio/sfx/pickup_echo.wav",
+&"pickup_gold": "res://assets/audio/sfx/pickup_gold.wav",
+&"pickup_ore": "res://assets/audio/sfx/pickup_ore.wav",
+&"pickup_relic": "res://assets/audio/sfx/pickup_relic.wav",
+&"pickup_rune": "res://assets/audio/sfx/pickup_rune.wav",
+&"placeholder_click": "res://assets/audio/sfx/placeholder_click.wav",
+&"potion": "res://assets/audio/sfx/potion.wav",
+&"ui_cancel": "res://assets/audio/sfx/ui_cancel.wav",
+&"ui_click": "res://assets/audio/sfx/ui_click.wav",
+&"ui_confirm": "res://assets/audio/sfx/ui_confirm.wav",
+&"ui_error": "res://assets/audio/sfx/ui_error.wav",
+&"ui_hover": "res://assets/audio/sfx/ui_hover.wav"
+})
