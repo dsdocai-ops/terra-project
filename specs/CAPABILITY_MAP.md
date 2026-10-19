@@ -32,7 +32,7 @@ Owner is the developer lane from design doc section 19: **Dev A and Dev B are de
 | `biomes` | BiomeData for 6 biomes; 24 base enemies + 3 Heart-only variants; per-biome hazards; palette, PointLight2D and CanvasModulate lighting; per-biome mini-bosses | enemies-ai, floor-generation | A | 6, 8, 9, 10 | 13 |
 | `bosses` | BossData, boss phase state machine, 6 mini-bosses, 5 biome bosses, The Sinkhole 3-phase final boss, 4 secret bosses and their triggers, The Hollow You build mirror, arena scenes | enemies-ai, biomes, classes-characters | A | 6, 8, 10, 11 | 14 |
 | `ui-hud` | Main menu, HUD (HP bars, potions, abilities, ult, active relic, floor, currencies, relic icons, synergies, minimap), pause, run/inventory screen, choice popups, rope vote prompt, death and ending flow | run-economy, story-dialogue | B | 2, 4, 5, 12 | 14 |
-| `art-audio` | Pixel art pipeline (8-dir sheets, import presets, naming), GPUParticles2D library per element, AudioManager (music crossfade, SFX), per-biome tracks and boss themes, final art and audio pass | foundation | Both | 1, 12 | 20 |
+| `art-audio` | Claude-made asset pipeline (Python/PIL generators, locked biome palettes, 4-dir sheets mirrored to 8, import presets, naming, `CREDITS.md` for sourced CC0/CC-BY assets), GPUParticles2D library per element, AudioManager (music crossfade, SFX), synthesized SFX, per-biome tracks and boss themes, weekly asset review sheets, week 12 polish | foundation | Both (Claude produces, lanes review) | 1 to 12 | 20 |
 | `debug-tools` | Debug console (spawn enemy, give relic by name, give gold, skip floor, unlock all skills, set seed, god mode), simulated latency, 60-unit perf test scene, two-instance launcher | foundation, networking | B | 2, 12 | 21 |
 | `endgame` | Deep Mode (new boss attacks, Keeper dark version), 10 stackable Heat levels with Echo Shard multipliers, Daily Dive seeded run and leaderboard, 50+ achievements and cosmetic unlocks, final release polish | bosses, story-dialogue, progression-trees, save-system | B | 11, 12 | 17 |
 
@@ -78,7 +78,7 @@ Week 8   biomes (2, 3), bosses (4), relics (40, synergies)
 Week 9   biomes (4, 5), bosses (4), weapons (all 19), abilities (all 30), classes-characters (chars 2 to 4, Rogue, Necromancer, Engineer, Lightbearer)
 Week 10  biomes (6), bosses (Hollow You, The Sinkhole), story-dialogue (all dialogue, endings, lore)
 Week 11  classes-characters (T2, class trees), relics (88, Cursed Altars), weapons (120 mutations), floor-generation (Challenge, Secret rooms), bosses (secret), endgame, town (all buildings)
-Week 12  art-audio (final pass), ui-hud (settings, achievements UI), networking (co-op bug fix), balancing, external playtests
+Week 12  art-audio (polish list and sign-off; real assets land weekly from week 2), ui-hud (settings, achievements UI), networking (co-op bug fix), balancing, external playtests
 ```
 
 Each week ends with a playable build tagged `week-N` on `main`.

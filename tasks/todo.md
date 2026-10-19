@@ -2,7 +2,7 @@
 
 Lanes: **A** = Dev A (Pit lane), **B** = Dev B (Systems lane), **AB** = both. Module ids from `specs/CAPABILITY_MAP.md`. Branch name: `feat/<module-id>-<task-id-lowercase>-<short-desc>`.
 
-Week 1 is fully detailed. Weeks 2 to 12 are listed with brief acceptance and are expanded into the week 1 format at the start of each week.
+Every week carries `[art-audio]` tasks: Claude Code generates or sources every asset (SPEC-art-audio), the lane owner reviews the sheet in `docs/asset-review/`. Week 1 is fully detailed. Weeks 2 to 12 are listed with brief acceptance and are expanded into the week 1 format at the start of each week.
 
 ---
 
@@ -356,6 +356,25 @@ Week 1 is fully detailed. Weeks 2 to 12 are listed with brief acceptance and are
 **Files likely touched:** `specs/WEEKLY.md`, `specs/SPEC-foundation.md`
 **Estimated scope:** XS
 
+## Task W1-AB3: Asset pipeline skeleton and credits file
+
+**Module:** `art-audio`
+**Description:** Claude Code produces every asset from this point on (SPEC-art-audio, decision 2026-10-19). Create `tools/art/` (`requirements.txt`, `palette.py` with the 7 locked biome palettes, `pixel.py` stub, `build_all.py` stub, `README.md` with the run commands), `tools/audio/` (`README.md`, `sfx/` and `music/` folders), `CREDITS.md` at repo root with the schema header, `docs/asset-review/INDEX.md`. No real assets yet; week 1 stays on the Godot placeholders.
+
+**Acceptance criteria:**
+- [ ] `python -m pip install -r tools/art/requirements.txt` then `python tools/art/build_all.py --check` exits 0 on an empty asset set
+- [ ] `palette.py` exposes every color named in SPEC-art-audio
+- [ ] `CREDITS.md` has the six-column header and a row for every third-party file already under `assets/` or `addons/` fonts (expected: none yet)
+- [ ] WEEKLY.md template gains the "asset review sheets approved" line
+
+**Verification:**
+- [ ] `pytest tools/art` runs (a single smoke test is enough)
+- [ ] Reviewer skims `palette.py` hex values against the spec table
+
+**Dependencies:** W1-B1 (folders)
+**Files likely touched:** `tools/art/*`, `tools/audio/*`, `CREDITS.md`, `docs/asset-review/INDEX.md`, `specs/WEEKLY.md`
+**Estimated scope:** S
+
 ## Checkpoint: Week 1 day 2
 - [ ] W1-B1, W1-B2, W1-B3, W1-B4, W1-B5, W1-A1, W1-A2 merged
 - [ ] Import zero warnings, CI green on an empty-content PR
@@ -366,6 +385,7 @@ Week 1 is fully detailed. Weeks 2 to 12 are listed with brief acceptance and are
 - [ ] `--host` + `--join` connect; two `Player` nodes visible on both screens
 
 ## Checkpoint: Week 1 end
+- [ ] `tools/art/`, `tools/audio/`, `CREDITS.md` skeletons exist (W1-AB3)
 - [ ] All W1 tasks merged; `test_iso`, `test_player_facing`, `test_state_machine`, `test_camera_framing`, `test_network_manager`, `test_scenes_load`, `test_data_loads`, `test_autoloads`, and `test_input_map` pass
 - [ ] Two-instance smoke steps 1 and 2 pass; `week-1` tagged
 
@@ -386,6 +406,9 @@ Week 1 is fully detailed. Weeks 2 to 12 are listed with brief acceptance and are
 - [ ] W2-A8 `[player-controller]` Dodge roll with i-frames, cooldown from stat, perfect-dodge window, `dodge_charges`, `reset_dodge_cooldown()`. Accept: spec values.
 - [ ] W2-A9 `[enemies-ai]` `enemy_base.tscn`, `EnemyData`, standard states, `Targeting`, grid or nav pathfinding, separation via spatial hash, time-scaled movement. Accept: 3 enemies.
 - [ ] W2-A10 `[enemies-ai]` Hollow Miner, Rock Tick, Lantern Wisp `.tres`, states, attack patterns, placeholder sprites. Accept: each attacks through windup/active/recovery.
+- [ ] W2-A11 `[art-audio]` Asset pipeline bootstrap (Pit side): `tools/art/palette.py` (global ramps, 7 locked biome palettes, `ELEMENT`, UI, rarity), `tools/art/pixel.py` primitives, `gen_enemy.py`, `gen_character.py` (4 drawn dirs + mirror), `build_all.py`, `review_sheet.py`, `tools/art/tests/`. Accept: `pytest tools/art` green; deterministic bytes.
+- [ ] W2-A12 `[art-audio]` First real sprites: Hollow Miner, Rock Tick, Lantern Wisp sheets (idle/run/windup/attack/hurt/death), Pickaxe and Crossbow held sprites + bolt projectile + 2 weapon icons, `hit_<type>` sparks x5, `hit_heavy`, `crit` emitters, `hit_flash` shader textures. Accept: review sheet in `docs/asset-review/week-2/` approved by Dev A; `make_sprite_frames.gd` emits mirrored `SpriteFrames`.
+- [ ] W2-A13 `[art-audio]` Combat SFX via `tools/audio/synth.py`: hit x5 types, heavy hit, crit, dodge, perfect dodge, enemy hurt small/large, enemy death, 3 enemy attack cues. Accept: waveform sheet reviewed; ids in `SfxBank`.
 
 ### Dev B
 - [x] W2-B1 `[time-manager]` `scale_for`, groups, slow/stop stack, per-entity scale, `hit_stop`, `timer`, RPC broadcast of effects. Accept: spec API; players unaffected by enemy slow.
@@ -394,8 +417,11 @@ Week 1 is fully detailed. Weeks 2 to 12 are listed with brief acceptance and are
 - [ ] W2-B4 `[debug-tools]` Debug console UI + parser + `register()`, core commands (`spawn`, `give`, `gold`, `skip` stub, `seed`, `god`, `kill`, `heal`, `timestop`, `fps`, `dump`), request commands to host.
 - [ ] W2-B5 `[ui-hud]` HUD v0: own HP bar, teammate HP bars, weapon slots, floor label placeholder; `HudModel` adapter bound to replicated state; `Theme` v0 with pixel font. Accept: visible in test room.
 - [ ] W2-B6 `[art-audio]` `AudioManager` real implementation (two-player crossfade, pooled SFX, buses), `SfxBank` with placeholder clicks for the week 2 SFX ids.
+- [ ] W2-B7 `[art-audio]` Asset pipeline bootstrap (Surface side): `tools/audio/synth.py` + `build_sfx.py` + `tools/audio/tests/`, `tools/art/gen_ui.py`, `tools/art/gen_icons.py`, `CREDITS.md` schema + `test_credits.gd`, `docs/asset-review/INDEX.md`, `tools/art/capture.gd`. Propose (ask first) a CI step for `pytest tools/` and `build_all.py --check`. Accept: pipeline docs in SPEC-art-audio match the files.
+- [ ] W2-B8 `[art-audio]` Source 3 OFL pixel fonts (UI, damage numbers, title) and credit them; UI theme v0 pieces from `gen_ui.py` (panel nine-patch, HP/teammate bars, weapon slot frame, cursor); UI SFX click/hover/confirm/cancel/error synthesized. Accept: review sheet approved by Dev B; HUD v0 uses the theme.
 
 ### Checkpoint: Week 2 end
+- [ ] Every W2 `[art-audio]` task has an approved review sheet in `docs/asset-review/week-2/` (or a dated polish-list entry); `build_all.py --check` clean
 - [ ] Two-instance smoke steps 1 to 3; manual feel pass recorded; all W2 tests green; `week-2` tagged
 
 ---
@@ -410,6 +436,8 @@ Week 1 is fully detailed. Weeks 2 to 12 are listed with brief acceptance and are
 - [ ] W3-A3 `[floor-generation]` Populator registry + 500-seed soak test across placeholder biomes (reachability flood fill, exit reachable, counts, rope on floor 2, no overlaps, corridor width).
 - [ ] W3-A4 `[enemies-ai]` `SpawnDirector.fill_room` v1 (budget by floor, single wave, no spawn near players) registered as COMBAT/ELITE_COMBAT populator.
 - [ ] W3-A5 `[player-controller]` `Downed` and `Dead` states, bleed-out 30 s, hold-F revive to 40% (3 s, `revive_speed_mult`), solo skips to Dead, `Interactable` component and nearest-interactable query.
+- [ ] W3-A6 `[art-audio]` `gen_tiles.py collapsed_mines`: real Biome 1 tileset (floor x3 variants, wall x4 faces + corners, pit, door open/locked, corridor, 8 props: lantern, cart, beam, rail, rubble, crate, barrel, ore vein) + START/EXIT/ROPE markers as real sprites, ground shadow ellipses. Accept: review sheet + in-engine capture of a generated floor approved; `test_palette.gd` passes; palette `collapsed_mines` locked on approval.
+- [ ] W3-A7 `[art-audio]` Player `downed` and `death` placeholder frames on the placeholder body; rope, door lock/unlock, room clear, footstep (stone x2) SFX. Accept: review approved.
 
 ### Dev B
 - [ ] W3-B1 `[run-economy]` `GameState` real: `RunState`, `RunPlayerState`, `start_run`, `next_floor`, `end_run`, `RunResult`, `run_started`/`floor_changed`/`run_ended` signals; floor advance threshold states.
@@ -417,8 +445,10 @@ Week 1 is fully detailed. Weeks 2 to 12 are listed with brief acceptance and are
 - [ ] W3-B3 `[networking]` `floor_ready(seed, floor_index, biome_id, modifiers)` broadcast, client local generation, hash assertion with host-layout fallback, `--seed` arg plumbed.
 - [ ] W3-B4 `[networking]` Downed/revive sync: `request_revive`, `player_downed`/`player_revived` broadcast, StateSync of downed flag.
 - [ ] W3-B5 `[debug-tools]` `skip`, `floor <n>`, `seed` wired to GameState; `net_lag` placeholder.
+- [ ] W3-B6 `[art-audio]` Rope vote prompt and floor label UI pieces, downed/revive HUD icons, placeholder death and extract summary panel theme; SFX: rope, revive, downed, UI menu open/close. Accept: review approved.
 
 ### Checkpoint: Week 3 end
+- [ ] Every W3 `[art-audio]` task has an approved review sheet in `docs/asset-review/week-3/` (or a dated polish-list entry); `build_all.py --check` clean
 - [ ] 500-seed test green in CI; two-instance smoke steps 1 to 5; floor hashes match; `week-3` tagged
 
 ---
@@ -439,6 +469,8 @@ Week 1 is fully detailed. Weeks 2 to 12 are listed with brief acceptance and are
 - [ ] W4-B9 `[time-manager]` `slow_enemies`/`stop_enemies` consumers, `register_rewindable`/`rewind`, broadcast of entity effects; `timestop` console command verified in co-op.
 - [ ] W4-B10 `[ui-hud]` `ChoicePopup` (relic 1-of-3 with tags and rarity colors), relic icon strip with stacks, currencies, `Minimap` from `FloorLayout`, status icons.
 - [ ] W4-B11 `[debug-tools]` Perf scene (60 units, 4 fake players, 128 emitters, FPS log), `net_lag` real implementation, effect overlay.
+- [ ] W4-B12 `[art-audio]` 20 relic icons (`gen_icons.py relics`, rarity frame colors), pickup sprites (gold, ore, echo, rune, relic, potion) with `pickup_sparkle` tint, `ChoicePopup` theme (rarity colors, tag chips), relic strip, currency icons, minimap glyphs, status icons (7). Accept: review approved; `test_assets.gd` relic icon coverage.
+- [ ] W4-B13 `[art-audio]` SFX: pickup gold/ore/echo/rune/relic, potion, relic proc generic x3, choice open/pick. Accept: review approved.
 
 ### Dev A
 - [ ] W4-A1 `[enemies-ai]` Elites: outline shader, +100% HP, 6 affixes with behaviors, `elite_killed`.
@@ -446,8 +478,11 @@ Week 1 is fully detailed. Weeks 2 to 12 are listed with brief acceptance and are
 - [ ] W4-A3 `[floor-generation]` SHRINE room placement rule (1 per floor) + interactable anchor; ELITE_COMBAT counts by floor.
 - [ ] W4-A4 `[combat-core]` Emit `hit_landed`, `crit_landed`, `player_damaged`, `heavy_attack_released`, `weapon_swapped`, `projectile_fired`; `enemy_killed`, `enemy_spawned`; `player_dodged` and related events.
 - [ ] W4-A5 `[weapons]` Blacksmith damage tier hook and `Stat.ATTACK` wiring through `Damage.compute`.
+- [ ] W4-A6 `[art-audio]` Status VFX emitters (`burn`, `chill`, `freeze`, `shock`, `toxin`, `mark`, `bleed`, `unravel`) + 6 combo emitters, `elite_outline.gdshader`, `elite_spawn` burst, `gen_vfx_textures.py` (dot, spark, ring, shard, puff, glyphs, 64 px light). Accept: `vfx <id>` console capture per emitter in the review sheet; 128-emitter perf scene holds 60 FPS.
+- [ ] W4-A7 `[art-audio]` Shrine, chest, breakable (3), ore vein, elite affix glyph sprites; SFX: status apply per element (7), elite spawn, chest, breakable, shrine pick. Accept: review approved.
 
 ### Checkpoint: Week 4 end
+- [ ] Every W4 `[art-audio]` task has an approved review sheet in `docs/asset-review/week-4/` (or a dated polish-list entry); `build_all.py --check` clean
 - [ ] Pathological proc build holds 60 FPS; 20 relics harness-tested and co-op checked; smoke steps 1 to 6; perf numbers in WEEKLY; `week-4` tagged
 
 ---
@@ -464,6 +499,8 @@ Week 1 is fully detailed. Weeks 2 to 12 are listed with brief acceptance and are
 - [ ] W5-A5 `[classes-characters]` Warrior (Rage, Battle Cry, affinity heavy charge), Ranger (Far Shot, Tumble Volley, +1 pierce), Mage (Arcane Flow, Blink, double element) + Wren (ore +25%, breakage boost), plus affinity hooks.
 - [ ] W5-A6 `[weapons]` `affinity_active_changed` signal, `"affinity"` hit tag, Lantern Staff `.tres` (third starting weapon) so Mage has an affinity weapon.
 - [ ] W5-A7 `[enemies-ai]` `FriendlyUnit` base (`owner_player`, lifetime, follow, Team.PLAYER) for Shadow Clones now and minions later.
+- [ ] W5-A8 `[art-audio]` Wren real body sheet (`tools/art/chars/wren.py`: idle, run, dodge, hurt, downed, death, cast) + attack sheets for 3 weapon types (blade, ranged, magic: light x4, heavy x6) + Lantern Staff held sprite, icon, projectile. Accept: review sheet (all drawn + mirrored rows) and in-engine capture approved by Dev A; `test_assets.gd` frame counts pass.
+- [ ] W5-A9 `[art-audio]` 10 ability icons (`gen_icons.py abilities`, element tints from `palette.ELEMENT`) + 10 `ability_<id>` emitters + `ult_cave_in` emitter; SFX: cast per school for the 5 schools in use, ultimate, class skill x3. Accept: review approved; every `AbilityData.vfx_id`/`sfx_id`/`icon` resolves.
 
 ### Dev B
 - [ ] W5-B1 `[save-system]` `SaveManager` (debounced atomic save, `.bak`, load with migrations, corrupt recovery), `PlayerProfile` with all fields and `defaults()`, `merge_run_gains`.
@@ -472,8 +509,11 @@ Week 1 is fully detailed. Weeks 2 to 12 are listed with brief acceptance and are
 - [ ] W5-B4 `[town]` `town.tscn` v1 (walkable hub, pit edge stage 0, 11 `Building` nodes at level 0 signs, 3 functional: Blacksmith buy weapons, Shrine of Echoes entry stub, Tavern Dive), `Building` container and flow.
 - [ ] W5-B5 `[town]` `RunSetup` flow (character, class, 2 weapons, start floor, ready per player) feeding `GameState.start_run` with `PlayerSpawnInfo`.
 - [ ] W5-B6 `[ui-hud]` Main menu (Solo, Host, Join with IP, Settings stub, Codex stub, Quit), pause overlay, run/inventory screen (Tab), rope vote prompt, death screen from `RunResult`, town menu interactions.
+- [ ] W5-B7 `[art-audio]` Town v1 art: `gen_town.py` ground tiles + props, 11 buildings at L0 (128x128 signs/ruins), pit edge stage 0, Wren portrait (`gen_portraits.py wren`), main menu theme (title font, buttons, IP field), pause and inventory screen theme, death screen theme. Accept: review sheet + town capture approved by Dev B.
+- [ ] W5-B8 `[art-audio]` Music: main menu and town theme (sourced CC0 or `tracker.py` chiptune, loop points set), credited; `tools/audio/tracker.py` + `tools/audio/music/*.json` if generated. Accept: both tracks loop seamlessly in the menu and town; `CREDITS.md` rows present.
 
 ### Checkpoint: Week 5 end (mid-project gate is end of week 6)
+- [ ] Every W5 `[art-audio]` task has an approved review sheet in `docs/asset-review/week-5/` (or a dated polish-list entry); `build_all.py --check` clean
 - [ ] Full loop: town, select, dive, floors, shrine, rune, rope vote, extract or die, bank, town; save survives restart; co-op end to end; `week-5` tagged
 
 ---
@@ -488,6 +528,8 @@ Week 1 is fully detailed. Weeks 2 to 12 are listed with brief acceptance and are
 - [ ] W6-A3 `[bosses]` `BossData`, `BossPhase`, `Boss` + `BossStateMachine` (Intro, Phase, Transition, Stagger, Death with slow-mo, rope spawn), arena scene base, boss bar data.
 - [ ] W6-A4 `[bosses]` Boomer Jack and The Foreman, with each boss's attack set and death reward flow.
 - [ ] W6-A5 `[floor-generation]` Placement rules for SHOP, REST, RUNE, ANVIL, LORE, hazard placement from biome data.
+- [ ] W6-A6 `[art-audio]` Biome 1 real asset pass completion: Dynamite Goblin, Cave Bat Swarm sheets; hazard sprites + animations (falling rocks, mine cart, gas pocket + ignite); Boomer Jack (96, with `special_1..n` per attack, `phase_transition`) and The Foreman (192, intro, slams, summon, cave-in); `dissolve.gdshader`; `boss_death` emitter; torch `PointLight2D` texture. Accept: review sheets + boss arena capture approved; mid-project gate shows no placeholder in Biome 1 pit content.
+- [ ] W6-A7 `[art-audio]` SFX: hazards (rocks, cart, gas), boss roar, boss phase, boss death, Goblin bomb, bat swarm, player death, downed, revive. Accept: review approved.
 
 ### Dev B
 - [ ] W6-B1 `[story-dialogue]` `StoryManager` (flags with namespaces, `flags.json` declaration, `act()`, `evaluate()` condition language, `unlock_lore`), `DialogueData` loader from JSON with schema validation.
@@ -495,11 +537,14 @@ Week 1 is fully detailed. Weeks 2 to 12 are listed with brief acceptance and are
 - [ ] W6-B3 `[story-dialogue]` Act 1 content: early NPC lines + forum topics + boss-defeated reactions; story flags and progression hooks.
 - [ ] W6-B4 `[town]` NPC nodes with `start_dialogue`, Alchemist (slots, heal potion), Map Room (start at reached ropes, next-floor modifier preview), building level sprites x4 states, pit edge staging.
 - [ ] W6-B5 `[run-economy]` Shop and Rest room interactables polished, currency scaling by biome.
+- [ ] W6-B6 `[art-audio]` 8 NPC walk/idle sheets + 8 portraits (Hilde, Gruff, Moss, Pip, Sister Ash, Old Tom, Vesper, rescued miner v1), `DialogueBox` theme (portrait frame, name plate, choice buttons, typewriter blip), lore page UI, codex list theme, Alchemist and Map Room L1 building states. Accept: review sheet + dialogue capture approved.
+- [ ] W6-B7 `[art-audio]` Music: Biome 1 track, mini-boss theme, The Foreman theme; SFX: dialogue blip, lore pickup, shop buy/sell, rest heal. Accept: tracks loop and crossfade in-game; credited.
 
 ### Both
-- [ ] W6-AB1 `[art-audio]` First real assets: player 8-dir sheet, Biome 1 tiles, music placeholder loop, core SFX set; art source decisions recorded.
+- [ ] W6-AB1 `[art-audio]` Mid-project asset gate: both lanes confirm Biome 1 has zero placeholders (tiles, 5 enemies, 2 bosses, hazards, Wren + 3 weapon types, town v1, 8 NPCs + portraits, 5 tracks, core SFX); `docs/asset-review/INDEX.md` lists every week 2 to 6 sheet as `approved` or `polish-list`.
 
 ### Checkpoint: Week 6 end (mid-project gate)
+- [ ] Every W6 `[art-audio]` task has an approved review sheet in `docs/asset-review/week-6/` (or a dated polish-list entry); `build_all.py --check` clean
 - [ ] Biome 1 playable end to end in co-op with relics, abilities, 3 classes, town, story, save; if slipped > 3 days, team meets on cut list; `week-6` tagged
 
 ---
@@ -513,6 +558,8 @@ Week 1 is fully detailed. Weeks 2 to 12 are listed with brief acceptance and are
 - [ ] W7-B2 `[progression-trees]` 38 node effects (`Effect` scripts: stat nodes via `modify`, behavior nodes for dodge/timing/utility), `Progression` graph logic.
 - [ ] W7-B3 `[progression-trees]` `SkillTreeScreen` (pan/zoom canvas, nodes with rank pips, `Line2D` edges, locked/purchasable/bought states, tooltip, branch tabs) opened from Shrine of Echoes and town flow.
 - [ ] W7-B4 `[story-dialogue]` Rescue missions: `rescues.json`, `Cage` interactable placed by generator hook, escort spawn via `EscortNpc`, rope-reach logic, reward flow.
+- [ ] W7-B5 `[art-audio]` Skill tree UI: 38 node icons (`gen_icons.py skills`, branch tints Steel/Grit/Arcane/Delver/Abyss), node frame states (locked/purchasable/bought) + rank pips, edge line texture, tooltip nine-patch, branch tabs; Shrine of Echoes L1 building state. Accept: review sheet + tree capture approved.
+- [ ] W7-B6 `[art-audio]` Rescue mission UI (cage marker, escort HP), Ascension popup theme; SFX: node buy, respec, tab, rescue start/complete. Accept: review approved.
 
 ### Dev A
 - [ ] W7-A1 `[weapons]` Weapon skill trigger (perfect window + heavy, 6 s cooldown), `Channel` state for hold attacks, thrown/recall projectile support, `WaterTile`, `SoulOrb`, `lit` flag.
@@ -521,8 +568,12 @@ Week 1 is fully detailed. Weeks 2 to 12 are listed with brief acceptance and are
 - [ ] W7-A4 `[classes-characters]` Ascension choice flow (after floor 5 boss or at start if deeper; duplicate rejection via host; `ascension_chosen`), Tier 1 Ascensions for a first set of classes.
 - [ ] W7-A5 `[classes-characters]` Class XP earn hooks (kills, floors, bosses by biome) into `RunPlayerState`, mastery thresholds, `class_xp_gained`; skill data and progression integration.
 - [ ] W7-A6 `[enemies-ai]` `EscortNpc` (follow 64 px, Health, flee, teleport catch-up, death fails rescue).
+- [ ] W7-A7 `[art-audio]` 8 weapon held sprites + icons + projectiles (Longsword, Twin Daggers, Sledgehammer, Shortbow, Hand Cannon, Spore Tome, Chain Whip, Grave Scythe), Wren attack sheets for the 2 remaining weapon types (heavy, exotic), `WaterTile`, `SoulOrb` sprites. Accept: review approved.
+- [ ] W7-A8 `[art-audio]` Mutation icon system: 24 overlay glyphs x element/rarity tint composited on weapon icons by `gen_icons.py mutations` from `specs/content/mutations.md`; 60 icons; Anvil, Cage, EscortNpc (48, walk/idle/hurt/death) sprites; Ascension choice icons for the first T1 set. Accept: review approved; `test_assets.gd` icon coverage.
+- [ ] W7-A9 `[art-audio]` SFX: weapon skill trigger x5 types, anvil, channel loop, recall, cage open, escort hurt, level-up/mastery. Accept: review approved.
 
 ### Checkpoint: Week 7 end
+- [ ] Every W7 `[art-audio]` task has an approved review sheet in `docs/asset-review/week-7/` (or a dated polish-list entry); `build_all.py --check` clean
 - [ ] 38 nodes buyable with effects; 10 weapons + 60 mutations; 6 T1 Ascensions; rescue flow; `week-7` tagged
 
 ---
@@ -537,6 +588,9 @@ Week 1 is fully detailed. Weeks 2 to 12 are listed with brief acceptance and are
 - [ ] W8-A3 `[biomes]` Crystal Hollows: `BiomeData` (Crystal, lore 14), 4 enemies and hazards.
 - [ ] W8-A4 `[bosses]` Gem Collector and Prism Queen, with reflective beam and crystal state logic.
 - [ ] W8-A5 `[biomes]` Biome 2/3 lore pages and rare drops plus hidden-room markers.
+- [ ] W8-A6 `[art-audio]` Fungal Caverns pass: `gen_tiles.py fungal_caverns` (+ spore vent, bouncy mushroom, darkness zone hazards), Shroomling, Spore Spitter, Mycel Brute, Glow Moth, Root Strangler sheets, Sporelord Twins (96 x2) and Bloom Mother (192) sheets, `spore_fog.gdshader`, lore page prop. Accept: review sheets + floor and arena captures approved; palette locked.
+- [ ] W8-A7 `[art-audio]` Crystal Hollows pass: `gen_tiles.py crystal_hollows` (+ reflective crystal, beam pillar hazards), Shard Golem, Prism Bat, Geode Turtle, Crystal Mimic sheets, Gem Collector (96 mech) and Prism Queen (192 + mirror copy tint) sheets, `crystal_refract.gdshader`, hidden-room wall marker. Accept: review approved; palette locked.
+- [ ] W8-A8 `[art-audio]` SFX: spore, beam, crystal shatter, split, grab, blind, mimic reveal, 4 boss roars/phases, footsteps fungal + crystal. Accept: review approved.
 
 ### Dev B
 - [ ] W8-B1 `[relics]` Relics 21 to 42 minus two, reaching 40 with actives and harness cases each.
@@ -544,8 +598,11 @@ Week 1 is fully detailed. Weeks 2 to 12 are listed with brief acceptance and are
 - [ ] W8-B3 `[relics]` Codex data for relics seen/picked into profile; Relic Vault codex view v1 in town.
 - [ ] W8-B4 `[story-dialogue]` Act 2 flags and lore JSON, NPC lines and hints for the new zones.
 - [ ] W8-B5 `[networking]` Co-op soak session with simulated latency, fix list triaged into issues.
+- [ ] W8-B6 `[art-audio]` Relic icons 21 to 40 (incl. active relic icons with charge pips), 12 synergy icons + HUD progress pips + active glow texture, Relic Vault codex view theme. Accept: review approved; icon coverage test.
+- [ ] W8-B7 `[art-audio]` Music: Fungal Caverns and Crystal Hollows tracks, Bloom Mother and Prism Queen themes; Act 2 NPC portrait expressions (2 per NPC where dialogue needs them). Accept: credited; crossfade verified.
 
 ### Checkpoint: Week 8 end
+- [ ] Every W8 `[art-audio]` task has an approved review sheet in `docs/asset-review/week-8/` (or a dated polish-list entry); `build_all.py --check` clean
 - [ ] Biomes 1 to 3 playable; 40 relics; 12 synergies active; `week-8` tagged
 
 ---
@@ -564,14 +621,21 @@ Week 1 is fully detailed. Weeks 2 to 12 are listed with brief acceptance and are
 - [ ] W9-A7 `[abilities]` Character ultimates and class twist scripts for all 7 classes.
 - [ ] W9-A8 `[classes-characters]` Additional characters and 28 combos selectable.
 - [ ] W9-A9 `[classes-characters]` Support character unlock flags and affix hooks.
+- [ ] W9-A10 `[art-audio]` Drowned City pass: `gen_tiles.py drowned_city` (+ deep water, current, rising water tile states), Deepkin, Eel Lurker, Drowned Priest, Barnacle Crab, Siren sheets, Captain Saltbones (96 + cannon crew 32) and Tide King (192 + throne) sheets, `water_distort.gdshader`. Accept: review approved; palette locked.
+- [ ] W9-A11 `[art-audio]` Ember Forge pass: `gen_tiles.py ember_forge` (+ lava river, conveyor, molten pour, steam vent), Forge Imp, Slag Golem, Bellows Drone, Clockwork Sentry, Ashen Smith sheets, Iron Maiden (96, 3 mode sheets) and Old Vulkar (192, forged-weapon props) sheets, `heat_haze.gdshader`. Accept: review approved; palette locked.
+- [ ] W9-A12 `[art-audio]` Brann, Ivy, Kestrel body sheets + 5 weapon-type attack sheets each; 9 remaining weapon sprites + icons + projectiles; 20 ability icons + emitters; character and class ultimate emitters (all 7 classes). Accept: review approved; every `AbilityData`, `WeaponData`, `CharacterData` asset field resolves.
+- [ ] W9-A13 `[art-audio]` SFX: remaining cast schools (Earth, Blood, Void, Utility), class skills x4, hazards water/lava/steam, 4 boss cues, footsteps drowned + ember, Siren pull, cannon. Accept: review approved.
 
 ### Dev B
 - [ ] W9-B1 `[story-dialogue]` Rescue data and Act 2 dialogue for all NPCs; Biome 4/5 lore.
 - [ ] W9-B2 `[ui-hud]` Class resource bars, Ascension popup polish, minion/turret count HUD, boss bar with phase markers.
 - [ ] W9-B3 `[town]` Training Grounds v1; Relic Vault pick + Rune Library pick (level 2 behaviors).
 - [ ] W9-B4 `[networking]` 4-instance soak on two machines with simulated lag; external playtest round 1 notes filed.
+- [ ] W9-B5 `[art-audio]` Class resource bars x7, boss bar with phase markers, minion/turret HUD counters, Training Grounds dummies (32, hurt/death) + DPS panel theme, Rune Library and Relic Vault L2 states, Brann/Ivy/Kestrel portraits. Accept: review approved.
+- [ ] W9-B6 `[art-audio]` Music: Drowned City and Ember Forge tracks, Tide King and Old Vulkar themes; SFX: class select UI, Ascension popup. Accept: credited; crossfade verified.
 
 ### Checkpoint: Week 9 end
+- [ ] Every W9 `[art-audio]` task has an approved review sheet in `docs/asset-review/week-9/` (or a dated polish-list entry); `build_all.py --check` clean
 - [ ] Biomes 1 to 5; 19 weapons; 30 abilities; 7 classes T1; 4 characters; external playtest 1 notes; `week-9` tagged
 
 ---
@@ -585,6 +649,8 @@ Week 1 is fully detailed. Weeks 2 to 12 are listed with brief acceptance and are
 - [ ] W10-A2 `[bosses]` The Hollow You, with build snapshot APIs consumed and enemy-side effects.
 - [ ] W10-A3 `[bosses]` The Sinkhole phases 1 and 2, plus phase 3 hook to story resolution logic and duel variants.
 - [ ] W10-A4 `[floor-generation]` Biome 6 generation quirks and floor 30 arena; 500-seed test over all 6 real biomes.
+- [ ] W10-A5 `[art-audio]` The Heart pass: `gen_tiles.py the_heart` (+ spike wall, breathing floor, shrinking room edge), Veinling, Heart Guard, Echo sheets, `corrupted.gdshader` palette swap verified on all 24 prior enemies, The Hollow You (player sheets + corrupted shader + dark aura emitter), The Sinkhole phases 1 to 3 (192; phase 3 size ask-first), `phase_transition` frames, `portal` emitter. Accept: review approved; palette locked.
+- [ ] W10-A6 `[art-audio]` SFX: spike, pulse, shrink, Veinling drain, Echo copy, Hollow You cues, Sinkhole phase 1 to 3 cues, final death; footsteps heart. Accept: review approved.
 
 ### Dev B
 - [ ] W10-B1 `[story-dialogue]` Act 3 flags and all NPC dialogue through Act 3 and endings.
@@ -592,8 +658,11 @@ Week 1 is fully detailed. Weeks 2 to 12 are listed with brief acceptance and are
 - [ ] W10-B3 `[story-dialogue]` Lore to 40+ (Biome 6 + preceding journals), codex screen.
 - [ ] W10-B4 `[ui-hud]` Victory screen, boss name banners, ending credits roll.
 - [ ] W10-B5 `[town]` Pit edge stages 1 to 3 and ending visuals; Rescue Camp with rescued miner NPCs.
+- [ ] W10-B6 `[art-audio]` Victory screen, boss name banners, ending credits roll theme (renders `CREDITS.md` attribution), pit edge stages 1 to 3, Rescue Camp + rescued miner sprites x3 variants, 3 ending scene art (static 960x540 pixel illustrations from generators + palette), codex screen theme. Accept: review approved.
+- [ ] W10-B7 `[art-audio]` Music: The Heart track, The Sinkhole final boss track, victory, death, credits; `vignette_darkness.gdshader`. Accept: 17/17 tracks present; credited; loop points set.
 
 ### Checkpoint: Week 10 end
+- [ ] Every W10 `[art-audio]` task has an approved review sheet in `docs/asset-review/week-10/` (or a dated polish-list entry); `build_all.py --check` clean
 - [ ] Full 30-floor run to each ending in co-op (debug skips allowed); all dialogue; 40+ lore; `week-10` tagged
 
 ---
@@ -610,6 +679,8 @@ Week 1 is fully detailed. Weeks 2 to 12 are listed with brief acceptance and are
 - [ ] W11-A5 `[floor-generation]` CHALLENGE, SECRET, CURSED_ALTAR placement and generation edge cases.
 - [ ] W11-A6 `[bosses]` Secret bosses and hideout triggers.
 - [ ] W11-A7 `[enemies-ai]` Deep Mode extra attack pool per biome and heat-phase data for all bosses.
+- [ ] W11-A8 `[art-audio]` Leviathan's Tooth sprite + icon + 6 mutation icons; mutation icons to 120; Rat King (96), Mushroom Hermit (96), Leviathan (192), Watcher (192) sheets + hideout triggers (hidden wall, golden spore, fishing rod, well eye); Cursed Altar, Challenge and Secret room props; Deep Mode extra attack `special_<n>` frames per boss; alternate ultimate emitters; T2 Ascension icons. Accept: review approved; `test_assets.gd` asserts 16 bosses, 27 enemies, 20 weapons, 120 mutations, 30 abilities.
+- [ ] W11-A9 `[art-audio]` SFX: secret boss cues x4, cursed altar, challenge start/pass/fail, secret room reveal, deep mode toggle; any missing combat id from the full SFX list. Accept: `SfxBank` has no placeholder among Pit-lane ids.
 
 ### Dev B
 - [ ] W11-B1 `[relics]` Relics to 88: Movement, Economy, Transformation (13 Legendary), fillers, remaining actives (8), 8 cursed; `CursedAltar` interactable.
@@ -618,8 +689,11 @@ Week 1 is fully detailed. Weeks 2 to 12 are listed with brief acceptance and are
 - [ ] W11-B4 `[endgame]` Deep Mode (toggle, boss deep phases, deep attacks, loot shift, x1.5 Echo, final mode gating), 10 `HeatModifier` effects with multipliers.
 - [ ] W11-B5 `[endgame]` Daily Dive (date seed, fixed setup from unlocked-at-start content, one attempt, score, local leaderboard 30 days, share code), 50+ `AchievementData` + `AchievementTracker`.
 - [ ] W11-B6 `[ui-hud]` Achievements list screen, Daily Dive board widget, heat selection UI, Wardrobe grid, Bounty Board UI.
+- [ ] W11-B7 `[art-audio]` Relic icons to 88 (13 Legendary frames, 8 cursed), all 11 buildings x L1 to L3 states (44 total), 50+ achievement icons (32x32), Daily Dive board, heat selection, Wardrobe grid + cosmetic sprites (boss hats/skins as overlay sheets), Bounty Board theme, `MasteryScreen` and class tree tab icons for 7 classes. Accept: review approved; `test_assets.gd` asserts 88 relic icons, 44 building states, achievement icon coverage.
+- [ ] W11-B8 `[art-audio]` SFX: achievement unlock, daily start, heat up/down, wardrobe equip, bounty complete, codex unlock; any missing UI id from the full SFX list. Accept: `SfxBank` has no placeholder among Surface-lane ids.
 
 ### Checkpoint: Week 11 end
+- [ ] Every W11 `[art-audio]` task has an approved review sheet in `docs/asset-review/week-11/` (or a dated polish-list entry); `build_all.py --check` clean
 - [ ] Every design doc count met in data tests; `week-11` tagged
 
 ---
@@ -630,20 +704,23 @@ Week 1 is fully detailed. Weeks 2 to 12 are listed with brief acceptance and are
 
 ### Dev A
 - [ ] W12-A1 `[stats-status]`/`[weapons]` Balance pass: damage golden file review with Dev B, weapon feel on Training Grounds, enemy HP/damage curve, boss timings.
-- [ ] W12-A2 `[art-audio]` Final enemy, boss, biome tile art per priority list; VFX per element/ability/relic proc complete.
+- [ ] W12-A2 `[art-audio]` Final in-engine visual pass: stacked 4-player build captured in every biome; readability fixes (silhouette, telegraph frames, VFX clutter) as parameter edits + re-run; every element, ability, relic proc has a distinct VFX verified from the `vfx` console.
 - [ ] W12-A3 `[networking]` Co-op bug fixing from playtests (Dev A's modules). Accept: issue list closed or deferred with notes.
+- [ ] W12-A4 `[art-audio]` Pit-lane polish list: every item rejected twice in weeks 2 to 11 redone and re-reviewed; remaining VFX ids (`relic_proc_<tag>` tints checked per element, `room_clear`, `level_up`, `pickup_sparkle` variants); `build_all.py --check` clean; `docs/asset-review/INDEX.md` shows no `pending` Pit entries.
 
 ### Dev B
 - [ ] W12-B1 `[ui-hud]` Settings: audio buses, video (window, scale, vsync), screen shake, damage numbers toggle, full key rebinding with conflict detection, controller deadzone; persisted.
 - [ ] W12-B2 `[progression-trees]`/`[town]`/`[run-economy]` Economy tuning: tree total in 25 to 40 runs, town ore costs matched, Echo curve, shop prices (`economy.md`).
 - [ ] W12-B3 `[debug-tools]` Release export preset excluding `scripts/debug/`, Windows export verified, debug console absent in export.
 - [ ] W12-B4 `[networking]` Co-op bug fixing (Dev B's modules), simulated-latency pass.
+- [ ] W12-B5 `[art-audio]` Surface-lane polish list: every item rejected twice redone and re-reviewed; settings screen theme; master audio pass (all SFX -16 LUFS short-term, music -14 LUFS, bus defaults); `CREDITS.md` audited against `assets/` by `test_credits.gd`; credits roll shows every CC-BY row; `docs/asset-review/INDEX.md` shows no `pending` entries.
 
 ### Both
-- [ ] W12-AB1 `[art-audio]` Final music tracks, full SFX list, portraits, icons, `CREDITS.md`.
+- [ ] W12-AB1 `[art-audio]` Final asset sign-off: full SFX list and 17 tracks present, every icon and portrait count met, `CREDITS.md` complete and rendered in the credits roll, `build_all.py --check` and `pytest tools/` clean, polish list empty.
 - [ ] W12-AB2 External playtest round 2 (5+ people), 4-player 30-floor run on two or more machines, final WEEKLY entry, `week-12` tag, SPEC-project success criteria all checked.
 
 ### Checkpoint: Complete
+- [ ] Asset inventory in SPEC-art-audio fully present; `test_assets.gd`, `test_credits.gd`, `test_palette.gd` green; no `pending` in `docs/asset-review/INDEX.md`
 - [ ] All SPEC-project success criteria checked
 - [ ] Every module in CAPABILITY_MAP status `done` or dated cut-list entry (expected: none)
 - [ ] Ready for release

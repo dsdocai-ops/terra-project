@@ -16,6 +16,7 @@ Sources: `specs/CAPABILITY_MAP.md` (modules, dependencies, build order), `specs/
 - **Deterministic floors.** Seeded `RandomNumberGenerator` per floor, every peer generates locally, host hash asserts equality, 500-seed soak in CI.
 - **Strict typing, GUT, CI on every PR.** `untyped_declaration` is an error; headless import + GUT gate every merge.
 - **960x540 base, 64x32 isometric tiles, Compatibility renderer, nearest filter, integer scaling.**
+- **Claude Code makes and sources every asset (decision 2026-10-19).** Pixel art from Python/PIL generators in `tools/art/` against a locked per-biome palette; VFX as Godot particles and shaders; SFX from `tools/audio/synth.py`; music sourced CC0/CC-BY or generated chiptune; sourced files only under CC0, CC-BY, OFL, logged in `CREDITS.md`. Developers never draw, record, or compose; they approve review sheets. 4 drawn directions mirrored to 8. Placeholder first, real asset in the same week the content lands.
 - **Ownership lanes.** Lane A owns Pit modules, Lane B owns Surface + Systems modules; cross-owner seams listed in the capability map are PRs into the owning module with the owner's review.
 
 ## Dependency graph (modules)
@@ -76,7 +77,7 @@ Every week has the same checkpoint shape, from `specs/WEEKLY.md`: CI green on `m
 | 9 | Biomes 4 and 5 | Drowned City + Ember Forge, all weapons, all abilities, 4 characters | story dialogue, boss UI, playtest notes, co-op soak | Mid-to-late game content is complete |
 | 10 | Biome 6 + final boss + story | The Heart, The Hollow You, final boss phases | all NPC dialogue, endings, lore codex | Full run loop to ending content is functioning |
 | 11 | Content and endgame | Tier 2 Ascensions, class trees, 120 mutations, secret content, deep mode setup | relic count, progression screens, town upgrades, final endgame systems | All design counts are represented in data tests |
-| 12 | Polish | balance, final art/audio pass, co-op bug fixing | settings, economy tuning, release export, playtests | Final release-ready build and weekly tag |
+| 12 | Polish | balance, asset polish list + final visual pass, co-op bug fixing | settings, asset polish list + master audio + credits, economy tuning, release export, playtests | Final release-ready build and weekly tag |
 
 ## Week 1 in detail
 
@@ -103,19 +104,44 @@ Shared-file rule for week 1: Lane B owns `project.godot` entirely this week (set
 
 Full task text in `tasks/todo.md` under Week 1.
 
+## Asset pipeline (Claude-made, lane-reviewed)
+
+Full rules in `specs/SPEC-art-audio.md`. Summary for planning:
+
+- **Who:** Claude Code produces every asset. Dev A reviews Pit assets (characters, enemies, bosses, weapons, abilities, biome tiles, hazards, combat VFX and SFX). Dev B reviews Surface assets (UI, fonts, relic and skill icons, town, NPCs, portraits, music, UI SFX, `CREDITS.md`).
+- **How:** `tools/art/*.py` (Pillow) generate PNGs from palette-indexed data; `tools/audio/synth.py` and `tracker.py` generate OGG; Godot `GPUParticles2D` scenes and `.gdshader` files for VFX; sourced CC0/CC-BY/OFL files credited in `CREDITS.md`. `build_all.py --check` proves every committed PNG is reproducible.
+- **Review:** every asset PR carries a contact sheet (`tools/art/review_sheet.py`) and an in-engine capture (`tools/art/capture.gd` or Godot MCP) under `docs/asset-review/week-N/`; the owning developer approves or requests changes; two rejections move the item to the week 12 polish list with the placeholder kept. Nothing is cut.
+- **When:** placeholder on day one (week 1 Godot generators), real asset in the week the content lands. Week 12 is polish and sign-off, not production.
+
+| Week | Pit lane assets (Dev A reviews) | Surface lane assets (Dev B reviews) | Review gate |
+|---|---|---|---|
+| 1 | Godot placeholders (W1-A2) | `tools/art`, `tools/audio`, `CREDITS.md` skeletons (W1-AB3) | pipeline exists |
+| 2 | palette + generators; 3 enemies, 2 weapons, hit VFX, combat SFX | synth + UI/icon generators; 3 OFL fonts, UI theme v0, UI SFX | first sheets approved |
+| 3 | Biome 1 tileset real, markers, shadows; rope/door SFX | rope vote and HUD pieces | Biome 1 floor capture |
+| 4 | 8 status + 6 combo emitters, elite shader, VFX textures; shrine, chest, breakables | 20 relic icons, pickups, ChoicePopup theme, minimap, status icons; pickup SFX | 128-emitter perf capture |
+| 5 | Wren body + 3 weapon-type sheets, Lantern Staff, 10 ability icons + VFX, ultimate VFX | town v1 (11 buildings L0, pit edge 0), Wren portrait, menus; menu + town music | town and player captures |
+| 6 | Dynamite Goblin, Cave Bat, hazards, Boomer Jack, The Foreman, dissolve shader, boss SFX | 8 NPC sheets + portraits, DialogueBox, lore UI; Biome 1, mini-boss, Foreman music | **mid-project gate: Biome 1 zero placeholders** |
+| 7 | 8 weapons + icons, 60 mutation icons, Anvil, Cage, EscortNpc, Ascension icons | 38 skill node icons + tree UI, rescue UI; tree SFX | tree and anvil captures |
+| 8 | Fungal + Crystal tilesets, 9 enemies, 4 bosses, 2 shaders | relic icons to 40, 12 synergy icons, codex; 4 tracks | 2 biome captures |
+| 9 | Drowned + Ember tilesets, 10 enemies, 4 bosses; Brann/Ivy/Kestrel sheets; 9 weapons; 20 ability icons + VFX; all ultimates | class bars, boss bar, dummies, portraits x3; 4 tracks | 2 biome captures |
+| 10 | The Heart tileset, 3 enemies, corrupted shader, Hollow You, The Sinkhole x3 phases | victory, banners, credits roll, pit edge 1 to 3, miners, ending art; 5 tracks | final arena capture |
+| 11 | Leviathan's Tooth, 4 secret bosses, mutations to 120, altar/challenge/secret props, deep attack frames | relics to 88, buildings x3 levels, 50+ achievement icons, wardrobe, boards | inventory counts asserted |
+| 12 | polish list, final visual pass | polish list, settings theme, master audio, credits audit | `build_all.py --check` clean, INDEX no `pending` |
+
 ## Verification checkpoints
 
 - **Week 1 day 2:** project imports with zero warnings, folder tree complete, CI runs on an empty-content PR, `Iso` tests pass. Both contributors pull and confirm the editor opens clean.
 - **Week 1 day 4:** `--host` and `--join=127.0.0.1` connect; both players spawn under `World/Players`; placeholder sprites visible on both screens.
 - **Week 1 end:** movement synced with prediction, camera follows, 8-direction facing, `test_iso`, `test_player_facing`, `test_scenes_load`, `test_data_loads`, `test_network_manager` pass, weekly notes updated.
-- **Every later week:** the WEEKLY.md checklist, then tag. From week 4, perf numbers recorded. From week 9, external playtest notes.
-- **Mid-project gate (end of week 6):** Biome 1 playable end to end in co-op with relics, abilities, 3 classes, town, save. If this gate slips by more than 3 days, the team meets to decide whether to thin planned content or extend the milestone.
+- **Every later week:** the WEEKLY.md checklist, then tag. From week 4, perf numbers recorded. From week 9, external playtest notes. Every week: each `[art-audio]` task's review sheet approved by the lane owner, or moved to the polish list with a date.
+- **Mid-project gate (end of week 6):** Biome 1 playable end to end in co-op with relics, abilities, 3 classes, town, save, and zero placeholder assets in Biome 1 content (W6-AB1). If this gate slips by more than 3 days, the team meets to decide whether to thin planned content or extend the milestone.
 
 ## Parallelization
 
 - Lanes are parallel by design. Within a lane, tasks are sequential along the dependency arrows above.
 - Cross-lane seams (capability map) are PRs into the owning module: floor-generation room populators are registered by relics/run-economy; effect-system harness is used by content modules; scenes and shared data contracts are reviewed by the owning lane.
 - Content weeks (8 to 11) parallelize further: Claude Code writes `.tres` and effect scripts in batches per module; the data-driven tests catch count and id mistakes.
+- Asset work parallelizes with logic: Claude generates a biome's sheets and tiles while the same week's logic tasks are in review; asset PRs touch only `assets/`, `tools/`, `docs/asset-review/`, `CREDITS.md`, and the `.tres` asset fields, so they rarely conflict with logic PRs.
 
 ## Risks and mitigations
 
@@ -130,13 +156,16 @@ Full task text in `tasks/todo.md` under Week 1.
 | GitHub Actions Godot 4.7.2 availability | Low | Fall back to downloading the official headless zip by URL |
 | Design doc edits by one developer desync the specs | Medium | Design doc changes go through a PR that also touches the affected specs; data-driven tests assert counts and ids |
 | Week 6 gate slips | High | Explicit mid-project gate; cut list order is pre-agreed in the design doc |
-| Art time in week 12 | Medium | Placeholder generator from week 1 keeps builds playable; priority list in SPEC-art-audio |
+| Art time in week 12 | Medium | Real assets land weekly with the content (asset table above); week 12 is polish only; placeholder generator keeps builds playable |
+| Generated pixel art reads poorly at 1x | Medium | Locked palettes, outline and silhouette rules, review sheet at 1x and 4x, in-engine capture before merge; two rejections send an item to the polish list, never to the cut list |
+| Sourced asset license problem | Medium | Allowed-license list in SPEC-art-audio; `CREDITS.md` row required before commit; `test_credits.gd` fails on an uncredited file |
+| Python tooling drift between machines | Low | Pinned `tools/art/requirements.txt`; `build_all.py --check` is deterministic (same input, same bytes) |
 
 ## Open questions
 
 - GUT exact release and the Actions setup action for 4.7.2 (resolved in the initial setup tasks, written back to the spec files).
 - `AStarGrid2D` vs `NavigationAgent2D` for enemies (week 2, SPEC-enemies-ai).
-- Art source (hand-drawn, commissioned, CC0) by week 6 (SPEC-art-audio).
+- Art source: resolved 2026-10-19, Claude Code generates or sources everything (SPEC-art-audio). Still open there: CI step for `build_all.py --check` (ask first), OGG encoder dependency for `tools/audio/`.
 - Latency simulation implementation (week 4, SPEC-debug-tools).
 - Online Daily Dive leaderboard endpoint (week 11, local is the commitment).
 
