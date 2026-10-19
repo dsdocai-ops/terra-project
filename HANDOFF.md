@@ -168,6 +168,24 @@ filters `scripts/debug/` out never references it. There is no
 lazy-load seam above is the part that must be in place by then (recorded in
 `specs/SPEC-debug-tools.md` open items).
 
+### W2-B6 — AudioManager real implementation + SfxBank placeholders (`art-audio`)
+
+`scripts/autoload/audio_manager.gd` replaces the week-1 stub with the real
+implementation: `play_music(track, fade)` crossfades between two
+`AudioStreamPlayer`s (fade 0 switches instantly), `stop_music(fade)` fades
+out and stops **every** player (so a stop issued mid-crossfade cannot leave
+the incoming track playing), `play_sfx(id, pos, pitch_variance)` plays from a
+pooled `AudioStreamPlayer2D` pool when `pos` is given and a non-positional
+pool otherwise (both capped at 16; a full pool steals the oldest rather than
+dropping a sound), `set_bus_volume(bus, linear)` maps linear→dB on the
+Master/Music/SFX/UI buses, and a missing sfx id logs once and plays a
+placeholder click. Time effects never change pitch. The four buses are
+created at `_ready` if absent (see decision 16). `data/audio/sfx_bank.tres`
+(a `SfxBank` Resource) maps the 20 week-2 ids to placeholder clicks generated
+by `tools/make_placeholder_sfx.gd` under `assets/audio/sfx/<id>.wav`; the
+real synth pipeline (W2-B7 / W2-A13) replaces the files later without
+touching the bank. Tests: `tests/unit/test_audio_manager.gd` (21).
+
 ---
 
 ## Decisions made without a human
@@ -259,6 +277,25 @@ recorded in a spec or a comment, the location is given.
     `.goals/LOG.md`: `give`/`heal` need run-economy/relics/weapons/combat-core,
     `skip` needs floor-generation, `god` is debug-local state until Health
     consumes it.
+16. **W2-B6 AudioManager buses are created at runtime** — SPEC-art-audio names
+    the Master/Music/SFX/UI buses, but the repo ships no
+    `default_bus_layout.tres` and a `project.godot` `[audio]` edit is on the
+    ask-first list, so `AudioManager._ensure_buses()` adds any missing bus
+    idempotently at `_ready` (`AudioServer.add_bus()` + `set_bus_name(...)`;
+    `add_bus()` returns void in 4.7, so the new index is `bus_count - 1`). If
+    a bus layout file ever lands, the runtime path becomes a no-op for
+    existing buses.
+17. **W2-B6 SfxBank is a lazy id→path map, not a preload of streams** —
+    `data/audio/sfx_bank.tres` is a `SfxBank` Resource holding
+    `Dictionary[StringName, String]` res paths; `get_stream(id)` loads the
+    file on first use. That lets `tools/make_placeholder_sfx.gd` write the 20
+    placeholder `.wav`s and the bank in a single pass with no
+    import-ordering dependency (the wavs need not be imported before the bank
+    is saved), and the bank survives later wav re-imports. Generic
+    `hit_light`/`hit_heavy` stand in for the spec's 5 per-weapon-type hits
+    until Dev A's weapons land (blocked on Dev A, W2-A7); the real synth SFX
+    (W2-B7 / W2-A13) swap in by replacing the wav files, without touching the
+    bank.
 
 ---
 

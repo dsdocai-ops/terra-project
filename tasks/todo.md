@@ -416,7 +416,7 @@ Every week carries `[art-audio]` tasks: Claude Code generates or sources every a
 - [x] W2-B3 `[networking]` Enemy and projectile `MultiplayerSpawner`s under `World/Entities`, `StateSync` on enemy base (position, anim, HP), host-only hit resolution verified. Accept: client sees state.
 - [x] W2-B4 `[debug-tools]` Debug console UI + parser + `register()`, core commands (`spawn`, `give`, `gold`, `skip` stub, `seed`, `god`, `kill`, `heal`, `timestop`, `fps`, `dump`), request commands to host.
 - [x] W2-B5 `[ui-hud]` HUD v0: own HP bar, teammate HP bars, weapon slots, floor label placeholder; `HudModel` adapter bound to replicated state; `Theme` v0 with pixel font. Accept: visible in test room.
-- [ ] W2-B6 `[art-audio]` `AudioManager` real implementation (two-player crossfade, pooled SFX, buses), `SfxBank` with placeholder clicks for the week 2 SFX ids.
+- [x] W2-B6 `[art-audio]` `AudioManager` real implementation (two-player crossfade, pooled SFX, buses), `SfxBank` with placeholder clicks for the week 2 SFX ids.
 - [ ] W2-B7 `[art-audio]` Asset pipeline bootstrap (Surface side): `tools/audio/synth.py` + `build_sfx.py` + `tools/audio/tests/`, `tools/art/gen_ui.py`, `tools/art/gen_icons.py`, `CREDITS.md` schema + `test_credits.gd`, `docs/asset-review/INDEX.md`, `tools/art/capture.gd`. Propose (ask first) a CI step for `pytest tools/` and `build_all.py --check`. Accept: pipeline docs in SPEC-art-audio match the files.
 - [ ] W2-B8 `[art-audio]` Source 3 OFL pixel fonts (UI, damage numbers, title) and credit them; UI theme v0 pieces from `gen_ui.py` (panel nine-patch, HP/teammate bars, weapon slot frame, cursor); UI SFX click/hover/confirm/cancel/error synthesized. Accept: review sheet approved by Dev B; HUD v0 uses the theme.
 
