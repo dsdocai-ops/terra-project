@@ -1,6 +1,6 @@
 # SINKHOLE: Game Design Spec (v3)
 
-**Project:** Hack Club Terra game
+**Project:** Godot Developed game
 **Team:** 2 developers, heavy use of Claude Code for implementation and content
 **Engine:** Godot 4.4 or newer (GDScript). Needs 4.3+ for `TileMapLayer`
 **Timeline:** 12 weeks
