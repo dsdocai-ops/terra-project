@@ -18,6 +18,10 @@ const EXPECTED: Dictionary[String, Variant] = {
 	"rendering/2d/snap/snap_2d_transforms_to_pixel": true,
 	"rendering/2d/snap/snap_2d_vertices_to_pixel": true,
 	"physics/common/physics_ticks_per_second": 60,
+	# Movement steps at 60 Hz; the renderer draws between ticks. Without
+	# interpolation a body moves in uneven steps on any display not locked to
+	# 60 Hz while the camera eases every frame, which reads as jitter.
+	"physics/common/physics_interpolation": true,
 	"debug/gdscript/warnings/untyped_declaration": 2,
 	# Ignore, not Warn: the code style uses := everywhere and Warn would flag
 	# every one of them (see SPEC-foundation settings table).

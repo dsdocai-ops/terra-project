@@ -135,6 +135,18 @@ func refresh_authority() -> void:
 		return
 	state_machine.set_physics_process(simulates)
 	state_machine.set_process_unhandled_input(is_local)
+	if is_inside_tree():
+		physics_interpolation_mode = interpolation_mode_for(sync_role())
+
+
+## Simulating copies move on physics ticks and are drawn interpolated
+## between them. Remote copies already ease toward synced_position every
+## rendered frame in _process, so tick interpolation on top would only lag
+## and step them.
+static func interpolation_mode_for(role: SyncRole) -> Node.PhysicsInterpolationMode:
+	if role == SyncRole.REMOTE_INTERPOLATES:
+		return Node.PHYSICS_INTERPOLATION_MODE_OFF
+	return Node.PHYSICS_INTERPOLATION_MODE_INHERIT
 
 
 func _physics_process(_delta: float) -> void:

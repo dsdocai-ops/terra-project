@@ -62,6 +62,14 @@ func test_sync_role_on_the_server_is_host_publishes() -> void:
 	assert_eq(_player.sync_role(), Player.SyncRole.HOST_PUBLISHES)
 
 
+func test_only_remote_copies_opt_out_of_tick_interpolation() -> void:
+	assert_eq(Player.interpolation_mode_for(Player.SyncRole.HOST_PUBLISHES), Node.PHYSICS_INTERPOLATION_MODE_INHERIT)
+	assert_eq(Player.interpolation_mode_for(Player.SyncRole.LOCAL_PREDICTS), Node.PHYSICS_INTERPOLATION_MODE_INHERIT)
+	assert_eq(Player.interpolation_mode_for(Player.SyncRole.REMOTE_INTERPOLATES), Node.PHYSICS_INTERPOLATION_MODE_OFF,
+		"remote copies ease every rendered frame already")
+	assert_eq(_player.physics_interpolation_mode, Node.PHYSICS_INTERPOLATION_MODE_INHERIT, "host copy applied on ready")
+
+
 func test_current_anim_setter_replays_sprite_for_remote_copies() -> void:
 	_player.current_anim = "walk"
 	assert_eq(_player.sprite.animation, &"walk_s")

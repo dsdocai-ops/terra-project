@@ -13,6 +13,12 @@ extends Camera2D
 ## the fixed design viewport, so host and predicting client agree on it
 ## regardless of smoothing, zoom easing, or which camera is current
 ## (Player.apply_coop_clamp). The camera merely displays the same framing.
+##
+## Framing runs on physics ticks, the same clock that moves the players.
+## Physics interpolation (project setting) then draws both between ticks, so
+## a player holds still on screen while walking. Framing in _process instead
+## moves the camera every rendered frame while players move only on ticks,
+## which shows as player jitter.
 
 const MIN_ZOOM := 0.6
 const MAX_ZOOM := 1.0
@@ -41,7 +47,13 @@ var _trauma_decay_per_second: float = 0.0
 var _was_shaking: bool = false
 
 
-func _process(delta: float) -> void:
+func _init() -> void:
+	# Engine default is idle; physics interpolation needs tick-rate smoothing.
+	# world.tscn sets it too, because scene properties apply before the script.
+	process_callback = Camera2D.CAMERA2D_PROCESS_PHYSICS
+
+
+func _physics_process(delta: float) -> void:
 	update_framing(delta)
 
 
