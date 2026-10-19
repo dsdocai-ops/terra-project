@@ -422,7 +422,8 @@ Every week carries `[art-audio]` tasks: Claude Code generates or sources every a
 
 ### Checkpoint: Week 2 end
 - [ ] Every W2 `[art-audio]` task has an approved review sheet in `docs/asset-review/week-2/` (or a dated polish-list entry); `build_all.py --check` clean
-- [ ] Two-instance smoke steps 1 to 3; manual feel pass recorded; all W2 tests green; `week-2` tagged
+- [x] Two-instance smoke steps 1 to 3 (`tools/smoke_two.sh` 28/28 ok, exit 0); manual feel pass recorded in WEEKLY; all W2 tests green in GUT (338/338)
+- [ ] `week-2` tagged — **blocked on Dev A**: W2-A1..A13 not landed, so the full Week 2 checkpoint (incl. Dev A's tasks) hasn't passed; state recorded in WEEKLY (BRIEF Assumption 10)
 
 ---
 
