@@ -1,0 +1,92 @@
+{
+  "_comment": "Golden table for Damage.compute (SPEC-stats-status). Every expected value is hand-computed from the reference formula below so balance changes are explicit diffs (reviewed by both developers during the week-12 balance pass).",
+  "reference_formula": "raw = hit.base_damage * (attacker.ATTACK / 100.0) * hit.ability_power_scale(attacker.ABILITY_POWER); crit = hit.force_crit or (host_rng.randf() < CRIT_CHANCE + hit.bonus_crit_chance); crit_mult = 1.5 + CRIT_DAMAGE if crit else 1.0; status_mult = 1.0 (StatusEffects terms land week 4); defense = max(target.DEFENSE, 0); mitigation = 100.0 / (100.0 + defense); final = round(raw * crit_mult * status_mult * hit.multiplier * mitigation), minimum 1 on a connecting hit",
+  "ability_power_scale": "HitData.ability_power_scale(ap): 1.0 unless scales_with_ability_power, then max(1.0 + (ap - 100.0) / 100.0, 0.0). Choice recorded in .goals/LOG.md — the exact curve is HitInfo's (Dev A, combat-core) and the week-12 balance pass revises it here.",
+  "crit_roll_note": "Golden cases use CRIT_CHANCE exactly 0.0 (never crit) or 1.0 (always crit, randf() in [0,1)), or force_crit (Mark) — so expectations are RNG-independent. In-between chances are covered by a seeded band test in test_damage.gd.",
+  "cases": [
+    {
+      "name": "plain_hit_no_stats",
+      "attacker_base": { "MAX_HP": 100.0, "ATTACK": 100.0, "DEFENSE": 0.0, "MOVE_SPEED": 120.0, "ATTACK_SPEED": 1.0, "DODGE_COOLDOWN": 0.8, "CRIT_CHANCE": 0.0, "CRIT_DAMAGE": 0.0, "ABILITY_POWER": 100.0, "COOLDOWN_REDUCTION": 0.0, "LUCK": 0.0 },
+      "target_base": { "MAX_HP": 100.0, "ATTACK": 10.0, "DEFENSE": 0.0, "MOVE_SPEED": 80.0, "ATTACK_SPEED": 1.0, "DODGE_COOLDOWN": 0.8, "CRIT_CHANCE": 0.0, "CRIT_DAMAGE": 0.0, "ABILITY_POWER": 100.0, "COOLDOWN_REDUCTION": 0.0, "LUCK": 0.0 },
+      "hit": { "base_damage": 20.0, "multiplier": 1.0, "bonus_crit_chance": 0.0, "element": "NONE", "tags": ["melee"] },
+      "expected": 20
+    },
+    {
+      "name": "attack_above_100_scales_up",
+      "attacker_base": { "MAX_HP": 100.0, "ATTACK": 150.0, "DEFENSE": 0.0, "MOVE_SPEED": 120.0, "ATTACK_SPEED": 1.0, "DODGE_COOLDOWN": 0.8, "CRIT_CHANCE": 0.0, "CRIT_DAMAGE": 0.0, "ABILITY_POWER": 100.0, "COOLDOWN_REDUCTION": 0.0, "LUCK": 0.0 },
+      "target_base": { "MAX_HP": 100.0, "ATTACK": 10.0, "DEFENSE": 0.0, "MOVE_SPEED": 80.0, "ATTACK_SPEED": 1.0, "DODGE_COOLDOWN": 0.8, "CRIT_CHANCE": 0.0, "CRIT_DAMAGE": 0.0, "ABILITY_POWER": 100.0, "COOLDOWN_REDUCTION": 0.0, "LUCK": 0.0 },
+      "hit": { "base_damage": 20.0, "multiplier": 1.0, "bonus_crit_chance": 0.0, "element": "NONE", "tags": ["melee"] },
+      "expected": 30
+    },
+    {
+      "name": "defense_mitigates_at_50",
+      "attacker_base": { "MAX_HP": 100.0, "ATTACK": 100.0, "DEFENSE": 0.0, "MOVE_SPEED": 120.0, "ATTACK_SPEED": 1.0, "DODGE_COOLDOWN": 0.8, "CRIT_CHANCE": 0.0, "CRIT_DAMAGE": 0.0, "ABILITY_POWER": 100.0, "COOLDOWN_REDUCTION": 0.0, "LUCK": 0.0 },
+      "target_base": { "MAX_HP": 100.0, "ATTACK": 10.0, "DEFENSE": 50.0, "MOVE_SPEED": 80.0, "ATTACK_SPEED": 1.0, "DODGE_COOLDOWN": 0.8, "CRIT_CHANCE": 0.0, "CRIT_DAMAGE": 0.0, "ABILITY_POWER": 100.0, "COOLDOWN_REDUCTION": 0.0, "LUCK": 0.0 },
+      "hit": { "base_damage": 20.0, "multiplier": 1.0, "bonus_crit_chance": 0.0, "element": "NONE", "tags": ["melee"] },
+      "expected": 13
+    },
+    {
+      "name": "defense_at_100",
+      "attacker_base": { "MAX_HP": 100.0, "ATTACK": 100.0, "DEFENSE": 0.0, "MOVE_SPEED": 120.0, "ATTACK_SPEED": 1.0, "DODGE_COOLDOWN": 0.8, "CRIT_CHANCE": 0.0, "CRIT_DAMAGE": 0.0, "ABILITY_POWER": 100.0, "COOLDOWN_REDUCTION": 0.0, "LUCK": 0.0 },
+      "target_base": { "MAX_HP": 100.0, "ATTACK": 10.0, "DEFENSE": 100.0, "MOVE_SPEED": 80.0, "ATTACK_SPEED": 1.0, "DODGE_COOLDOWN": 0.8, "CRIT_CHANCE": 0.0, "CRIT_DAMAGE": 0.0, "ABILITY_POWER": 100.0, "COOLDOWN_REDUCTION": 0.0, "LUCK": 0.0 },
+      "hit": { "base_damage": 20.0, "multiplier": 1.0, "bonus_crit_chance": 0.0, "element": "NONE", "tags": ["melee"] },
+      "expected": 10
+    },
+    {
+      "name": "negative_defense_does_not_amplify",
+      "attacker_base": { "MAX_HP": 100.0, "ATTACK": 100.0, "DEFENSE": 0.0, "MOVE_SPEED": 120.0, "ATTACK_SPEED": 1.0, "DODGE_COOLDOWN": 0.8, "CRIT_CHANCE": 0.0, "CRIT_DAMAGE": 0.0, "ABILITY_POWER": 100.0, "COOLDOWN_REDUCTION": 0.0, "LUCK": 0.0 },
+      "target_base": { "MAX_HP": 100.0, "ATTACK": 10.0, "DEFENSE": -50.0, "MOVE_SPEED": 80.0, "ATTACK_SPEED": 1.0, "DODGE_COOLDOWN": 0.8, "CRIT_CHANCE": 0.0, "CRIT_DAMAGE": 0.0, "ABILITY_POWER": 100.0, "COOLDOWN_REDUCTION": 0.0, "LUCK": 0.0 },
+      "hit": { "base_damage": 20.0, "multiplier": 1.0, "bonus_crit_chance": 0.0, "element": "NONE", "tags": ["melee"] },
+      "expected": 20
+    },
+    {
+      "name": "high_defense_floors_at_minimum_one",
+      "attacker_base": { "MAX_HP": 100.0, "ATTACK": 100.0, "DEFENSE": 0.0, "MOVE_SPEED": 120.0, "ATTACK_SPEED": 1.0, "DODGE_COOLDOWN": 0.8, "CRIT_CHANCE": 0.0, "CRIT_DAMAGE": 0.0, "ABILITY_POWER": 100.0, "COOLDOWN_REDUCTION": 0.0, "LUCK": 0.0 },
+      "target_base": { "MAX_HP": 100.0, "ATTACK": 10.0, "DEFENSE": 990000.0, "MOVE_SPEED": 80.0, "ATTACK_SPEED": 1.0, "DODGE_COOLDOWN": 0.8, "CRIT_CHANCE": 0.0, "CRIT_DAMAGE": 0.0, "ABILITY_POWER": 100.0, "COOLDOWN_REDUCTION": 0.0, "LUCK": 0.0 },
+      "hit": { "base_damage": 20.0, "multiplier": 1.0, "bonus_crit_chance": 0.0, "element": "NONE", "tags": ["melee"] },
+      "expected": 1
+    },
+    {
+      "name": "multiplier_scales_the_final_value",
+      "attacker_base": { "MAX_HP": 100.0, "ATTACK": 100.0, "DEFENSE": 0.0, "MOVE_SPEED": 120.0, "ATTACK_SPEED": 1.0, "DODGE_COOLDOWN": 0.8, "CRIT_CHANCE": 0.0, "CRIT_DAMAGE": 0.0, "ABILITY_POWER": 100.0, "COOLDOWN_REDUCTION": 0.0, "LUCK": 0.0 },
+      "target_base": { "MAX_HP": 100.0, "ATTACK": 10.0, "DEFENSE": 0.0, "MOVE_SPEED": 80.0, "ATTACK_SPEED": 1.0, "DODGE_COOLDOWN": 0.8, "CRIT_CHANCE": 0.0, "CRIT_DAMAGE": 0.0, "ABILITY_POWER": 100.0, "COOLDOWN_REDUCTION": 0.0, "LUCK": 0.0 },
+      "hit": { "base_damage": 20.0, "multiplier": 1.75, "bonus_crit_chance": 0.0, "element": "NONE", "tags": ["backstab"] },
+      "expected": 35
+    },
+    {
+      "name": "crit_uses_crit_damage_multiplier",
+      "attacker_base": { "MAX_HP": 100.0, "ATTACK": 100.0, "DEFENSE": 0.0, "MOVE_SPEED": 120.0, "ATTACK_SPEED": 1.0, "DODGE_COOLDOWN": 0.8, "CRIT_CHANCE": 1.0, "CRIT_DAMAGE": 0.5, "ABILITY_POWER": 100.0, "COOLDOWN_REDUCTION": 0.0, "LUCK": 0.0 },
+      "target_base": { "MAX_HP": 100.0, "ATTACK": 10.0, "DEFENSE": 0.0, "MOVE_SPEED": 80.0, "ATTACK_SPEED": 1.0, "DODGE_COOLDOWN": 0.8, "CRIT_CHANCE": 0.0, "CRIT_DAMAGE": 0.0, "ABILITY_POWER": 100.0, "COOLDOWN_REDUCTION": 0.0, "LUCK": 0.0 },
+      "hit": { "base_damage": 20.0, "multiplier": 1.0, "bonus_crit_chance": 0.0, "element": "NONE", "tags": ["melee"] },
+      "expected": 40
+    },
+    {
+      "name": "mark_forces_crit_even_at_zero_chance",
+      "attacker_base": { "MAX_HP": 100.0, "ATTACK": 100.0, "DEFENSE": 0.0, "MOVE_SPEED": 120.0, "ATTACK_SPEED": 1.0, "DODGE_COOLDOWN": 0.8, "CRIT_CHANCE": 0.0, "CRIT_DAMAGE": 0.0, "ABILITY_POWER": 100.0, "COOLDOWN_REDUCTION": 0.0, "LUCK": 0.0 },
+      "target_base": { "MAX_HP": 100.0, "ATTACK": 10.0, "DEFENSE": 0.0, "MOVE_SPEED": 80.0, "ATTACK_SPEED": 1.0, "DODGE_COOLDOWN": 0.8, "CRIT_CHANCE": 0.0, "CRIT_DAMAGE": 0.0, "ABILITY_POWER": 100.0, "COOLDOWN_REDUCTION": 0.0, "LUCK": 0.0 },
+      "hit": { "base_damage": 20.0, "multiplier": 1.0, "bonus_crit_chance": 0.0, "element": "NONE", "tags": ["melee"], "force_crit": true },
+      "expected": 30
+    },
+    {
+      "name": "bonus_crit_chance_adds_to_crit",
+      "attacker_base": { "MAX_HP": 100.0, "ATTACK": 100.0, "DEFENSE": 0.0, "MOVE_SPEED": 120.0, "ATTACK_SPEED": 1.0, "DODGE_COOLDOWN": 0.8, "CRIT_CHANCE": 0.5, "CRIT_DAMAGE": 0.0, "ABILITY_POWER": 100.0, "COOLDOWN_REDUCTION": 0.0, "LUCK": 0.0 },
+      "target_base": { "MAX_HP": 100.0, "ATTACK": 10.0, "DEFENSE": 0.0, "MOVE_SPEED": 80.0, "ATTACK_SPEED": 1.0, "DODGE_COOLDOWN": 0.8, "CRIT_CHANCE": 0.0, "CRIT_DAMAGE": 0.0, "ABILITY_POWER": 100.0, "COOLDOWN_REDUCTION": 0.0, "LUCK": 0.0 },
+      "hit": { "base_damage": 20.0, "multiplier": 1.0, "bonus_crit_chance": 0.5, "element": "NONE", "tags": ["melee"] },
+      "expected": 30
+    },
+    {
+      "name": "ability_power_scales_raw",
+      "attacker_base": { "MAX_HP": 100.0, "ATTACK": 100.0, "DEFENSE": 0.0, "MOVE_SPEED": 120.0, "ATTACK_SPEED": 1.0, "DODGE_COOLDOWN": 0.8, "CRIT_CHANCE": 0.0, "CRIT_DAMAGE": 0.0, "ABILITY_POWER": 150.0, "COOLDOWN_REDUCTION": 0.0, "LUCK": 0.0 },
+      "target_base": { "MAX_HP": 100.0, "ATTACK": 10.0, "DEFENSE": 0.0, "MOVE_SPEED": 80.0, "ATTACK_SPEED": 1.0, "DODGE_COOLDOWN": 0.8, "CRIT_CHANCE": 0.0, "CRIT_DAMAGE": 0.0, "ABILITY_POWER": 100.0, "COOLDOWN_REDUCTION": 0.0, "LUCK": 0.0 },
+      "hit": { "base_damage": 20.0, "multiplier": 1.0, "bonus_crit_chance": 0.0, "element": "NONE", "tags": ["ability"], "scales_with_ability_power": true },
+      "expected": 30
+    },
+    {
+      "name": "combined_all_together",
+      "attacker_base": { "MAX_HP": 100.0, "ATTACK": 120.0, "DEFENSE": 0.0, "MOVE_SPEED": 120.0, "ATTACK_SPEED": 1.0, "DODGE_COOLDOWN": 0.8, "CRIT_CHANCE": 1.0, "CRIT_DAMAGE": 0.25, "ABILITY_POWER": 100.0, "COOLDOWN_REDUCTION": 0.0, "LUCK": 0.0 },
+      "target_base": { "MAX_HP": 100.0, "ATTACK": 10.0, "DEFENSE": 100.0, "MOVE_SPEED": 80.0, "ATTACK_SPEED": 1.0, "DODGE_COOLDOWN": 0.8, "CRIT_CHANCE": 0.0, "CRIT_DAMAGE": 0.0, "ABILITY_POWER": 100.0, "COOLDOWN_REDUCTION": 0.0, "LUCK": 0.0 },
+      "hit": { "base_damage": 20.0, "multiplier": 1.5, "bonus_crit_chance": 0.0, "element": "NONE", "tags": ["heavy"] },
+      "expected": 32
+    }
+  ]
+}

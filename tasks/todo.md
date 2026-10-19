@@ -389,7 +389,7 @@ Week 1 is fully detailed. Weeks 2 to 12 are listed with brief acceptance and are
 
 ### Dev B
 - [x] W2-B1 `[time-manager]` `scale_for`, groups, slow/stop stack, per-entity scale, `hit_stop`, `timer`, RPC broadcast of effects. Accept: spec API; players unaffected by enemy slow.
-- [ ] W2-B2 `[stats-status]` `StatBlock` (11 stats, flat then percent, handles, `remove_source`, clamps, MAX_HP ratio) + `Damage.compute` + golden file. Accept: spec formula.
+- [x] W2-B2 `[stats-status]` `StatBlock` (11 stats, flat then percent, handles, `remove_source`, clamps, MAX_HP ratio) + `Damage.compute` + golden file. Accept: spec formula.
 - [ ] W2-B3 `[networking]` Enemy and projectile `MultiplayerSpawner`s under `World/Entities`, `StateSync` on enemy base (position, anim, HP), host-only hit resolution verified. Accept: client sees state.
 - [ ] W2-B4 `[debug-tools]` Debug console UI + parser + `register()`, core commands (`spawn`, `give`, `gold`, `skip` stub, `seed`, `god`, `kill`, `heal`, `timestop`, `fps`, `dump`), request commands to host.
 - [ ] W2-B5 `[ui-hud]` HUD v0: own HP bar, teammate HP bars, weapon slots, floor label placeholder; `HudModel` adapter bound to replicated state; `Theme` v0 with pixel font. Accept: visible in test room.
