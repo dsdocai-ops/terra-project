@@ -94,13 +94,19 @@ Each stub is a typed script with the public API shape its owning module will fil
 World (Node2D, y_sort_enabled = true)
   Floor (TileMapLayer, ground)
   Walls (TileMapLayer, y_sort_enabled, collision)
-  Entities (Node2D, y_sort_enabled)      players, enemies, pickups, projectiles spawn here
-  Players (Node2D)                        MultiplayerSpawner target, see SPEC-networking
+  Entities (Node2D, y_sort_enabled)      enemies, pickups, projectiles spawn here
+  Players (Node2D, y_sort_enabled)       players spawn here (MultiplayerSpawner target, see SPEC-networking).
+                                          Must be Y-sorted itself: Godot only interleaves a child container's
+                                          children with its siblings when that container is Y-sorted too
   Camera (Camera2D)                       owned by player-controller
   FX (Node2D)                             particles, damage numbers, no y-sort
 ```
 
-Helper `Iso` static class in `scripts/iso.gd`: `to_screen(tile: Vector2i) -> Vector2`, `to_tile(screen: Vector2) -> Vector2i`, `input_to_world(dir: Vector2) -> Vector2` (rotates WASD onto isometric axes, normalizes so diagonal and cardinal speeds match on screen).
+Helper `Iso` static class in `scripts/iso.gd`: `to_screen(tile: Vector2i) -> Vector2`, `to_tile(screen: Vector2) -> Vector2i`, `input_to_world(dir: Vector2) -> Vector2`.
+
+`to_screen` / `to_tile` match `TileMapLayer.map_to_local` / `local_to_map` exactly for isometric diamond-down 64x32 (tile (0, 0) centers at (32, 16); +x runs down-right, +y down-left); tests assert this against a real layer.
+
+`input_to_world` definition (decided 2026-10-18): cardinal inputs stay screen-aligned (W is screen up, D is screen right); diagonal inputs land on the tile axes (W+D moves along the -y tile axis, 26.565 degrees above horizontal on screen). The result keeps the input's magnitude, so all eight directions move at the same on-screen pixel speed. Consequence: the eight movement directions are the eight compass directions of the tile grid, not eight equal 45 degree steps. Facing sectors (`Facing`, player-controller) follow the same eight directions.
 
 ### Test harness and CI
 

@@ -105,6 +105,8 @@ res://
     unit/                     mirrors scripts/: test_stat_block.gd, test_status_effects.gd, ...
     integration/              test_floor_generation_seeds.gd, test_relic_triggers.gd, test_save_migration.gd, ...
     helpers/                  test doubles, fixture builders
+  tools/                    headless CLI scripts run with `godot --headless -s` (placeholder art
+                            generators, sprite sheet import, floor seed soak, two-instance launcher)
   specs/                      this folder
   .github/workflows/ci.yml
 ```

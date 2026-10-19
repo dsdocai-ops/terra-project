@@ -1,0 +1,31 @@
+[gd_scene format=3 uid="uid://by1cgopdo54yx"]
+
+[ext_resource type="Script" uid="uid://bix1usvvbnvu2" path="res://scenes/main/world.gd" id="1_world"]
+[ext_resource type="TileSet" uid="uid://b3p4wi6gx4vcy" path="res://assets/tilesets/placeholder_iso.tres" id="2_tiles"]
+[ext_resource type="Script" uid="uid://bviumtmpmifqg" path="res://scenes/main/camera.gd" id="3_camera"]
+
+[node name="World" type="Node2D"]
+y_sort_enabled = true
+script = ExtResource("1_world")
+
+[node name="Floor" type="TileMapLayer" parent="."]
+tile_set = ExtResource("2_tiles")
+collision_enabled = false
+
+[node name="Walls" type="TileMapLayer" parent="."]
+y_sort_enabled = true
+tile_set = ExtResource("2_tiles")
+
+[node name="Entities" type="Node2D" parent="."]
+y_sort_enabled = true
+
+[node name="Players" type="Node2D" parent="."]
+y_sort_enabled = true
+
+[node name="Camera" type="Camera2D" parent="."]
+position_smoothing_enabled = true
+position_smoothing_speed = 8.0
+script = ExtResource("3_camera")
+track_container = NodePath("../Players")
+
+[node name="FX" type="Node2D" parent="."]

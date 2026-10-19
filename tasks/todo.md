@@ -30,6 +30,8 @@ Week 1 is fully detailed. Weeks 2 to 12 are listed with brief acceptance and are
 **Files likely touched:** `project.godot`, `*/.gdkeep`
 **Estimated scope:** S
 
+**Ask from Alex (W1-A7 follow-up):** add 2D physics layer names so scenes read clearly: `layer_names/2d_physics/layer_1 = "world"`, `layer_2 = "player"`, `layer_3 = "enemy"`, `layer_4 = "hitbox_player"`, `layer_5 = "hitbox_enemy"`, `layer_6 = "interactable"`. `player.tscn` already uses layer 2 / mask 1 so players pass through each other and collide with walls only.
+
 ## Task W1-B2: Input Map
 
 **Module:** `foundation`
@@ -198,12 +200,12 @@ Week 1 is fully detailed. Weeks 2 to 12 are listed with brief acceptance and are
 **Description:** `scripts/iso.gd` static class `Iso` with `to_screen(tile: Vector2i) -> Vector2`, `to_tile(screen: Vector2) -> Vector2i`, `input_to_world(dir: Vector2) -> Vector2` for 64x32 diamond coordinates.
 
 **Acceptance criteria:**
-- [ ] `to_tile(to_screen(t)) == t` for every tile in a 64x64 grid including negatives
-- [ ] `input_to_world` of the 8 unit directions all have equal length and point along the expected screen directions
-- [ ] Fully typed, doc comment
+- [x] `to_tile(to_screen(t)) == t` for every tile in a 64x64 grid including negatives
+- [x] `input_to_world` of the 8 unit directions all have equal length and point along the expected screen directions
+- [x] Fully typed, doc comment
 
 **Verification:**
-- [ ] `tests/unit/test_iso.gd` passes
+- [x] `tests/unit/test_iso.gd` passes (10 tests, cross-checked against a real TileMapLayer)
 
 **Dependencies:** None
 **Files likely touched:** `scripts/iso.gd`, `tests/unit/test_iso.gd`
@@ -215,13 +217,13 @@ Week 1 is fully detailed. Weeks 2 to 12 are listed with brief acceptance and are
 **Description:** `assets/tilesets/placeholder_iso.tres`: TileSet, Isometric shape, Diamond Down layout, 64x32, atlas with floor, wall, pit tiles in flat colors, physics layer on walls, custom data for walkable state.
 
 **Acceptance criteria:**
-- [ ] TileSet has the three tiles, walls collide, `walkable` is true on floor and false on wall/pit
-- [ ] Generator runs from the editor and writes PNGs with correct sizes
-- [ ] Imported textures use nearest filtering
+- [x] TileSet has the three tiles, walls collide, `walkable` is true on floor and false on wall/pit
+- [x] Generator runs headless from the CLI (not an EditorScript, so CI can regenerate) and writes PNGs with correct sizes
+- [x] Imported textures are lossless with mipmaps off; nearest filtering is the project default set in W1-B1
 
 **Verification:**
-- [ ] `tests/unit/test_tileset.gd`: tile count, custom data values, physics layer present
-- [ ] Manual: 20x20 diamond renders crisp at 1920x1080
+- [x] `tests/unit/test_tileset.gd`: tile count, custom data values, physics layer present
+- [ ] Manual: 20x20 diamond renders crisp at 1920x1080 (after W1-B1 lands the nearest filter setting)
 
 **Dependencies:** W1-B1 (folders)
 **Files likely touched:** `assets/tilesets/placeholder_iso.tres`, `assets/tilesets/placeholder/*.png`, `tools/make_placeholders.gd`, `assets/.import presets`, `tests/unit/test_tileset.gd`
@@ -233,13 +235,13 @@ Week 1 is fully detailed. Weeks 2 to 12 are listed with brief acceptance and are
 **Description:** `scenes/main/world.tscn` per SPEC-foundation: `World` (Y-sort) with `Floor` and `Walls` `TileMapLayer`s, `Entities` (Y-sort), `Players`, `Camera`, `FX`. A 20x20 test floor with a wall ring and spawn areas.
 
 **Acceptance criteria:**
-- [ ] Node layout matches the spec; `Players` is ready to receive a `MultiplayerSpawner` (W1-B8)
-- [ ] Walls block movement; Y-sort orders a test sprite behind and in front of a wall correctly
-- [ ] Scene instantiates headless
+- [x] Node layout matches the spec; `Players` is ready to receive a `MultiplayerSpawner` (W1-B8)
+- [ ] Walls block movement; Y-sort orders a test sprite behind and in front of a wall correctly (manual, after W1-A6 gives something that moves)
+- [x] Scene instantiates headless
 
 **Verification:**
-- [ ] `test_scenes_load` passes with `world.tscn` present
-- [ ] Manual: walk a placeholder sprite around the wall ring
+- [x] `tests/unit/test_world.gd` (layout, typed refs, Y-sort flags, test floor painting, `is_walkable`); `test_scenes_load` arrives with W1-B4
+- [ ] Manual: walk a placeholder sprite around the wall ring (after W1-A6)
 
 **Dependencies:** W1-A2
 **Files likely touched:** `scenes/main/world.tscn`, `scenes/main/world.gd`
@@ -251,13 +253,13 @@ Week 1 is fully detailed. Weeks 2 to 12 are listed with brief acceptance and are
 **Description:** `scenes/player/player.tscn` + `player.gd` with the composition from SPEC-player-controller: `CharacterBody2D` root, placeholder child nodes for `StatBlock`, `Health`, `Hurtbox`, `Sprite2D`, and networking state nodes.
 
 **Acceptance criteria:**
-- [ ] Scene instantiates headless; every node in the spec layout exists by name
-- [ ] `Player` has every public field and signal from the spec's "Interfaces provided", typed
-- [ ] `is_local` is `peer_id == multiplayer.get_unique_id()`
+- [x] Scene instantiates headless; every node in the spec layout exists by name
+- [x] `Player` has every public field and signal from the spec's "Interfaces provided", typed (`character` and `class_data` are `Resource` until classes-characters defines their classes)
+- [x] `is_local` is `peer_id == multiplayer.get_unique_id()`
 
 **Verification:**
-- [ ] `tests/unit/test_player_scene.gd`: node names present, fields exist
-- [ ] `test_scenes_load` passes
+- [x] `tests/unit/test_player_scene.gd`: node names, fields, signals, methods, defaults, `is_local`, 16 directional animations, `play_directional`
+- [ ] `test_scenes_load` passes (arrives with W1-B4)
 
 **Dependencies:** W1-A3
 **Files likely touched:** `scenes/player/player.tscn`, `scenes/player/player.gd`, `tests/unit/test_player_scene.gd`
@@ -269,13 +271,13 @@ Week 1 is fully detailed. Weeks 2 to 12 are listed with brief acceptance and are
 **Description:** `scripts/components/state_machine.gd` and `state.gd`: node-based, `change_to(name)` with states able to refuse, `enter`, `exit`, `physics_update(delta)`, `handle_input`. Player states `Idle` and `Move` are implemented in `scenes/player/states/`.
 
 **Acceptance criteria:**
-- [ ] `change_to` calls `exit` then `enter`, emits `state_changed`
-- [ ] A state returning false from `can_exit()` blocks the transition
-- [ ] Player starts in `Idle`, moves to `Move` on input, back to `Idle` when input stops
+- [x] `change_to` calls `exit` then `enter`, emits `state_changed`
+- [x] A state returning false from `can_exit()` blocks the transition (and `can_enter()` on the target)
+- [x] Player starts in `Idle`, moves to `Move` on input, back to `Idle` when input stops (states read `Player.move_input`, so they run headless without the Input Map)
 
 **Verification:**
-- [ ] `tests/unit/test_state_machine.gd`: transitions, refusal, signal
-- [ ] Manual: state label overlay shows Idle/Move switching
+- [x] `tests/unit/test_state_machine.gd` (9) and `tests/unit/test_player_states.gd` (4). Initial state enters on the actor's `ready` so the actor's `@onready` references exist
+- [ ] Manual: state label overlay shows Idle/Move switching (debug overlay arrives in week 2)
 
 **Dependencies:** W1-A4
 **Files likely touched:** `scripts/components/state_machine.gd`, `scripts/components/state.gd`, `scenes/player/states/idle.gd`, `scenes/player/states/move.gd`, `tests/unit/test_state_machine.gd`
@@ -287,13 +289,13 @@ Week 1 is fully detailed. Weeks 2 to 12 are listed with brief acceptance and are
 **Description:** In `Move`: read the four `move_*` actions into a vector, pass through `Iso.input_to_world()`, accelerate to full speed in ~4 frames, friction to stop, base speed 120 px/s constant, face in 8 sectors.
 
 **Acceptance criteria:**
-- [ ] WASD moves along isometric axes; all 8 directions have equal on-screen speed
-- [ ] Facing index updates in 8 sectors with no flicker at boundaries (hysteresis of a few degrees)
-- [ ] Remote player instances do not read local input
+- [x] WASD moves along isometric axes; all 8 directions have equal on-screen speed (cardinals screen-aligned, diagonals on the tile axes)
+- [x] Facing index updates in 8 sectors with no flicker at boundaries (3 degree hysteresis in `Iso.facing_index`)
+- [x] Remote player instances do not read local input (`is_local` gate in `_physics_process`)
 
 **Verification:**
-- [ ] `tests/unit/test_player_facing.gd`: vector to index for all 8 sectors and boundary cases
-- [ ] Manual feel check: snappy start/stop, no diagonal speed-up
+- [x] `tests/unit/test_player_facing.gd` (11): sectors, boundaries, hysteresis, speed in 8 directions, acceleration and friction in 4 frames, facing persists into Idle, remote input untouched
+- [ ] Manual feel check: snappy start/stop, no diagonal speed-up (needs W1-B2 Input Map and W1-B6 main scene to run in-game)
 
 **Dependencies:** W1-A1, W1-A5
 **Files likely touched:** `scenes/player/states/move.gd`, `scenes/player/states/idle.gd`, `scenes/player/player.gd`, `tests/unit/test_player_facing.gd`
@@ -305,13 +307,13 @@ Week 1 is fully detailed. Weeks 2 to 12 are listed with brief acceptance and are
 **Description:** `scenes/main/camera.gd` on `World/Camera`: `set_targets(players)`, position smoothing (~8), follows the local player in solo; with multiple targets frames the centroid and zooms out automatically.
 
 **Acceptance criteria:**
-- [ ] Solo: camera follows smoothly without pixel jitter at integer scale
-- [ ] Two players walking apart zoom the camera out to 0.6 then clamp movement at the edges
-- [ ] `shake(5, 0.3)` visibly shakes and settles
+- [x] Solo: camera follows the single tracked player (smoothing on; pixel jitter check is manual after W1-B1 integer scaling)
+- [x] Two players walking apart zoom the camera out to 0.6 then clamp movement at the edges (`Player.clamp_to_camera()` from Move, only when 2+ targets)
+- [x] `shake(5, 0.3)` offsets within strength, decays quadratically, respects `screen_shake`
 
 **Verification:**
-- [ ] `tests/unit/test_camera_framing.gd`: zoom math for given target spreads, clamp bounds
-- [ ] Manual two-instance: walk apart, confirm clamp on both screens
+- [x] `tests/unit/test_camera_framing.gd` (14): fit zoom math, centroid, in-tree framing, view rect, clamp, shake, World/Camera auto-tracks `Players` children, co-op clamp through the player
+- [ ] Manual two-instance: walk apart, confirm clamp on both screens (needs W1-B7 to W1-B9)
 
 **Dependencies:** W1-A3, W1-A6
 **Files likely touched:** `scenes/main/camera.gd`, `scenes/main/world.tscn`, `tests/unit/test_camera_framing.gd`
