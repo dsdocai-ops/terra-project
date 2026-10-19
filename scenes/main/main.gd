@@ -9,6 +9,25 @@ const WORLD_SCENE: PackedScene = preload("res://scenes/main/world.tscn")
 var world: World
 var options: LaunchArgs
 
+## Smoke step 3 (SPEC-networking two-instance step 3): the client asks the
+## host to spawn a stub enemy and then kill it over request_debug; the host
+## resolves one hit so HP drops on both screens; enemy_killed fires exactly
+## once. Markers are grepped by tools/smoke_two.sh. Host and client run the
+## same poll timer; NetworkManager.is_host picks the role.
+var _smoke3_poll: Timer
+var _smoke3_spawn_requested: bool = false
+var _smoke3_kill_requested: bool = false
+var _smoke3_hit_applied: bool = false
+var _smoke3_hit_refusal_logged: bool = false
+var _smoke3_death_logged: bool = false
+var _smoke3_kill_logged: bool = false
+var _smoke3_kill_emissions: int = 0
+var _smoke3_logged_hp_host: int = -1
+var _smoke3_logged_hp_client: int = -1
+## Full-HP ticks seen before resolving the partial hit: gives StateSync a
+## beat to deliver the spawn (hp=10) to the client before the drop.
+var _smoke3_full_hp_ticks: int = 0
+
 @onready var menu: PlaceholderMenu = $UI/PlaceholderMenu
 
 
@@ -30,6 +49,8 @@ func _ready() -> void:
 	_start_from_options()
 	if options.smoke_seconds > 0.0:
 		_start_smoke(options.smoke_seconds)
+	elif options.smoke3_seconds > 0.0:
+		_start_smoke3(options.smoke3_seconds)
 
 
 ## Headless smoke support: the local player walks right as soon as its node
@@ -63,6 +84,97 @@ func _log_smoke() -> void:
 		var p := NetworkManager.players[peer_id]
 		parts.append("%s=%s" % [p.name, p.position.round()])
 	print("[smoke] peer %d sees %d player(s): %s" % [NetworkManager.local_peer_id, parts.size(), " ".join(parts)])
+
+
+## Smoke step 3 driver. The client asks the host (through request_debug) to
+## spawn a stub enemy ("spawn grub 1"), the host resolves one partial hit so
+## HP drops 10 -> 7 on both screens via StateSync, and the client then asks
+## the host to kill it — enemy_killed must fire exactly once. Every marker is
+## [smoke3] and grepped by smoke_two.sh. Host resolves hits; clients only
+## request (they refuse to resolve — the W2-B3 host-only rule).
+func _start_smoke3(seconds: float) -> void:
+	Events.enemy_killed.connect(_on_smoke3_enemy_killed)
+	_smoke3_poll = Timer.new()
+	_smoke3_poll.wait_time = 0.25
+	_smoke3_poll.autostart = true
+	_smoke3_poll.timeout.connect(_on_smoke3_poll)
+	add_child(_smoke3_poll)
+	print("[smoke3] armed on peer %d (%s)" % [NetworkManager.local_peer_id, "host" if NetworkManager.is_host else "client"])
+	get_tree().create_timer(seconds).timeout.connect(func() -> void:
+		print("[smoke3] done, quitting")
+		get_tree().quit())
+
+
+func _on_smoke3_enemy_killed(_enemy: Node, _hit: RefCounted) -> void:
+	_smoke3_kill_emissions += 1
+
+
+func _on_smoke3_poll() -> void:
+	if NetworkManager.is_host:
+		_smoke3_host_tick()
+	else:
+		_smoke3_client_tick()
+
+
+## The first entity child that takes hits (has apply_hit) — the placeholder
+## enemy, once spawned. Spawners don't count because they lack apply_hit.
+func _smoke3_find_enemy() -> Node:
+	for child: Node in world.entities.get_children():
+		if child.has_method("apply_hit"):
+			return child
+	return null
+
+
+## Host: once the enemy is spawned with full HP and the client has joined,
+## wait a beat so the client observes the full-HP spawn, then resolve one hit
+## of 3 (HP 10 -> 7, replicated to everyone). When the client's kill lands,
+## log how many times enemy_killed fired — it must be exactly 1.
+func _smoke3_host_tick() -> void:
+	var enemy := _smoke3_find_enemy()
+	if enemy == null:
+		return
+	var hp: int = int(enemy.get("current_hp"))
+	if hp != _smoke3_logged_hp_host:
+		_smoke3_logged_hp_host = hp
+		print("[smoke3] host sees %s hp=%d" % [enemy.name, hp])
+	if not _smoke3_hit_applied and hp >= 10 and NetworkManager.player_count() >= 2:
+		_smoke3_full_hp_ticks += 1
+		if _smoke3_full_hp_ticks >= 4:
+			var resolved: bool = bool(enemy.apply_hit(3))
+			_smoke3_hit_applied = true
+			print("[smoke3] host resolved hit on %s hp 10 -> 7 (resolved=%s)" % [enemy.name, resolved])
+			_smoke3_logged_hp_host = int(enemy.get("current_hp"))
+			print("[smoke3] host sees %s hp=%d" % [enemy.name, _smoke3_logged_hp_host])
+	if hp == 0 and not _smoke3_kill_logged:
+		_smoke3_kill_logged = true
+		print("[smoke3] enemy_killed emitted %d time(s)" % _smoke3_kill_emissions)
+
+
+## Client: ask the host to spawn the stub enemy, watch the replicated HP drop
+## (StateSync brings the host's 10 -> 7 over the wire), then ask the host to
+## kill it. The kill gate (hp < 10) guarantees the drop was seen before the
+## kill, proving HP drops on both screens.
+func _smoke3_client_tick() -> void:
+	if not NetworkManager.is_active:
+		return
+	if not _smoke3_spawn_requested:
+		_smoke3_spawn_requested = true
+		NetworkManager.rpc_id(NetworkManager.HOST_PEER_ID, "request_debug", "spawn grub 1", NetworkManager.local_peer_id)
+		print("[smoke3] client requested spawn grub 1")
+	var enemy := _smoke3_find_enemy()
+	if enemy == null:
+		return
+	var hp: int = int(enemy.get("current_hp"))
+	if hp != _smoke3_logged_hp_client:
+		_smoke3_logged_hp_client = hp
+		print("[smoke3] client sees %s hp=%d" % [enemy.name, hp])
+	if not _smoke3_kill_requested and hp < 10:
+		_smoke3_kill_requested = true
+		NetworkManager.rpc_id(NetworkManager.HOST_PEER_ID, "request_debug", "kill", NetworkManager.local_peer_id)
+		print("[smoke3] client requested kill")
+	if hp == 0 and not _smoke3_death_logged:
+		_smoke3_death_logged = true
+		print("[smoke3] client sees %s hp=0 (dead)" % enemy.name)
 
 
 ## Records the parsed options: forced seed into GameState, menu shown only

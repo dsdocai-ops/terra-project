@@ -10,6 +10,10 @@ extends RefCounted
 ##                     right, positions are logged every second, quit after
 ##                     <sec> seconds (default DEFAULT_SMOKE_SECONDS).
 ##                     See tools/smoke_two.sh
+##   --smoke3[=<sec>]  headless two-instance smoke step 3: the client asks the
+##                     host to spawn and kill a stub enemy through
+##                     request_debug, the host resolves one hit, and
+##                     enemy_killed registers exactly once. See smoke_two.sh
 ## Owned by foundation. Sync: none.
 
 enum Mode { MENU, HOST, JOIN }
@@ -25,6 +29,8 @@ var run_seed: int = 0
 var debug_tools: bool = false
 ## 0 means not a smoke run.
 var smoke_seconds: float = 0.0
+## 0 means not a smoke-step-3 run.
+var smoke3_seconds: float = 0.0
 ## Human-readable problems with the arguments; main.gd logs them.
 var errors: Array[String] = []
 
@@ -42,6 +48,14 @@ static func parse(args: PackedStringArray) -> LaunchArgs:
 				opts.smoke_seconds = float(value)
 			else:
 				opts.errors.append("--smoke needs a positive number of seconds, got '%s'" % value)
+		elif arg == "--smoke3":
+			opts.smoke3_seconds = DEFAULT_SMOKE_SECONDS
+		elif arg.begins_with("--smoke3="):
+			var value3 := arg.trim_prefix("--smoke3=")
+			if value3.is_valid_float() and float(value3) > 0.0:
+				opts.smoke3_seconds = float(value3)
+			else:
+				opts.errors.append("--smoke3 needs a positive number of seconds, got '%s'" % value3)
 		elif arg.begins_with("--join="):
 			opts._parse_join(arg.trim_prefix("--join="))
 		elif arg.begins_with("--seed="):

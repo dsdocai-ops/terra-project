@@ -82,6 +82,30 @@ func test_no_smoke_by_default() -> void:
 	assert_eq(LaunchArgs.parse(PackedStringArray()).smoke_seconds, 0.0)
 
 
+func test_smoke3_flag_uses_default_seconds() -> void:
+	var opts := LaunchArgs.parse(PackedStringArray(["--host", "--smoke3"]))
+	assert_eq(opts.smoke3_seconds, LaunchArgs.DEFAULT_SMOKE_SECONDS, "no value uses the smoke default")
+	assert_eq(opts.mode, LaunchArgs.Mode.HOST, "smoke3 does not change the mode")
+
+
+func test_smoke3_seconds_can_be_set() -> void:
+	assert_eq(LaunchArgs.parse(PackedStringArray(["--smoke3=14"])).smoke3_seconds, 14.0)
+	var bad := LaunchArgs.parse(PackedStringArray(["--smoke3=soon"]))
+	assert_eq(bad.smoke3_seconds, 0.0)
+	assert_gt(bad.errors.size(), 0, "non-numeric seconds is reported")
+
+
+func test_smoke3_does_not_trigger_smoke_and_vice_versa() -> void:
+	var smoke3 := LaunchArgs.parse(PackedStringArray(["--smoke3=9"]))
+	assert_eq(smoke3.smoke_seconds, 0.0, "smoke3 leaves smoke off")
+	var smoke := LaunchArgs.parse(PackedStringArray(["--smoke=9"]))
+	assert_eq(smoke.smoke3_seconds, 0.0, "smoke leaves smoke3 off")
+
+
+func test_no_smoke3_by_default() -> void:
+	assert_eq(LaunchArgs.parse(PackedStringArray()).smoke3_seconds, 0.0)
+
+
 func test_debug_tools_flag() -> void:
 	var opts := LaunchArgs.parse(PackedStringArray(["--debug-tools"]))
 	assert_true(opts.debug_tools)
