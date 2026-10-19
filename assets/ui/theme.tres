@@ -1,0 +1,64 @@
+[gd_resource type="Theme" load_steps=4 format=3]
+
+[ext_resource type="FontFile" path="res://assets/fonts/placeholder_pixel_5x7.fnt" id="1_font"]
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_panel"]
+content_margin_left = 8.0
+content_margin_top = 6.0
+content_margin_right = 8.0
+content_margin_bottom = 6.0
+bg_color = Color(0.910, 0.847, 0.690, 0.92)
+border_width_left = 1
+border_width_top = 1
+border_width_right = 1
+border_width_bottom = 1
+border_color = Color(0.604, 0.416, 0.180, 1)
+corner_radius_top_left = 2
+corner_radius_top_right = 2
+corner_radius_bottom_right = 2
+corner_radius_bottom_left = 2
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_panel_dark"]
+content_margin_left = 8.0
+content_margin_top = 6.0
+content_margin_right = 8.0
+content_margin_bottom = 6.0
+bg_color = Color(0.169, 0.129, 0.094, 0.82)
+border_width_left = 1
+border_width_top = 1
+border_width_right = 1
+border_width_bottom = 1
+border_color = Color(0.949, 0.757, 0.306, 1)
+corner_radius_top_left = 2
+corner_radius_top_right = 2
+corner_radius_bottom_right = 2
+corner_radius_bottom_left = 2
+
+[resource]
+default_font = ExtResource("1_font")
+default_font_size = 8
+Label/font_sizes/font_size = 8
+Label/colors/font_color = Color(0.910, 0.847, 0.690, 1)
+PanelContainer/styles/panel = SubResource("StyleBoxFlat_panel")
+UI/colors/parchment = Color(0.910, 0.847, 0.690, 1)
+UI/colors/ink = Color(0.169, 0.129, 0.094, 1)
+UI/colors/frame_bronze = Color(0.604, 0.416, 0.180, 1)
+UI/colors/hp_red = Color(0.847, 0.227, 0.227, 1)
+UI/colors/teammate_green = Color(0.373, 0.749, 0.416, 1)
+UI/colors/mana_blue = Color(0.290, 0.541, 0.910, 1)
+UI/colors/gold = Color(0.949, 0.757, 0.306, 1)
+Rarity/colors/common = Color(0.812, 0.812, 0.812, 1)
+Rarity/colors/uncommon = Color(0.373, 0.749, 0.416, 1)
+Rarity/colors/rare = Color(0.290, 0.541, 0.910, 1)
+Rarity/colors/epic = Color(0.608, 0.365, 0.898, 1)
+Rarity/colors/legendary = Color(0.949, 0.639, 0.227, 1)
+Rarity/colors/cursed = Color(0.690, 0.180, 0.353, 1)
+Element/colors/fire = Color(1.000, 0.478, 0.184, 1)
+Element/colors/frost = Color(0.498, 0.839, 1.000, 1)
+Element/colors/storm = Color(0.969, 0.910, 0.420, 1)
+Element/colors/shadow = Color(0.431, 0.290, 0.620, 1)
+Element/colors/poison = Color(0.498, 0.875, 0.290, 1)
+Element/colors/earth = Color(0.690, 0.541, 0.290, 1)
+Element/colors/blood = Color(0.784, 0.125, 0.227, 1)
+Element/colors/void = Color(0.227, 0.122, 0.431, 1)
+Element/colors/utility = Color(0.784, 0.784, 0.784, 1)

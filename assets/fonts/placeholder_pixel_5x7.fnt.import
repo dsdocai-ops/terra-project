@@ -1,0 +1,17 @@
+[remap]
+
+importer="font_data_bmfont"
+type="FontFile"
+uid="uid://dsnj8exhpppcw"
+path="res://.godot/imported/placeholder_pixel_5x7.fnt-651e6738ad3025cde90e727a730f347f.fontdata"
+
+[deps]
+
+source_file="res://assets/fonts/placeholder_pixel_5x7.fnt"
+dest_files=["res://.godot/imported/placeholder_pixel_5x7.fnt-651e6738ad3025cde90e727a730f347f.fontdata"]
+
+[params]
+
+fallbacks=[]
+compress=true
+scaling_mode=2

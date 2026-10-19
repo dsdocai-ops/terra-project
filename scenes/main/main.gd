@@ -26,6 +26,7 @@ func _ready() -> void:
 
 	apply_options(LaunchArgs.parse(OS.get_cmdline_user_args()))
 	_maybe_add_debug_console()
+	_maybe_add_hud()
 	_start_from_options()
 	if options.smoke_seconds > 0.0:
 		_start_smoke(options.smoke_seconds)
@@ -87,6 +88,17 @@ func _maybe_add_debug_console() -> void:
 	var console: CanvasLayer = (load(script_path) as GDScript).new()
 	console.name = "DebugConsole"
 	add_child(console)
+
+
+## Adds the HUD CanvasLayer over the world (SPEC-ui-hud). Loaded lazily so
+## the main scene never references ui-hud until it exists.
+func _maybe_add_hud() -> void:
+	if not ResourceLoader.exists("res://scenes/ui/hud.tscn"):
+		return
+	var hud_scene: PackedScene = load("res://scenes/ui/hud.tscn")
+	var hud: CanvasLayer = hud_scene.instantiate() as CanvasLayer
+	hud.name = "HUD"
+	add_child(hud)
 
 
 func _start_from_options() -> void:
