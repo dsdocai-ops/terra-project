@@ -34,9 +34,10 @@ Turn the empty Godot project into the skeleton every other module builds on: cor
 | `rendering/2d/snap/snap_2d_vertices_to_pixel` | true |
 | `physics/common/physics_ticks_per_second` | 60 |
 | `debug/gdscript/warnings/untyped_declaration` | Error |
-| `debug/gdscript/warnings/inferred_declaration` | Warn |
-| `debug/gdscript/warnings/unsafe_*` | Warn |
-| `network/limits/debugger/max_chars_per_second` | raise so debug console spam does not drop |
+| `debug/gdscript/warnings/inferred_declaration` | Ignore (decided 2026-10-18: Warn would flag every `:=`, which the code style uses throughout, and bury real warnings; Ignore is Godot's default for this reason) |
+| `debug/gdscript/warnings/unsafe_*` (`property_access`, `method_access`, `cast`, `call_argument`) | Warn |
+| `network/limits/debugger/max_chars_per_second` | 131072 (so debug console spam does not drop) |
+| `layer_names/2d_physics/layer_1` to `layer_6` | `world`, `player`, `enemy`, `hitbox_player`, `hitbox_enemy`, `interactable` |
 
 ### Input Map
 
@@ -51,8 +52,8 @@ Every action from design doc section 5, exact names below. Keyboard and mouse bi
 | `class_skill` | Shift, LB |
 | `swap_weapon` | wheel, Y |
 | `weapon_1`, `weapon_2` | 1, 2 |
-| `ability_1`, `ability_2`, `ability_3` | Q, R, V, face buttons X / A / RB |
-| `ultimate` | X, L3+R3 |
+| `ability_1`, `ability_2`, `ability_3` | Q, R, V, controller X / RB / R3 (decided 2026-10-18: A was listed for both interact and ability_2; interact keeps A) |
+| `ultimate` | X, L3 (the Input Map has no chords, so L3+R3 is not expressible) |
 | `relic_active_1`, `relic_active_2` | C, B, d-pad left / right |
 | `potion` | E, d-pad up |
 | `interact` | F, A (hold to revive) |
@@ -61,7 +62,7 @@ Every action from design doc section 5, exact names below. Keyboard and mouse bi
 | `pause` | Esc, Start |
 | `debug_console` | backtick |
 
-Movement is 8-direction. Input vector is rotated onto isometric axes in `player-controller`, not here.
+Movement is 8-direction. Input vector is rotated onto isometric axes in `player-controller`, not here. The canonical binding list is `tools/configure_input_map.gd`, which writes `project.godot` through `ProjectSettings.save()`; edit it there and rerun rather than hand-editing the `[input]` section.
 
 ### Folder tree
 
@@ -153,4 +154,4 @@ Nothing stateful here. The world scene is loaded identically on every peer.
 
 ## Open questions
 
-- Exact GUT release and Godot setup action (resolved during week 1, recorded here).
+- Resolved 2026-10-18: GUT 9.7.1 (release tag `v9.7.1`) vendored under `addons/gut/`. CI downloads the official `Godot_v4.7.2-stable_linux.x86_64` build directly from the `godotengine/godot-builds` release instead of a third-party setup action, so there is no dependency on an action publishing 4.7.2.

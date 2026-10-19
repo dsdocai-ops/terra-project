@@ -16,7 +16,36 @@ signal dodge_started(perfect_window_open: bool)
 signal dodge_finished()
 signal facing_changed(index: int)
 
+## Who this copy of the player is on this peer (SPEC-networking).
+enum SyncRole {
+	HOST_PUBLISHES,       ## the host simulates and writes synced_* every frame
+	LOCAL_PREDICTS,       ## the owning client simulates and reconciles against acked host poses
+	REMOTE_INTERPOLATES,  ## another peer's copy: follows synced_* and plays synced anims
+}
+
+## Prediction error beyond which the local player snaps to the host position.
+const SNAP_DISTANCE := 64.0
+## Prediction errors at or below this many pixels are left alone, so float
+## noise between peers never nudges a player.
+const RECONCILE_DEADZONE := 0.5
+## Physics ticks of predicted positions kept for reconcile (2 s at 60 Hz).
+const PREDICTION_HISTORY := 120
+## Remote copies snap when they fall this far behind (spawn, teleport).
+const INTERPOLATE_SNAP_DISTANCE := 512.0
+## Per-second rates for the exponential approach toward the synced pose.
+const RECONCILE_RATE := 10.0
+const INTERPOLATE_RATE := 15.0
+
+## One color per co-op slot (P1 to P4), shown by the SlotRing at the feet.
+const SLOT_COLORS: Array[Color] = [
+	Color(0.30, 0.65, 1.00),  # P1 blue
+	Color(1.00, 0.35, 0.35),  # P2 red
+	Color(0.40, 0.90, 0.40),  # P3 green
+	Color(1.00, 0.85, 0.25),  # P4 yellow
+]
+
 ## Degrees past a sector edge before the facing index changes (see Facing).
+
 const FACING_HYSTERESIS_DEG := 3.0
 
 ## Pixels per second on screen with no modifiers. StatBlock.MOVE_SPEED
@@ -34,7 +63,16 @@ var peer_id: int = 0:
 		peer_id = value
 		refresh_authority()
 
+## Co-op slot, 0 to MAX_PLAYERS - 1, picked by the host at spawn and sent to
+## every peer in PlayerSpawnInfo. Peer ids are random, so color follows the
+## slot, never the id.
+var slot: int = 0:
+	set(value):
+		slot = value
+		_apply_slot_color()
+
 ## TODO(classes-characters): retype to CharacterData when it exists.
+
 var character: Resource
 ## TODO(classes-characters): retype to ClassData when it exists.
 var class_data: Resource
@@ -52,6 +90,9 @@ var facing_index: int = 0:
 ## Raw movement input in input space (W is (0, -1)). Set by the owning
 ## peer's input layer, replicated to the host through InputSync.
 var move_input: Vector2 = Vector2.ZERO
+## Owning peer's physics tick counter for move_input, sent with it through
+## InputSync so the host can say which input its pose includes.
+var input_tick: int = 0
 ## World position of the owning peer's cursor.
 var aim_position: Vector2 = Vector2.ZERO
 var is_downed: bool = false
@@ -70,10 +111,34 @@ var dodge_charges: int = 1
 var dodge_distance_mult: float = 1.0
 var revive_speed_mult: float = 1.0
 
+## Host-written pose, replicated by StateSync. Clients reconcile or
+## interpolate toward it; nobody replicates `position` directly.
+var synced_position: Vector2 = Vector2.ZERO
+var synced_velocity: Vector2 = Vector2.ZERO
+## The owner's input_tick that synced_position includes. The owning client
+## compares synced_position with its own prediction for this tick.
+var acked_input_tick: int = 0
+## Base animation name ("idle", "walk") without the facing suffix. Replicated
+## by StateSync so remote copies play what the host plays.
+var current_anim: String = "":
+	set(value):
+		if value == current_anim:
+			return
+		current_anim = value
+		_replay_directional()
+
+## Debug hook for the headless smoke (--smoke): when non-zero on a local
+## player it replaces hardware input.
+var debug_autowalk: Vector2 = Vector2.ZERO
+
+## Host: input_tick of the move_input the states applied on the last tick.
+var _applied_input_tick: int = 0
+## Owning client: predicted position after applying each input tick.
+var _predictions: Dictionary[int, Vector2] = {}
+var _last_reconciled_tick: int = -1
+
 var _perfect_dodge_window_open: bool = false
 var _dodge_cooldown_left: float = 0.0
-## Base animation name ("idle", "walk") currently playing, without suffix.
-var _current_anim: String = ""
 ## Animation names already reported missing, so a bad name warns once.
 var _missing_anims: Dictionary[StringName, bool] = {}
 
@@ -90,10 +155,21 @@ var _missing_anims: Dictionary[StringName, bool] = {}
 @onready var input_sync: MultiplayerSynchronizer = $InputSync
 @onready var state_sync: MultiplayerSynchronizer = $StateSync
 @onready var interact_area: Area2D = $InteractArea
+@onready var slot_ring: SlotRing = $SlotRing
 
 
 func _ready() -> void:
 	refresh_authority()
+	_apply_slot_color()
+
+
+static func slot_color(for_slot: int) -> Color:
+	return SLOT_COLORS[posmod(for_slot, SLOT_COLORS.size())]
+
+
+func _apply_slot_color() -> void:
+	if slot_ring != null:
+		slot_ring.color = slot_color(slot)
 
 
 ## Applies `simulates` and `is_local` to the state machine: only simulating
@@ -105,15 +181,118 @@ func refresh_authority() -> void:
 		return
 	state_machine.set_physics_process(simulates)
 	state_machine.set_process_unhandled_input(is_local)
+	if is_inside_tree():
+		physics_interpolation_mode = interpolation_mode_for(sync_role())
 
 
-func _physics_process(_delta: float) -> void:
-	# Only the owning peer reads hardware input. Remote copies receive
-	# move_input and aim_position through InputSync (W1-B9). Runs before the
-	# StateMachine child steps, so states see this frame's input.
+## Simulating copies move on physics ticks and are drawn interpolated
+## between them. Remote copies already ease toward synced_position every
+## rendered frame in _process, so tick interpolation on top would only lag
+## and step them.
+static func interpolation_mode_for(role: SyncRole) -> Node.PhysicsInterpolationMode:
+	if role == SyncRole.REMOTE_INTERPOLATES:
+		return Node.PHYSICS_INTERPOLATION_MODE_OFF
+	return Node.PHYSICS_INTERPOLATION_MODE_INHERIT
+
+
+## Runs before the StateMachine child steps, so states see this tick's
+## input and an already reconciled position.
+func _physics_process(delta: float) -> void:
+	if sync_role() == SyncRole.LOCAL_PREDICTS:
+		# `position` is the result of last tick's input. Correct it on the
+		# tick, before this tick's movement builds on it.
+		record_prediction(input_tick, position)
+		reconcile(acked_input_tick, synced_position, delta)
+	# Only the owning peer reads hardware input. The host receives
+	# move_input, input_tick and aim_position through InputSync.
 	if is_local:
-		move_input = Input.get_vector(&"move_left", &"move_right", &"move_up", &"move_down")
-		aim_position = get_global_mouse_position()
+		input_tick += 1
+		if debug_autowalk != Vector2.ZERO:
+			move_input = debug_autowalk
+		else:
+			move_input = Input.get_vector(&"move_left", &"move_right", &"move_up", &"move_down")
+			aim_position = get_global_mouse_position()
+	if multiplayer.is_server():
+		# move_input and input_tick arrive in the same InputSync packet, so
+		# this is the tick of the input the states apply now.
+		_applied_input_tick = input_tick
+
+
+func _process(delta: float) -> void:
+	match sync_role():
+		SyncRole.HOST_PUBLISHES:
+			publish_state()
+		SyncRole.REMOTE_INTERPOLATES:
+			interpolate_toward(synced_position, delta)
+			velocity = synced_velocity
+
+
+func sync_role() -> SyncRole:
+	if multiplayer.is_server():
+		return SyncRole.HOST_PUBLISHES
+	return SyncRole.LOCAL_PREDICTS if is_local else SyncRole.REMOTE_INTERPOLATES
+
+
+## Host: copy the simulated pose into the replicated fields, stamped with
+## the owner's input tick it includes.
+func publish_state() -> void:
+	synced_position = position
+	synced_velocity = velocity
+	acked_input_tick = _applied_input_tick
+
+
+## Owning client: remember where prediction put the player after `tick`.
+func record_prediction(tick: int, predicted: Vector2) -> void:
+	_predictions[tick] = predicted
+	_predictions.erase(tick - PREDICTION_HISTORY)
+
+
+## Owning client: compare the host's pose for an acknowledged input tick
+## with this peer's prediction for the same tick, and shift the present by
+## the difference. The host pose is a round trip old, so comparing it with
+## the current position instead drags a walking player back every frame.
+## Small errors ease out over several acks; large ones snap.
+func reconcile(acked_tick: int, host_position: Vector2, delta: float) -> void:
+	if acked_tick <= _last_reconciled_tick:
+		return
+	_last_reconciled_tick = acked_tick
+	if not _predictions.has(acked_tick):
+		# Nothing to compare with (just spawned, or the ack is older than
+		# the history). Only a gross mismatch is worth acting on.
+		if position.distance_to(host_position) > SNAP_DISTANCE:
+			_snap_to(host_position)
+		return
+	var error := host_position - _predictions[acked_tick]
+	for tick: int in _predictions.keys():
+		if tick <= acked_tick:
+			_predictions.erase(tick)
+	if error.length() > SNAP_DISTANCE:
+		_snap_to(position + error)
+		return
+	if error.length() <= RECONCILE_DEADZONE:
+		return
+	_shift_prediction(error * (1.0 - exp(-RECONCILE_RATE * delta)))
+
+
+## Moves the present and every unacknowledged prediction by `correction`,
+## so the next ack is compared against the corrected path.
+func _shift_prediction(correction: Vector2) -> void:
+	position += correction
+	for tick: int in _predictions.keys():
+		_predictions[tick] += correction
+
+
+func _snap_to(target: Vector2) -> void:
+	_shift_prediction(target - position)
+	reset_physics_interpolation()
+
+
+## Remote copy: follow the host's pose smoothly, snapping if far behind.
+func interpolate_toward(target: Vector2, delta: float) -> void:
+	if position.distance_to(target) > INTERPOLATE_SNAP_DISTANCE:
+		position = target
+		return
+	position = position.lerp(target, 1.0 - exp(-INTERPOLATE_RATE * delta))
 
 
 ## Current move speed in px/s. Reads StatBlock.MOVE_SPEED from week 2.
@@ -189,14 +368,14 @@ func play_directional(anim: String) -> void:
 			_missing_anims[anim_name] = true
 			push_warning("Player: missing animation %s" % anim_name)
 		return
-	_current_anim = anim
+	current_anim = anim
 	if sprite.animation != anim_name:
 		sprite.play(anim_name)
 
 
 func _replay_directional() -> void:
-	if _current_anim != "" and sprite != null:
-		play_directional(_current_anim)
+	if current_anim != "" and sprite != null:
+		play_directional(current_anim)
 
 
 ## Client asks the host to revive `target`. Filled in by networking week 3.

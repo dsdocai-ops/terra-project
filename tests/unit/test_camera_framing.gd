@@ -185,6 +185,38 @@ func test_world_camera_tracks_players_container() -> void:
 	assert_eq(cam.target_count(), 1)
 
 
+# Render timing. Players move on physics ticks; if the camera framed on
+# render frames instead, a walking player would step against a smoothly
+# easing camera and jitter on any display not locked to 60 Hz.
+
+func test_physics_interpolation_is_on() -> void:
+	assert_true(get_tree().physics_interpolation, "bodies and camera are drawn between physics ticks")
+
+
+func test_world_camera_frames_on_physics_ticks_not_render_frames() -> void:
+	var world := _world_with(1, 0.0)
+	assert_eq(world.camera.process_callback, Camera2D.CAMERA2D_PROCESS_PHYSICS, "smoothing steps on ticks")
+	assert_true(world.camera.is_physics_processing(), "framing steps with the physics that moves players")
+	assert_false(world.camera.is_processing(), "no render-rate framing to drift against tick movement")
+
+
+func test_world_camera_and_player_are_both_interpolated() -> void:
+	var world := _world_with(1, 0.0)
+	var p := world.players.get_child(0) as Player
+	assert_true(world.camera.is_physics_interpolated_and_enabled(), "camera drawn between ticks")
+	assert_true(p.is_physics_interpolated_and_enabled(), "simulated player drawn between ticks")
+
+
+func test_camera_target_matches_player_after_every_tick() -> void:
+	var world := _world_with(1, 0.0)
+	var p := world.players.get_child(0) as Player
+	p.move_input = Vector2(1, 0)
+	for i in 10:
+		await wait_physics_frames(1)
+		assert_almost_eq(world.camera.global_position, p.global_position, Vector2(0.001, 0.001), "tick %d" % i)
+	assert_gt(p.global_position.x, 0.0, "the player actually walked")
+
+
 # Co-op movement clamp
 #
 # move_and_slide() uses the physics delta only inside a physics frame; from a

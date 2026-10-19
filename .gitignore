@@ -1,3 +1,6 @@
 # Godot 4+ specific ignores
 .godot/
 /android/
+
+# graphify knowledge graph output (rebuild with tools/graphify/rebuild.py)
+graphify-out/

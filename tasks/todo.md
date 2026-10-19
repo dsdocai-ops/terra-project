@@ -18,13 +18,13 @@ Week 1 is fully detailed. Weeks 2 to 12 are listed with brief acceptance and are
 **Description:** Set every `project.godot` value from the SPEC-foundation settings table (960x540, canvas_items, keep, integer, gl_compatibility both methods, nearest filter, 2D pixel snap both, 6-color fallback palette, etc.).
 
 **Acceptance criteria:**
-- [ ] `project.godot` matches the SPEC-foundation table line for line
-- [ ] Every folder under `scenes/`, `scripts/`, `data/`, `assets/`, `tests/` from SPEC-project exists
-- [ ] Headless import produces zero warnings and zero errors
+- [x] `project.godot` matches the SPEC-foundation table line for line (one recorded deviation: `inferred_declaration` Ignore, not Warn; `run/main_scene` is set in W1-B6 when the scene exists; physics layer names added)
+- [x] Every folder under `scenes/`, `scripts/`, `data/`, `assets/`, `tests/` from SPEC-project exists (`.gdkeep` in empty ones)
+- [x] Headless import produces zero warnings and zero errors
 
 **Verification:**
-- [ ] `godot --headless --path . --import` exits 0 with no warnings
-- [ ] Manual: editor opens, viewport 960x540, test window 1920x1080 shows integer-scaled crisp pixels on a placeholder sprite
+- [x] `godot --headless --path . --import` exits 0 with no warnings; `tests/unit/test_project_settings.gd` asserts every table value, the features, the layer names, and the folder tree
+- [ ] Manual: editor opens, viewport 960x540, test window 1920x1080 shows integer-scaled crisp pixels on a placeholder sprite (Alex, when running the game)
 
 **Dependencies:** None
 **Files likely touched:** `project.godot`, `*/.gdkeep`
@@ -38,13 +38,13 @@ Week 1 is fully detailed. Weeks 2 to 12 are listed with brief acceptance and are
 **Description:** Add every action from the SPEC-foundation Input Map table with its keyboard/mouse binding and a controller binding. Movement is four actions; no deadzone tuning yet.
 
 **Acceptance criteria:**
-- [ ] All 24 action names exist exactly as spelled in SPEC-foundation
-- [ ] Each gameplay action has one keyboard/mouse and one controller event
-- [ ] `debug_console` bound to backtick
+- [x] All 24 action names exist exactly as spelled in SPEC-foundation (written by `tools/configure_input_map.gd`, the canonical list)
+- [x] Each gameplay action has one keyboard/mouse and one controller event; `weapon_1`, `weapon_2`, `debug_console` are keyboard-only by design. Controller deviation recorded in the spec: ability_2 RB, ability_3 R3, ultimate L3 (no chords; A stays on interact)
+- [x] `debug_console` bound to backtick
 
 **Verification:**
-- [ ] `tests/unit/test_input_map.gd`: asserts `InputMap.has_action()` for every name in a constant list and that each has at least 2 events
-- [ ] Manual: Input Map panel shows controller icons next to each
+- [x] `tests/unit/test_input_map.gd`: every name exists, binding classes per action, specific keys/buttons/axes from the table, no joypad button bound twice, and synthetic key and stick events drive the actions through `Input`
+- [ ] Manual: Input Map panel shows controller icons next to each (Alex, in the editor)
 
 **Dependencies:** W1-B1
 **Files likely touched:** `project.godot`, `tests/unit/test_input_map.gd`
@@ -56,13 +56,13 @@ Week 1 is fully detailed. Weeks 2 to 12 are listed with brief acceptance and are
 **Description:** Create the 7 autoload scripts in SPEC-foundation order (`Events`, `TimeManager`, `GameState`, `SaveManager`, `StoryManager`, `AudioManager`, `NetworkManager`) with the public API defined by the module specification.
 
 **Acceptance criteria:**
-- [ ] All 7 autoloads registered in the specified order and reachable by name from a test
-- [ ] Each stub exposes every signal, constant, and method named in its spec's "Interfaces provided" block, fully typed
-- [ ] `ContentData` loads and a test `.tres` extending it round-trips
+- [x] All 7 autoloads registered in the specified order and reachable by name from a test
+- [x] Each stub exposes every signal, constant, and method named in its spec's "Interfaces provided" block, fully typed (base classes with `TODO(module)` markers where the real class does not exist yet; `StoryManager` flags and lore are a working in-memory set)
+- [x] `ContentData` loads and a test `.tres` extending it round-trips
 
 **Verification:**
-- [ ] `tests/unit/test_autoloads.gd`: each autoload is non-null and `has_method()` for every spec method
-- [ ] Import exits 0 with `untyped_declaration` as Error
+- [x] `tests/unit/test_autoloads.gd`: order, every spec method and signal, the full Events signal set with no public methods, constants, ContentData round trip
+- [x] Import exits 0 with `untyped_declaration` as Error
 
 **Dependencies:** W1-B1
 **Files likely touched:** `scripts/autoload/*.gd` (7), `scripts/data/content_data.gd`, `project.godot`, `tests/unit/test_autoloads.gd`
@@ -74,13 +74,13 @@ Week 1 is fully detailed. Weeks 2 to 12 are listed with brief acceptance and are
 **Description:** Vendor the latest GUT 9.x release compatible with 4.7 into `addons/gut/`, enable the plugin, add `tests/unit/`, `tests/integration/`, `tests/helpers/`, write `test_scenes_load.gd` and other smoke tests.
 
 **Acceptance criteria:**
-- [ ] `godot --headless --path . -s addons/gut/gut_cmdln.gd -gdir=res://tests -ginclude_subdirs -gexit` exits 0
-- [ ] A deliberately failing test makes it exit non-zero (then removed)
-- [ ] `test_scenes_load` and `test_data_loads` pass on the current tree
+- [x] `godot --headless --path . -s addons/gut/gut_cmdln.gd -gdir=res://tests -ginclude_subdirs -gexit` exits 0 (GUT 9.7.1 vendored, plugin enabled)
+- [x] A deliberately failing test makes it exit 1 (verified, then removed)
+- [x] `test_scenes_load` and `test_data_loads` pass on the current tree
 
 **Verification:**
-- [ ] Run the command above twice: once green, once with the failing test
-- [ ] SPEC-foundation open question for GUT version resolved
+- [x] Ran the command twice: green with exit 0, and exit 1 with a throwaway failing test
+- [x] SPEC-foundation open question for GUT version resolved (9.7.1)
 
 **Dependencies:** W1-B1
 **Files likely touched:** `addons/gut/**`, `project.godot`, `tests/integration/test_scenes_load.gd`, `tests/integration/test_data_loads.gd`, `specs/SPEC-foundation.md`
@@ -92,13 +92,13 @@ Week 1 is fully detailed. Weeks 2 to 12 are listed with brief acceptance and are
 **Description:** `.github/workflows/ci.yml` on `pull_request` and `push` to `main`: check out, install Godot 4.7.2 headless, run import and GUT, fail on non-zero exit.
 
 **Acceptance criteria:**
-- [ ] A PR shows a CI status check that passes on the current tree
-- [ ] A PR with a failing test shows red
+- [ ] A PR shows a CI status check that passes on the current tree (verified by the `feat/surface-week1` PR run; workflow written 2026-10-18)
+- [ ] A PR with a failing test shows red (exit code 1 on failure verified locally in W1-B4; observe on a PR)
 - [ ] Runtime under 5 minutes
 
 **Verification:**
-- [ ] Open a throwaway PR with a failing test, observe red, fix, observe green
-- [ ] SPEC-foundation open question for the setup action resolved
+- [ ] Observe the PR check; a throwaway failing-test PR is optional once the first run is green
+- [x] SPEC-foundation open question for the setup action resolved: direct download of the official `godotengine/godot-builds` 4.7.2 Linux release, no third-party action
 
 **Dependencies:** W1-B4
 **Files likely touched:** `.github/workflows/ci.yml`, `specs/SPEC-foundation.md`
@@ -110,13 +110,13 @@ Week 1 is fully detailed. Weeks 2 to 12 are listed with brief acceptance and are
 **Description:** `scenes/main/main.tscn` + `main.gd` as the project main scene. Parses `OS.get_cmdline_user_args()` for `--host`, `--join=<ip>`, `--seed=<int>`; sets `GameState.world` after loading.
 
 **Acceptance criteria:**
-- [ ] `godot --path . -- --host` reaches the world scene with no menu
-- [ ] `godot --path . -- --join=127.0.0.1` attempts a join with no menu
-- [ ] No args shows the placeholder menu; Host button works
+- [x] `godot --path . -- --host` reaches the world scene with no menu (`LaunchArgs` + `Main.apply_options`)
+- [x] `godot --path . -- --join=127.0.0.1` attempts a join with no menu (`--join=ip:port` also accepted)
+- [x] No args shows the placeholder menu with Play Solo, Host, Join + IP field; failures put the menu back with a status line
 
 **Verification:**
-- [ ] `tests/unit/test_launch_args.gd`: arg parser function returns the right struct for each arg combination
-- [ ] Manual: launch each variant
+- [x] `tests/unit/test_launch_args.gd` (11) and `tests/unit/test_main_scene.gd` (7); `application/run/main_scene` asserted in `test_project_settings`
+- [ ] Manual: launch each variant (covered by the headless two-instance smoke in W1-B10 and Alex's walkabout)
 
 **Dependencies:** W1-B1, W1-B3 (NetworkManager stub), W1-A3 (world scene path; can use a placeholder until A3 lands)
 **Files likely touched:** `scenes/main/main.tscn`, `scenes/main/main.gd`, `project.godot` (main_scene), `tests/unit/test_launch_args.gd`
@@ -128,13 +128,13 @@ Week 1 is fully detailed. Weeks 2 to 12 are listed with brief acceptance and are
 **Description:** Replace the stub with the real `NetworkManager`: `host(port)`, `join(ip, port)`, `start_solo()`, `disconnect_all()`, `is_host`, `local_peer_id`, `peer_ids`, `players`, `player_connected`, and lifecycle hooks.
 
 **Acceptance criteria:**
-- [ ] Two instances on one machine connect; host logs `player_joined(peer_id)`; client logs connection
-- [ ] Closing the client fires `player_left` on host; closing the host fires `host_disconnected` on client
-- [ ] `start_solo()` sets `is_host` true with `peer_ids == [1]`
+- [x] Two instances on one machine connect; host logs `player_joined(peer_id)`; client logs connection (headless smoke green)
+- [x] Closing the client fires `player_left` on host; closing the host fires `host_disconnected` on client (both observed in the smoke logs)
+- [x] `start_solo()` sets `is_host` true with `peer_ids == [1]`; host() and join() refuse while a session is active; malformed addresses are rejected before ENet
 
 **Verification:**
-- [ ] `tests/unit/test_network_manager.gd`: `enemy_hp_multiplier()` for 1 to 4 players (1.0, 1.5, 2.0, 2.5), `start_solo()` state
-- [ ] Manual two-instance connect/disconnect via W1-B6 args
+- [x] `tests/unit/test_network_manager.gd` (12): multiplier table, inactive state, solo, host, refusals, disconnect reset, address validation, pending client
+- [ ] Two-instance connect/disconnect via the headless smoke (W1-B10)
 
 **Dependencies:** W1-B3, W1-B6
 **Files likely touched:** `scripts/autoload/network_manager.gd`, `tests/unit/test_network_manager.gd`
@@ -146,13 +146,13 @@ Week 1 is fully detailed. Weeks 2 to 12 are listed with brief acceptance and are
 **Description:** `MultiplayerSpawner` under `World/Players` with the player scene registered. On `player_joined` (and for the host itself at world load), the host calls `spawn()` with a `PlayerSpawnInfo` payload.
 
 **Acceptance criteria:**
-- [ ] Host and one client each see two `Player` nodes under `World/Players` with distinct `peer_id`
-- [ ] Late joiner sees existing players; existing players see the late joiner
-- [ ] Leaving removes the node on all peers
+- [x] Host and one client each see two `Player` nodes under `World/Players` with distinct `peer_id` (headless smoke green)
+- [x] Late joiner sees existing players; existing players see the late joiner (the client joins 2 s after the host spawned itself and receives Player1; smoke green)
+- [x] Leaving removes the node on all peers (host logs the peer leaving and drops to 1 player; smoke green)
 
 **Verification:**
-- [ ] `tests/unit/test_spawn_info.gd`: `PlayerSpawnInfo` to/from dictionary round trip
-- [ ] Manual two-instance: spawn, late join (start client after host has been running), leave
+- [x] `tests/unit/test_player_spawner.gd` (12): `PlayerSpawnInfo` round trip and wire types, spawner under World targeting Players, spawn sets name / peer_id / position / authorities / input visibility, registry, despawn, replace-on-respawn, auto-spawn from `player_joined`, despawn from `player_left`, non-overlapping default positions
+- [ ] Two-instance: spawn, late join, leave (headless smoke in W1-B10)
 
 **Dependencies:** W1-B7, W1-A4
 **Files likely touched:** `scenes/main/world.tscn` (Players spawner node; coordinate with Alex, owner), `scripts/network/player_spawn_info.gd`, `scripts/autoload/network_manager.gd`, `tests/unit/test_spawn_info.gd`
@@ -164,13 +164,13 @@ Week 1 is fully detailed. Weeks 2 to 12 are listed with brief acceptance and are
 **Description:** Configure the two `MultiplayerSynchronizer` nodes Alex placed in `player.tscn` (W1-A4). `InputSync`: authority = owning peer, replicates `move_input: Vector2`, `aim_position: Vector2`; `StateSync`: position, facing, animation and health.
 
 **Acceptance criteria:**
-- [ ] Client input moves the client's player on the host
-- [ ] Host position updates appear on the client for both players
-- [ ] A third instance joining sees both others moving
+- [x] Client input moves the client's player on the host (headless smoke: InputSync check passes)
+- [x] Host position updates appear on the client for both players (headless smoke: StateSync check passes; remote copies interpolate, the local player reconciles)
+- [ ] A third instance joining sees both others moving (manual, `tools/run_two.ps1 -Clients 2`)
 
 **Verification:**
-- [ ] Manual three-instance test (host + 2 clients) with `tools/run_two.ps1` extended to accept a count
-- [ ] Grep check: `player.gd` doc comment contains "Sync:"
+- [x] `tests/unit/test_player_sync.gd` (12): replication configs, publish, roles, reconcile, interpolate, anim replay; `tools/smoke_two.sh` green
+- [x] `player.gd` doc comment contains "Sync:"
 
 **Dependencies:** W1-B8, W1-A4, W1-A6
 **Files likely touched:** `scenes/player/player.tscn`, `scenes/player/player.gd`, `scripts/autoload/network_manager.gd`
@@ -182,11 +182,11 @@ Week 1 is fully detailed. Weeks 2 to 12 are listed with brief acceptance and are
 **Description:** `tools/run_two.ps1` and `tools/run_two.sh` launching `--host` and `--join=127.0.0.1` with windows positioned side by side, optional count for more clients. Configure Godot's debug options as required.
 
 **Acceptance criteria:**
-- [ ] Running the script opens two windows that connect
-- [ ] F5 in the editor with multi-instance enabled does the same
+- [x] Running the script opens two windows that connect (`tools/run_two.ps1`, `tools/run_two.sh`; the connect / spawn / move path is proven headless by `tools/smoke_two.sh`, 15 checks green)
+- [ ] F5 in the editor with multi-instance enabled does the same (per-machine setting in `.godot/`, documented in SPEC-project commands; Alex sets it once)
 
 **Verification:**
-- [ ] Manual run of both paths
+- [ ] Manual run of the windowed launcher (Alex); headless smoke green 2026-10-18
 
 **Dependencies:** W1-B6, W1-B7
 **Files likely touched:** `tools/run_two.ps1`, `tools/run_two.sh`, `specs/SPEC-project.md`
@@ -327,13 +327,13 @@ Week 1 is fully detailed. Weeks 2 to 12 are listed with brief acceptance and are
 **Description:** Local player moves immediately from its own input; host simulates the same input; `StateSync` position corrects drift on the client with a small lerp (snap if error > 64 px). Remote players are smooth and authoritative.
 
 **Acceptance criteria:**
-- [ ] At 0 ms latency, no visible correction on the local player
-- [ ] Remote players move smoothly (no stutter at 20 Hz sync rate)
-- [ ] Facing and animation match on both screens
+- [ ] At 0 ms latency, no visible correction on the local player (reconcile implemented in W1-B9; visual check is Alex's)
+- [ ] Remote players move smoothly (interpolation implemented in W1-B9; visual check is Alex's)
+- [ ] Facing and animation match on both screens (facing_index and current_anim replicated on change; visual check is Alex's)
 
 **Verification:**
-- [ ] Manual two-instance smoke, steps 1 and 2, recorded in the PR
-- [ ] Three-instance sanity via `run_two.ps1 -Clients 2`
+- [x] Two-instance smoke steps 1 and 2 pass headless (`tools/smoke_two.sh`), recorded in the surface-week1 PR
+- [ ] Three-instance sanity via `run_two.ps1 -Clients 2` (Alex)
 
 **Dependencies:** W1-B9, W1-A6, W1-A7
 **Files likely touched:** `scenes/player/player.gd`, `scenes/player/states/move.gd`, `scripts/autoload/network_manager.gd`

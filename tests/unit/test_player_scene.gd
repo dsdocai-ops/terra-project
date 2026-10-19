@@ -54,6 +54,39 @@ func test_node_layout_matches_spec() -> void:
 		assert_not_null(_player.get_node_or_null(node_name), node_name)
 
 
+# Co-op slot colors
+
+func test_every_slot_has_its_own_color() -> void:
+	assert_eq(Player.SLOT_COLORS.size(), NetworkManager.MAX_PLAYERS, "one color per co-op slot")
+	for a in Player.SLOT_COLORS.size():
+		for b in range(a + 1, Player.SLOT_COLORS.size()):
+			var diff := Vector3(Player.SLOT_COLORS[a].r - Player.SLOT_COLORS[b].r,
+				Player.SLOT_COLORS[a].g - Player.SLOT_COLORS[b].g, Player.SLOT_COLORS[a].b - Player.SLOT_COLORS[b].b)
+			assert_gt(diff.length(), 0.4, "slots %d and %d are easy to tell apart" % [a, b])
+
+
+func test_slot_ring_shows_the_slot_color() -> void:
+	assert_eq(_player.slot_ring.color, Player.slot_color(0), "P1 color by default")
+	_player.slot = 2
+	assert_eq(_player.slot_ring.color, Player.SLOT_COLORS[2])
+
+
+func test_slot_set_before_entering_the_tree_still_colors_the_ring() -> void:
+	var p := (load(PLAYER_SCENE) as PackedScene).instantiate() as Player
+	p.slot = 3
+	add_child_autofree(p)
+	assert_eq(p.slot_ring.color, Player.SLOT_COLORS[3])
+
+
+func test_slot_color_wraps_out_of_range_slots() -> void:
+	assert_eq(Player.slot_color(Player.SLOT_COLORS.size() + 1), Player.SLOT_COLORS[1])
+	assert_eq(Player.slot_color(-1), Player.SLOT_COLORS[Player.SLOT_COLORS.size() - 1])
+
+
+func test_slot_ring_draws_under_the_sprite() -> void:
+	assert_lt(_player.slot_ring.get_index(), _player.sprite.get_index(), "ring at the feet, sprite on top")
+
+
 func test_synchronizers_are_multiplayer_synchronizers() -> void:
 	assert_true(_player.get_node("InputSync") is MultiplayerSynchronizer)
 	assert_true(_player.get_node("StateSync") is MultiplayerSynchronizer)

@@ -1,0 +1,9 @@
+{
+  "excludes": [
+    "addons/gut/",
+    "assets/",
+    "icon.svg",
+    "tools/graphify/"
+  ],
+  "gitignore": true
+}

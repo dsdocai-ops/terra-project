@@ -46,6 +46,11 @@ godot --path .
 # Run two networked instances on one machine (required before any sync PR)
 godot --path . -- --host
 godot --path . -- --join=127.0.0.1
+.\tools\run_two.ps1 -Clients 1          # same thing, windows placed side by side (tools/run_two.sh on Linux/macOS)
+GODOT=C:/Godot/Godot_v4.7.2-stable_win64_console.exe bash tools/smoke_two.sh   # headless: connect, spawn, move in both directions, exit 0 on pass
+
+# In the editor, Debug > Run Multiple Instances (set 2, args "-- --host" and "-- --join=127.0.0.1")
+# gives the same result from F5. That setting lives in .godot/ and is per machine.
 
 # Run all tests (what CI does second; must exit 0)
 godot --headless --path . -s addons/gut/gut_cmdln.gd -gdir=res://tests -ginclude_subdirs -gexit
@@ -165,7 +170,7 @@ func _is_dead() -> bool:
 
 Conventions:
 
-- **Strict typing everywhere.** Every variable, parameter, and return value is typed. `debug/gdscript/warnings/untyped_declaration` is set to Error in `project.godot`. `inferred_declaration` stays consistent with the project's typed style.
+- **Strict typing everywhere.** Every variable, parameter, and return value is typed, including `for` iterator variables over anything not already typed. `debug/gdscript/warnings/untyped_declaration` is set to Error in `project.godot`. `inferred_declaration` is Ignore: `:=` is the normal way to declare when the right side's type is obvious. Untyped `Array` and `Dictionary` are allowed only at JSON boundaries and are converted to typed arrays or Resources immediately.
 - **Naming.** Files and folders snake_case. Classes PascalCase via `class_name`. Functions and variables snake_case. Constants and enum members UPPER_SNAKE. Private members prefixed `_`. Signals use past tense or event verbs.
 - **Order inside a script.** `class_name`, `extends`, doc comment, signals, enums, constants, `@export` vars, public vars, private vars, `@onready` vars, built-in overrides (`_init`, `_ready`, `_process`, etc.).
 - **Doc comments.** Every `class_name` script starts with a `##` block stating what it does and which module owns it. Non-obvious public methods get a `##` line.

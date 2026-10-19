@@ -3,6 +3,7 @@
 [ext_resource type="Script" uid="uid://bix1usvvbnvu2" path="res://scenes/main/world.gd" id="1_world"]
 [ext_resource type="TileSet" uid="uid://b3p4wi6gx4vcy" path="res://assets/tilesets/placeholder_iso.tres" id="2_tiles"]
 [ext_resource type="Script" uid="uid://bviumtmpmifqg" path="res://scenes/main/camera.gd" id="3_camera"]
+[ext_resource type="Script" uid="uid://22duy1f0toov" path="res://scripts/network/player_spawner.gd" id="4_spawner"]
 
 [node name="World" type="Node2D"]
 y_sort_enabled = true
@@ -22,7 +23,12 @@ y_sort_enabled = true
 [node name="Players" type="Node2D" parent="."]
 y_sort_enabled = true
 
+[node name="PlayerSpawner" type="MultiplayerSpawner" parent="."]
+spawn_path = NodePath("../Players")
+script = ExtResource("4_spawner")
+
 [node name="Camera" type="Camera2D" parent="."]
+process_callback = 0
 position_smoothing_enabled = true
 position_smoothing_speed = 8.0
 script = ExtResource("3_camera")
