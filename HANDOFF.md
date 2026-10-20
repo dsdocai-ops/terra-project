@@ -2786,6 +2786,99 @@ and `incoming_damage_multiplier()` has exactly one production caller,
 
 ---
 
+#### G24 — the six element combos (2026-10-20)
+
+SPEC-stats-status's "Element combos" section is now the code. Its one sentence —
+"When a status is applied to a target that already has another element's status,
+the combo fires once, consumes the listed stacks, and emits
+`Events.combo_triggered`" — is discharged in three parts: a real payload for the
+bus, the six pair rules on `StatusEffects`, and the rows' own effects.
+
+**The payload.** `SPEC-effect-system` fixes the parameter as `combo: Combo`, and
+the bus carried it as an unresolved placeholder. `scripts/components/combo.gd`
+(`class_name Combo extends RefCounted`) declares it: `enum Kind` is the table's
+six row names in table order (SHATTER, CONDUCT, BLIGHT_EXPLOSION, HEMORRHAGE,
+SUPERCONDUCT, COLLAPSE), `NAMES` maps each to the word a log line or the debug
+overlay prints, and the fields are the ones a row's Effect column names —
+`kind`, `damage`, `duration`, `radius`, `stacks`. It is a class rather than a
+bare enum because the bus parameter has to be an instance, and because
+`test_events_bus.gd` compares the *declared* type of every signal argument
+against the spec's own table (an enum-typed argument reports `int`, which would
+have kept the placeholder alive). `Events.combo_triggered(target: Node, combo:
+Combo, source: Node)` therefore loses its `StatusEffects.Status <- int` TODO
+line — `grep -c "TODO(stats-status): Combo" scripts/autoload/events.gd` is 0 —
+and the conformance test moves `Combo` from the pinned placeholders to the
+real-class `TYPE_MAP` entries. `StatusEffects.Status` keeps its own pin.
+
+**The rules.** `apply_status()` reads the table *before* the write
+(`_combo_for()`) and fires the one it names *after* it (`_maybe_trigger_combo()`),
+because every trigger names an element the target already had; reading it after
+the write would make every application its own trigger. The rules are the
+table's rows in the table's own order — Fire-on-Frost/Frost-on-Fire,
+Storm-on-wet, Fire-on-Toxin, Shadow-on-Bleed, Frost-on-Storm/Storm-on-Frost,
+Void-on-anything — so a target carrying two eligible elements fires **exactly
+one** combo, broken deterministically rather than by dictionary order. "Same
+element re-applied fires nothing" needs no rule of its own: every pair names a
+different element on each side, and the Chill cap's conversion to FREEZE is not
+a reaction either.
+
+**The rows.** SHATTER bursts for `SHATTER_BURST_FRACTION` (200 %) of the applying
+hit's damage in `SHATTER_RADIUS` (64 px) and consumes the frost;
+BLIGHT_EXPLOSION explodes for `BLIGHT_PER_STACK` (40 %) of the trigger damage
+*per Toxin stack* and consumes every stack; HEMORRHAGE makes Bleed tick crit for
+`HEMORRHAGE_SECONDS` (4 s); SUPERCONDUCT puts `SUPERCONDUCT_DEFENSE` (−30 %) on
+Defense for `SUPERCONDUCT_SECONDS` (8 s); CONDUCT spreads the shock to every
+enemy in the connected water area; COLLAPSE asks every enemy within
+`COLLAPSE_RADIUS` (128 px) to be pulled to the target. Every number is a named
+constant beside the status rows it derives from, and the rows tick and expire on
+`TimeManager`-scaled time through the component's existing `_physics_process`
+(`_tick_combos()`), so a time stop aimed at the enemy freezes SUPERCONDUCT's
+clock with it — never `Engine.time_scale`.
+
+**Two rows need the world, and both are requests.** CONDUCT's water area is a
+property (`wet`) plus a method (`connected_water_targets()`) read off the
+entity, and COLLAPSE's pull is a method (`pull_toward(origin, radius)`) asked of
+each in-range enemy; an entity with neither is dry and unmoved, not an error.
+The providers are floor-generation's water tiles and Dev A's enemy body, so both
+are **blocked on Dev A (W2-A1 / W4-A1)** and the cases assert the *request* —
+`tests/helpers/status_enemy_stub.gd` carries the spec-shaped seam the way
+`HitData`'s mirror carried `HitInfo`'s.
+
+**Accept.** `-gtest=res://tests/unit/test_combos.gd` exit 0, **17/17, 118
+asserts**, one case per table row plus the negative half (re-apply, an unlisted
+pair, one-combo-per-application, a non-hosting peer). Red first against the
+component that did not have the rules yet: `Parse Error: Could not find type
+"Combo" in the current scope` and `Cannot find member
+"SHATTER_BURST_FRACTION" in base "StatusEffects"`
+(`.goals/evidence/g24-combos/red-test-combos.log`). The whole suite exit 0,
+**48 scripts / 831 tests / 831 passing / 56 403 asserts** (47/814/814/56 281 at
+`8220c5b`) in 70 s (`.goals/evidence/g24-combos/full-suite.log`); `--import`
+exit 0 with 0 error lines (`import.log`); `test_events_bus.gd` 10/10;
+`test_status_effects.gd` 65/65 and `test_damage.gd` 22/22 re-run unchanged; the
+one forced negative control (`SHATTER_BURST_FRACTION` 2.0 → 3.0) fails exactly
+the six assertions that read that number, in three cases, and nothing else
+(`negative-control.log`), reverted byte-exact at `sha256 30943fbb…`
+(`status_effects.sha256`, `status_effects.before.gd.txt`).
+
+**No regressions left behind.** G23's `status_mult` fixture and G21's
+"clearing one status leaves the rest" both put Fire and Frost on one target, and
+all three cases stay green — because "consumes the listed stacks" is read in the
+same past tense as the trigger (see decision 54). Nothing else in the suite
+moved.
+
+**Not claimed.** No combo can fire in a running build yet: no weapon, relic or
+enemy applies a status (W4-B6 content), and `StatusEffects` is still not
+composed onto `player.tscn` — **blocked on Dev A (W2-A1)**. CONDUCT and COLLAPSE
+are asserted as the *request* against a double, not as water that spread or an
+enemy that moved (**blocked on Dev A (W2-A1 / W4-A1, floor-generation water
+tiles)**). SHATTER's burst, BLIGHT's explosion and CONDUCT's spread deliver
+through the same `Health.apply_damage()` seam as SHOCK's chain, so they inherit
+its blocker: a target with no `Health` child takes nothing. The `Reactive`
+(+40 %) and `Elementalist` (x2) multipliers that SPEC-stats-status's last line
+names are G25's, and are not applied here.
+
+---
+
 ## Decisions made without a human
 
 These are the judgment calls taken during weeks 1 and 2 that were not dictated
@@ -4558,6 +4651,101 @@ already recorded in a spec or a comment, the location is given.
       `CHILL_MAX_STACKS`; the 1.0 default is "resists nothing". Nothing here is a
       balance claim, and SPEC-stats-status's "Open questions" already assigns the
       final tuning to that pass.
+54. **`Events.combo_triggered` names the real `Combo` class, "consumes" is the
+    same past tense as the trigger, and the rows keep their own numbers
+    (2026-10-20, W4-B4 / G24).** SPEC-stats-status names `Combo` as an interface
+    this module provides and SPEC-effect-system fixes `combo: Combo` as a bus
+    parameter, but neither says what the payload is made of, what a row spends
+    when the consume is not the element that triggered it, or where a row's own
+    numbers live. Those are choices, so they are recorded here. New surface:
+    `scripts/components/combo.gd` (a whole new script, with its `Kind` enum,
+    `NAMES` and four fields), and `StatusEffects` gains `SHATTER_BURST_FRACTION`,
+    `SHATTER_RADIUS`, `BLIGHT_PER_STACK`, `SUPERCONDUCT_DEFENSE`,
+    `SUPERCONDUCT_SECONDS`, `HEMORRHAGE_SECONDS`, `COLLAPSE_RADIUS`, `NO_COMBO`,
+    `SUPERCONDUCT_SOURCE`, `COMBO_CRIT_MULTIPLIER`, `COMBO_TAG`, `WET_PROPERTY`,
+    `WATER_AREA_METHOD`, `PULL_METHOD`, `_combo_for()`,
+    `_maybe_trigger_combo()`, `is_wet()`, `connected_water_targets()`,
+    `_spread_conduct()`, `_apply_superconduct()`, `_request_pull()`,
+    `_combo_targets()`, `combo_hit()`, `bleed_ticks_crit()`, `combo_active()`,
+    `combo_remaining()`, `clear_combos()`, `_tick_combos()`, `_expire_combo()`
+    and one private field (`_combo_remaining`). No `@export`, so no
+    `StatusEffects` instance a scene has saved moves; no `.tscn`, no input map,
+    no save schema and no CI moved.
+
+    - **`Combo` is a `RefCounted` class with a `Kind` enum, not a bare enum.**
+      The bus parameter has to be an *instance* (`signal combo_triggered(target:
+      Node, combo: Combo, source: Node)`), and `test_events_bus.gd` compares each
+      argument's declared type against SPEC-effect-system's table at run time —
+      an enum-typed argument reports `int`, which is indistinguishable from the
+      placeholder. Making the payload a class is what lets the signal name the
+      real type and the placeholder's TODO line be deleted rather than moved.
+      This is the one **Ask-first** surface in the goal (`Events` signals and a
+      new module interface): it spends the pin `events.gd` already carried for
+      itself (`## TODO(stats-status): Combo <- int (blocked on Dev B, W4-B4)`),
+      which is the sanction the BRIEF's C9 asks for, and no *other* signal's
+      signature moved — `StatusEffects.Status` keeps its own pin.
+    - **"Consumes the listed stacks" means the stacks that were already there.**
+      The trigger and the consume are both written in the past tense about the
+      same target ("a target that *already has* another element's status ...
+      consumes *the listed* stacks"), so SHATTER spends the frost the target held
+      when the combo fired, and a Frost application on a burning target bursts
+      with nothing to spend. The alternative reading — spending the arriving
+      status too — would forbid BURN and CHILL/FREEZE from ever coexisting on one
+      target, which is the state G23's `status_mult` fixture (Kindling +
+      Permafrost + UNRAVEL on one hit) and G21's "clearing one status leaves the
+      rest" both depend on; two previously accepted goals' tests would have had
+      to be weakened to accommodate it, which is the strongest evidence that the
+      reading is wrong. The case
+      `test_shatter_frost_on_fire_bursts_and_leaves_the_frost_for_the_next_fire`
+      pins it from both sides, including the follow-up Fire hit that does spend
+      the Chill.
+    - **The row order of the table is the tie-break.** A target holding Fire and
+      Storm at once has two eligible rows when a Frost lands (SHATTER, and
+      SUPERCONDUCT on the Storm). "The combo fires once" is discharged by reading
+      the rules in the spec's own row order and firing the first match, rather
+      than by dictionary iteration order or by firing both; the case
+      `test_only_one_combo_fires_for_one_application` pins SHATTER as the winner.
+    - **Only SHATTER and BLIGHT_EXPLOSION consume anything.** The other four rows
+      list no stacks in their Effect column, and their prose has nothing to
+      consume — HEMORRHAGE needs the Bleed to keep ticking, CONDUCT spreads,
+      COLLAPSE pulls, SUPERCONDUCT only lowers Defense. No row loses a stack the
+      spec does not name.
+    - **BLIGHT_EXPLOSION is 40 % of the *trigger* damage per stack, on the
+      toxined target, with no radius.** The row says "Explosion 40% per Toxin
+      stack, consumes Toxin" and nothing else: no radius is named, so it is a
+      single-target explosion on the entity that was hit, and the trigger damage
+      is the hit that applied the Fire (the same quantity SHATTER's 200 % and
+      SHOCK's 30 % already multiply), so `40 % × stacks × trigger` is the row's
+      whole arithmetic. A bare `apply_status(BURN)` with no trigger damage
+      detonates for 0 and still consumes the Toxin.
+    - **CONDUCT's spread carries SHOCK's own chain damage (30 % of the trigger
+      damage).** The row names no number at all — "Shock spreads to every enemy
+      touching the connected water area" — and the only shock-spread number the
+      spec fixes is the chain's, so the spread reuses it rather than inventing a
+      second constant. The `Combo` payload reports it as `damage`.
+    - **The two world-facing rows ask, they never reach.** CONDUCT reads `wet`
+      (a property) and `connected_water_targets()` off the entity; COLLAPSE calls
+      `pull_toward(origin, radius)` on each in-range enemy. Both names are
+      constants, both calls are guarded by `has_method`/`get`, and an entity with
+      neither behaves as dry and unmoved. The providers are floor-generation's
+      water tiles and Dev A's enemy body — **blocked on Dev A (W2-A1 / W4-A1)** —
+      so the tests assert the request the component makes and never claim water
+      spread or an enemy that moved.
+    - **SUPERCONDUCT goes through a `StatBlock` modifier with its own source, and
+      expiry releases it.** `SUPERCONDUCT_SOURCE` (`combo:superconduct`) means
+      `remove_source()` on expiry takes back exactly this penalty, the same shape
+      CHILL's and FREEZE's rows already use; `base` is never written
+      (SPEC-project, "Never edit base stats"). The 8 s and HEMORRHAGE's 4 s run on
+      `TimeManager`-scaled time through `_tick_combos()` — never
+      `Engine.time_scale`, and `_physics_process` now wakes for a running combo
+      even when no status is left, which is why `clear_all()` clears combos too.
+    - **HEMORRHAGE's crit is `COMBO_CRIT_MULTIPLIER` (2.0) applied to the Bleed
+      tick.** The spec says the ticks "crit" and the game's crit multiplier is
+      2.0 (SPEC-combat-core), so the flag is set and the tick's damage is doubled
+      on the status hit path — `tick_hit(status, amount, is_crit)` is the one new
+      argument, defaulted, so every existing caller and every existing status
+      row is unchanged. Reactive's +40 % and Elementalist's x2 (SPEC-stats-status,
+      last line) are G25's hooks and are not applied to `Combo.damage` here.
 
 ---
 
