@@ -330,6 +330,34 @@ by `tools/make_placeholder_sfx.gd` under `assets/audio/sfx/<id>.wav`; the
 real synth pipeline (W2-B7 / W2-A13) replaces the files later without
 touching the bank. Tests: `tests/unit/test_audio_manager.gd` (21).
 
+### W3-B2a — `Rope` interactable and the ROPE room populator (`run-economy`)
+
+`scripts/run/rope.gd` (`class_name Rope extends Area2D`) is the extraction rope
+and the first module-registered room populator. It satisfies the interactable
+contract SPEC-player-controller's scan duck-types on (`prompt_text`,
+`hold_seconds = 0.0`, `interact(player: Player) -> void`), sits on physics layer
+6 ("interactable"), and is instantiated from
+`scenes/dungeon/interactables/rope.tscn` — the SPEC-project location for room
+interactables, in a folder that held only a `.gdkeep`, so no other lane's file
+is touched. Three paths, each observable through its own signal
+(`interaction_forwarded` / `extract_applied` / `extract_deferred`): the host
+with a one-player run ends it immediately with `EXTRACT`; the host with two or
+more players logs the week-5 vote deferral and leaves the rope usable; a client
+hands its use to `NetworkManager.request_vote_rope` and never ends its own run.
+`Rope.rope_populator()` returns the `Callable(room) -> void` a registry takes,
+and `Rope.register_populator()` — called once from `main.gd`'s `_ready()` —
+registers it against `FloorGenerator.register_populator(RoomType.ROPE, …)`,
+reading `RoomType.ROPE` off Dev A's script constant map at runtime so this file
+names no type that does not exist yet. Until that script exists the call is a
+recorded no-op (**blocked on Dev A (W3-A3)**); the headless launch prints the
+blocker line and carries on. `NetworkManager` gains the transport the client
+path needs: the `request_vote_rope(yes)` RPC (SPEC-networking's `request_*`
+convention, first line validating the sender) plus the two predicates behind
+its guards, `can_apply_rope_request(sender)` and `can_send_request()`. Tests:
+`tests/unit/test_rope.gd` (22 tests / 138 asserts), written and confirmed red
+first, with `tests/helpers/interactable_stub.gd` standing in for Dev A's
+`Interactable` component.
+
 ---
 
 ## Decisions made without a human
@@ -616,6 +644,44 @@ already recorded in a spec or a comment, the location is given.
       `required_rooms_cleared` to 0 first — rather than expect the gate to let
       a debug jump through. Recorded here so the gate is not "fixed" by
       weakening it later.
+
+26. **The rope and its ROPE populator (W3-B2a).** Six calls the specs leave
+    open, all taken in the direction the specs already point:
+    - *"Solo" means a one-player run, not "nobody else is standing".* BRIEF
+      Assumption 8 and PLAN G5 both say that a two-player run defers to the
+      week-5 vote prompt, so `Rope._apply_use` branches on
+      `RunState.players.size()`. The week-5 rule ("all *living* players must
+      vote yes, downed players don't vote") is recorded in that function's
+      comment for the vote prompt to adopt; implementing it now would let a
+      lone standing player rope out of a floor while their downed teammate is
+      still on it, which nothing asks for.
+    - *`interaction_forwarded` fires before the transport guard.* The signal
+      means "the client handed its use to the request path", so it fires for
+      any client that has a session. What follows is a warning and no send
+      when the session has no remote host (solo, an offline peer, a
+      single-process test) — `rpc_id` to the local peer under `call_remote` is
+      an engine error, and GUT runs on an offline peer, so the guard is what
+      keeps `test_rope.gd` free of engine noise without changing what a real
+      client does.
+    - *`NetworkManager.can_send_request()` is new public API*, beyond the
+      signatures the specs declare: `is_active and not is_host and not
+      multiplayer.is_server()`. It is the honest form of "is there a remote
+      host to send a `request_*` to", and it is why `Rope` never pretends to
+      have forwarded inside one process.
+    - *`request_vote_rope` refuses sender 0.* A direct local call has no remote
+      sender, so it is not a client's request; the host's own rope use goes
+      through `Rope._apply_use` instead. The handler forwards to
+      `GameState.request_extract_vote`, which is still the week-5 deferral, so
+      the vote keeps exactly one host-side application path.
+    - *`rope.tscn` uses a `Polygon2D` for its placeholder art*, matching
+      `scenes/network/placeholder_enemy.tscn`, rather than a PNG from
+      `assets/sprites/icons/placeholder/` — that folder holds A–Z letter
+      sprites (the font atlas' source), none of which reads as a rope. The
+      BRIEF's "placeholder art already in `assets/`" is met in spirit: the
+      rope's shape is placeholder geometry until W3-B6's art pass.
+    - *The rope sits at the room's origin.* `RoomSpec.interactable anchor` is
+      Dev A's (W3-A2); the populator carries a `TODO` naming it and the
+      swap-in is the single `rope.position` line.
 
 ---
 

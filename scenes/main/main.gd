@@ -46,6 +46,10 @@ func _ready() -> void:
 	apply_options(LaunchArgs.parse(OS.get_cmdline_user_args()))
 	_maybe_add_debug_console()
 	_maybe_add_hud()
+	# Module startup registration (SPEC-floor-generation: each owning module
+	# registers its room populators at startup). Guarded in Rope itself: a
+	# no-op that records the blocker until the registry exists.
+	Rope.register_populator()
 	_start_from_options()
 	if options.smoke_seconds > 0.0:
 		_start_smoke(options.smoke_seconds)

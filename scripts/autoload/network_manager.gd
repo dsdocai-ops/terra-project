@@ -128,6 +128,39 @@ func request_debug(command_line: String, peer_id: int) -> void:
 	debug_command_requested.emit(command_line, peer_id)
 
 
+## Client -> host: the acting client used the extraction rope and votes yes.
+## Week 3 ships the transport the rope needs; the tally itself (every living
+## player agrees, a `no` cancels, the rope_vote_updated broadcast) is the week-5
+## vote prompt (SPEC-run-economy), so the host records the vote through
+## GameState.request_extract_vote, which is still the week-5 deferral.
+## Sync: host-authoritative — clients never extract. The host validates the
+## sender against the transport and applies; a client's own call applies nothing.
+@rpc("any_peer", "call_remote", "reliable")
+func request_vote_rope(yes: bool) -> void:
+	var sender: int = multiplayer.get_remote_sender_id()
+	if not can_apply_rope_request(sender):
+		push_warning("[net] request_vote_rope refused: sender %d cannot apply a rope use here" % sender)
+		return
+	GameState.request_extract_vote(sender, yes)
+
+
+## True when this peer is a joined client, so a request_* RPC actually travels
+## to the host. Solo, a hosting peer, and a session with no real remote peer
+## (an offline peer, a single-process test) all report false: there is no
+## remote host to ask, and sending to the local peer with call_remote would be
+## an error rather than a request.
+func can_send_request() -> bool:
+	return is_active and not is_host and not multiplayer.is_server()
+
+
+## True when a rope request from `sender` may be applied on this peer: this peer
+## hosts, and the request arrived from a remote client. A direct local call has
+## sender 0 and is not a client's request, so it is refused — the host's own
+## rope use goes through Rope._apply_use, never through the client request path.
+func can_apply_rope_request(sender: int) -> bool:
+	return is_host and sender != 0
+
+
 ## 1.0 + 0.5 per player beyond the first; never below solo.
 static func enemy_hp_multiplier_for(count: int) -> float:
 	return 1.0 + ENEMY_HP_PER_EXTRA_PLAYER * maxi(count - 1, 0)
