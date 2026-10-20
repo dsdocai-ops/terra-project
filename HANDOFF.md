@@ -515,6 +515,58 @@ already recorded in a spec or a comment, the location is given.
     done" — shows the human expects milestone tags gated on the whole
     checkpoint.
 
+23. **`GameState` run lifecycle (W3-B1b) — seed precedence, `end_run`
+    signature, and emit order.**
+    - `end_run(reason: RunEndReason.Reason)` replaces the week-1 `int`
+      placeholder. This is **not** an unasked API change: the stub's own doc
+      comment said "`reason` is RunEndReason once run-economy defines it", and
+      `SPEC-run-economy.md` declares the parameter by that name. Call sites
+      passing `RunEndReason.Reason.X` are unchanged.
+    - **Seed precedence** in `start_run`: `GameState.forced_seed` (the `--seed`
+      launch arg, set by `main.gd`) wins when non-zero; otherwise an explicit
+      caller seed is used; otherwise the host rolls one. This satisfies both
+      readings of BRIEF Assumption 12 — `forced_seed` non-zero is used
+      verbatim, and a run with no seed at all still gets a non-zero one.
+    - The host roll comes from clock entropy (`Time.get_unix_time_from_system()`
+      ms mixed with `Time.get_ticks_usec()`) fed into a **seeded**
+      `RandomNumberGenerator`; there is no global roll call anywhere in the
+      lifecycle, and the rolled seed is the single value both peers later
+      generate floors from (`floor_ready`, W3-B3).
+    - `end_run` **clears `run` before emitting** `run_ended`, so a listener that
+      calls `end_run` again (or a second caller in the same frame) is refused
+      and `run_ended` fires exactly once per run. The `RunResult` is built from
+      the finished run captured in a local, and per-player `kept`/`lost` tables
+      are seeded with `RunResult.empty_table()` for every player (the real keep
+      rules are week 5, BRIEF Assumption 9).
+    - `start_run` is **replace**-on-second-call (with a warning) rather than
+      refuse. A run that is somehow started twice is recoverable and the newest
+      run is the live one, which avoids a refuse-on-restart dead end before the
+      Map Room exists to sequence it (week 5).
+    - `RunState.can_advance()` already gates `advance_floor()`, so `next_floor`
+      is refused while the current floor's exit is shut as well as past floor
+      30. The explicit `can_advance_floor()` helper and the `Events.room_cleared`
+      counter subscription are W3-B1c (the next goal), not this one.
+    - `request_extract_vote` got a real body — host guard plus the week-5
+      deferral print — instead of staying `pass`, so the co-op rope path is
+      honest about what it does rather than silently "succeeding".
+
+24. **`BiomePlaceholder` and the Events-bus mirror (W3-B1b).**
+    - `GameState.floor_changed(floor_index, biome)` keeps its `Resource`-typed
+      parameter (BRIEF Assumption 17) and now carries a real value: the new
+      `scripts/run/biome_placeholder.gd` (`BiomePlaceholder extends Resource`,
+      `id` 1..6) derived from `RunState.biome_index`. Dev A's `BiomeData` (W6,
+      blocked on W3-A1/A6) replaces it with a one-line change in
+      `GameState._biome_for()` plus deleting the file. `null` was rejected
+      because the HUD and floor generation both need the biome to read
+      something, and the BRIEF's out-of-scope note explicitly says to use a
+      `Resource`-typed placeholder plus an integer `biome_id`.
+    - `start_run` / `end_run` also emit the **`Events` bus** signals
+      `run_started(run_seed)` / `run_ended(result)`, because
+      `SPEC-run-economy.md`'s "Interfaces provided" lists them as Events that
+      run-economy emits. `Events.floor_entered` is **not** emitted here — that
+      one belongs to floor-generation (SPEC-floor-generation), and dual-emitting
+      it from `next_floor` would make the HUD update twice for one event.
+
 ---
 
 ## Running the game
