@@ -16,12 +16,12 @@ extends Node
 ## **blocked on Dev A (W2-A1, player.tscn)** for the player, whose
 ## `StatusEffects` node is still bare today.
 ##
-## Ticking is scaled, never `Engine.time_scale`: `_physics_process` multiplies
-## its delta by `TimeManager.scale_for(entity)`, so a time stop aimed at the
-## enemies freezes a burning enemy's damage with it (SPEC-time-manager). The
-## entity's kind is never guessed from a script class — `is_player()` reads the
-## `PLAYER_TAG` group the entity joined (networking's `PlayerSpawner` tags every
-## player it spawns).
+## Ticking is scaled, never the engine's own time scale: `_physics_process`
+## multiplies its delta by `TimeManager.scale_for(entity)`, so a time stop aimed
+## at the enemies freezes a burning enemy's damage with it (SPEC-time-manager).
+## The entity's kind is never guessed from a script class — `is_player()` reads
+## the `PLAYER_TAG` group the entity joined (networking's `PlayerSpawner` tags
+## every player it spawns).
 ##
 ## Boss resists are data, not a code path: `status_resistance` is the field
 ## SPEC-bosses' `BossData` hands its "duration multiplier, Freeze downgraded to
@@ -198,6 +198,24 @@ const SUPERCONDUCT_SOURCE: StringName = &"combo:superconduct"
 ## tick bypasses `Damage.compute` (no roll, no `CRIT_DAMAGE`), so the crit and
 ## its doubling are one decision here rather than a formula call.
 const COMBO_CRIT_MULTIPLIER: float = 2.0
+## The factor `combo_damage_multiplier()` starts from and returns when nothing
+## contributes: a build with neither consumer multiplies a combo's damage by
+## exactly one.
+const COMBO_DAMAGE_BASE: float = 1.0
+## SPEC-stats-status, "Element combos", last line: "Reactive skill node (+40%)
+## and Elementalist synergy (x2) multiply combo damage." Both numbers are here,
+## named for the system that owns them, because neither system exists yet —
+## Reactive is a week-7 skill node (progression-trees), Elementalist is a week-8
+## synergy (SynergyTracker) — so the constants are the one place the spec's
+## numbers live until the real consumers attach and read them.
+const COMBO_ELEMENTALIST_MULTIPLIER: float = 2.0
+const COMBO_REACTIVE_BONUS: float = 0.40
+## The method an attached effect exposes to multiply combo damage: SPEC-effect-
+## system's own seam shape (`connected_water_targets`, `pull_toward`), read off
+## the applying entity's `EffectHost`. The hook is the **method**, never a relic
+## id, so a component that does not know a synergy's name can still be changed by
+## it; the real consumers attach to the player's host at spawn.
+const COMBO_MULTIPLIER_METHOD: StringName = &"combo_damage_multiplier"
 ## Stamped on a combo's own damage alongside the combo's name, so a listener can
 ## tell a reaction's hit from a weapon's or a status tick's — `STATUS_TAG`'s
 ## precedent, for the debug overlay rather than for a rule.
@@ -783,9 +801,18 @@ func _has_other_element(applied: Status) -> bool:
 
 
 ## Fires `combo_kind` if the pass above found one: builds the payload, applies
-## the row's own lasting effect or consume, and emits `Events.combo_triggered`
-## **once**. A no-op — and a `false` — when `combo_kind` is `NO_COMBO`, so the
-## caller needs no second branch.
+## the row's own lasting effect or consume, scales the row's damage by the two
+## consumer hooks, and emits `Events.combo_triggered` **once**. A no-op — and a
+## `false` — when `combo_kind` is `NO_COMBO`, so the caller needs no second
+## branch.
+##
+## The body is two passes over the same row: the first settles everything that
+## does not depend on the multiplier (which stacks are consumed, which window is
+## armed, how much damage the row's own arithmetic produces), the multiplier is
+## applied **once** between them, and the second delivers what it settled. That
+## is deliberately the only place a combo's damage is scaled, so a row added
+## later cannot be silently left out of the multiplication the way a third
+## delivery branch would.
 ##
 ## `existing_frost` is the Chill + Freeze stacks the target held *before* this
 ## application, which is what SHATTER's "consumes Chill/Freeze" spends; every
@@ -808,24 +835,17 @@ func _maybe_trigger_combo(combo_kind: int, applied: Status, source: Node, trigge
 			if existing_frost > 0:
 				clear(Status.CHILL)
 				clear(Status.FREEZE)
-			if combo.damage > 0:
-				for target: Node in _combo_targets(SHATTER_RADIUS):
-					_deliver_to(target, combo_hit(combo, element))
 		Combo.Kind.CONDUCT:
 			# "Shock spreads to every enemy touching the connected water area."
 			# The row names no number of its own, so the spread carries the shock
 			# chain's own damage — 30 % of the trigger damage, SHOCK's row.
 			combo.damage = chain_damage(trigger_damage)
 			combo.radius = SHOCK_CHAIN_RADIUS
-			if combo.damage > 0:
-				_spread_conduct(combo, element)
 		Combo.Kind.BLIGHT_EXPLOSION:
 			# "Explosion 40% per Toxin stack, consumes Toxin." All the stacks go.
 			combo.stacks = stacks(Status.TOXIN)
 			combo.damage = roundi(BLIGHT_PER_STACK * float(combo.stacks) * float(maxi(trigger_damage, 0)))
 			clear(Status.TOXIN)
-			if combo.damage > 0:
-				_deliver_to(entity(), combo_hit(combo, element))
 		Combo.Kind.HEMORRHAGE:
 			# "Bleed ticks crit for 4 s." Nothing is consumed: the row lists no
 			# stacks, and the Bleed is the thing that keeps ticking.
@@ -837,11 +857,85 @@ func _maybe_trigger_combo(combo_kind: int, applied: Status, source: Node, trigge
 			_apply_superconduct()
 		Combo.Kind.COLLAPSE:
 			combo.radius = COLLAPSE_RADIUS
+		_:
+			pass
+	# The spec's last line, "Reactive skill node (+40%) and Elementalist synergy
+	# (x2) multiply combo damage", in one place: a row that deals no damage stays
+	# at 0, and every row that does carries what its two consumers made of it.
+	combo.damage = scaled_combo_damage(combo.damage, source)
+	match combo_kind:
+		Combo.Kind.SHATTER:
+			if combo.damage > 0:
+				for target: Node in _combo_targets(SHATTER_RADIUS):
+					_deliver_to(target, combo_hit(combo, element))
+		Combo.Kind.CONDUCT:
+			if combo.damage > 0:
+				_spread_conduct(combo, element)
+		Combo.Kind.BLIGHT_EXPLOSION:
+			if combo.damage > 0:
+				_deliver_to(entity(), combo_hit(combo, element))
+		Combo.Kind.COLLAPSE:
+			# The pull depends on no damage, so it is independent of what the
+			# consumers did to the row's number.
 			_request_pull()
 		_:
 			pass
 	Events.combo_triggered.emit(entity(), combo, source)
 	return true
+
+
+## A combo's damage after the two consumer hooks have had their say:
+## `Scaling`-shaped arithmetic with the spec's sentence behind it, kept as one
+## function so the multiplication happens in exactly one place. A row that deals
+## no damage stays at 0 — the multiplier is a multiplier, not a floor.
+func scaled_combo_damage(raw: int, source: Node) -> int:
+	if raw <= 0:
+		return 0
+	return roundi(float(raw) * combo_damage_multiplier(source))
+
+
+## The multiplier every combo's damage is scaled by, from SPEC-stats-status's
+## last sentence about the table: "Reactive skill node (+40%) and Elementalist
+## synergy (x2) multiply combo damage."
+##
+## Read off the **applying** entity's effects, and never off an id: each effect
+## attached to the applier's `EffectHost` that exposes `COMBO_MULTIPLIER_METHOD`
+## contributes a factor, and the factors compose multiplicatively. Nothing
+## contributing is `COMBO_DAMAGE_BASE` — exactly 1.0, which is the spec's own
+## case for a build holding neither system.
+##
+## `source` is the effect that applied the status, i.e. what `apply_status()` was
+## handed; a source that is not an `Effect`, or one whose host is gone, is the
+## base. The **target's** own host deliberately does not contribute: the
+## multiplier belongs to whoever dealt the hit, and reading the target's would let
+## an enemy's relics scale the damage dealt to it.
+##
+## Host-side, like every other combo path: a combo only fires where
+## `_resolves_statuses()` is true, so a client never reads this. Where the real
+## consumers attach: the Elementalist synergy (week 8, `SynergyTracker`) and the
+## Reactive skill node (week 7, progression-trees) each attach an `Effect`
+## exposing this method to the player's `EffectHost`; until they exist,
+## `tests/helpers/combo_consumer_stub.gd` stands in for both.
+func combo_damage_multiplier(source: Node) -> float:
+	var applying := source as Effect
+	if applying == null or not is_instance_valid(applying.host):
+		return COMBO_DAMAGE_BASE
+	var multiplier: float = COMBO_DAMAGE_BASE
+	for effect: Effect in applying.host.effects():
+		if effect.has_method(COMBO_MULTIPLIER_METHOD):
+			multiplier *= _combo_factor(effect)
+	return multiplier
+
+
+## One consumer's factor, read through the hook. A consumer that returns
+## something which is not a number contributes nothing, and a negative factor is
+## floored at zero, so a malformed consumer can neither break a reaction nor flip
+## the sign of its damage.
+func _combo_factor(effect: Effect) -> float:
+	var value: Variant = effect.call(COMBO_MULTIPLIER_METHOD)
+	if not (value is float or value is int):
+		return COMBO_DAMAGE_BASE
+	return maxf(float(value), 0.0)
 
 
 ## Whether the entity counts as `wet` for CONDUCT. Read off the entity's

@@ -31,9 +31,11 @@ extends RefCounted
 ## Sync: none. An ephemeral value object, built and spent on the host. Clients
 ## render a combo from replicated state (the HUD and the VFX), never by
 ## computing one: SPEC-effect-system, "an effect script never runs on a client".
-## `Reactive`'s +40 % and `Elementalist`'s x2 (SPEC-stats-status, "Element
-## combos", last line) are G25's hooks and multiply this payload's `damage`; the
-## field is here and unmodified today.
+## SPEC-stats-status's last line about the combo table — "Reactive skill node
+## (+40%) and Elementalist synergy (x2) multiply combo damage" — is applied to
+## `damage` by `StatusEffects.scaled_combo_damage()` before the payload is
+## emitted, so the number a listener reads here already carries both hooks
+## (G25).
 
 enum Kind {
 	SHATTER,
