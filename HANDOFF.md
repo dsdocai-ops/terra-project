@@ -1124,7 +1124,8 @@ and real `NetworkManager`.
 
 W4-B1 is "the full signal set from the spec, emitted by owning modules". The bus
 already declared all 37 signals, so this goal made that declaration *checkable*
-and closed the two drifts the check found; the emitter half is G8, the next goal.
+and closed the two drifts the check found. The emitter half landed next (G8,
+2026-10-20) and is written up at the end of this section.
 
 **`tests/unit/test_events_bus.gd` (10 tests / 330 asserts) reads the spec rather
 than transcribing it.** It parses the `signal …` lines out of the fenced block
@@ -1189,6 +1190,79 @@ baseline); `--import` exit 0 with **0** error or warning lines
 (`g7/import.log`); headless `-- --host --debug-tools --smoke=6` exit 0 with 0
 script/parse errors (`g7/launch-host.log`); two-instance smoke **35 `ok`, 0
 FAIL**, exit 0 (`g7/g7-smoke/run-smoke.log`), run before the commit.
+
+**The emitter half (G8, 2026-10-20) — `tests/helpers/event_emitter.gd` and
+`tests/unit/test_events_emitters.gd` (10 tests / 413 asserts).**
+
+`EventEmitterHelper` is the test-only emitter the rest of Week 4 listens
+through: one named method per bus signal (`emit_hit_landed()`,
+`emit_player_dodged()`, … — 37 of them), each building its own valid fake
+arguments and emitting on `Events`, plus `callable_for(name)` returning the
+`Callable` for a named emitter method so a test never writes a method name as a
+literal, `all_signal_names()` and `dev_a_owned_signals()`. Listeners are always
+connected as named methods — a connected lambda never fires under GUT — and the
+test picks the handler by the signal's declared arity, because a handler whose
+arity does not match is an engine error.
+
+Arguments are built from `tests/helpers/` doubles: a bare `Player.new()` that is
+never added to the tree (so Dev A's `_ready` never runs — the
+`test_run_end_defeat.gd` pattern), an `EnemyBaseStub` for the enemy signals, a
+plain `Resource` carrying a `resource_name` for the `*Data` parameters whose
+Resources land in W4-B5/later, and a new `EventEmitterNodeStub` for the
+parameters still declared `Node` (`Room`, `Pickup`, `Projectile`, `source`).
+The helper frees every node it created in `cleanup()`, which the test calls in
+`after_each`.
+
+The test file covers four things:
+
+- **Coverage against the spec.** It parses the signal names out of the same
+  `### Events bus` block `test_events_bus.gd` reads, and asserts the emitter
+  table is exactly that set: an emitter method for every signal, no method
+  without a signal, exactly one method each, and every emitter method taking
+  zero arguments. `get_script_method_list()` is used rather than
+  `get_method_list()`, because the latter also returns the inherited
+  `Object.emit_signal()` and would read as a stray emitter. A pure
+  `_coverage_problems()` helper does the comparison, and a negative-control test
+  drives it with a dropped and an invented signal so the check is known to be
+  able to fail (BRIEF C13).
+- **Every emitter reaches a listener.** For all 37 signals: connect a named
+  recorder, call the emitter through `callable_for()`, assert exactly one call
+  and that it carried the signal's declared number of arguments, then
+  disconnect. A further case asserts the player-first signals carry a real
+  `Player` and the hit signals a real `HitData`.
+- **The emitters Dev B owns fire from their real owner**, not from the helper:
+  `GameState.start_run` emits `Events.run_started` and `GameState.end_run` emits
+  `Events.run_ended`; a `room_cleared` on the bus is counted by the host in
+  `GameState.run.rooms_cleared`; `NetworkManager.apply_player_downed` /
+  `apply_player_revived` emit `Events.player_downed` / `player_revived` with the
+  named peer and reviver.
+- **The blocked record.** The nine signals W4-A4 names (`hit_landed`,
+  `crit_landed`, `player_damaged`, `heavy_attack_released`, `weapon_swapped`,
+  `projectile_fired`, `enemy_killed`, `enemy_spawned`, `player_dodged`) each
+  carry a `blocked on Dev A (W4-A4)` line in the helper's doc comment — asserted
+  per name with a regex, so a line cannot go missing — and the phrase is
+  asserted present in `tasks/todo.md`.
+
+**Nothing in the production bus changed in this goal.** No file under
+`scripts/` or `scenes/` was touched: the emitter is a test instrument, so the
+"Ask first" list is untouched and no new decision is required. Where an emitter
+is still missing in production, it is because its module does not exist yet:
+run-economy's loot emitters are W4-B8, relics' `relic_picked` is W4-B5/B6,
+stats-status's status/combat signals are W4-B4, and time's `entity_time_applied`
+is W4-B9 — each lands in its own task, and this helper is what lets the relics
+that listen to them be tested in the meantime. Dev A's nine are W4-A4.
+
+**Verified:** `-gtest=res://tests/unit/test_events_emitters.gd` 10/10 / 413
+asserts green (`.goals/evidence/g8/`); red run first, GUT refusing the file with
+a parse error because neither new class existed
+(`.goals/evidence/g8/red-test-events-emitters.log`); full suite **37 scripts /
+574 tests / 574 passing / 54 858 asserts** exit 0 (`g8/gut-full.log`, up from
+the 564 baseline); `--import` exit 0 with **0** error or warning lines
+(`g8/import.log`); two-instance smoke **35 `ok`, 0 FAIL**, exit 0
+(`g8/smoke-run.log`), run because the bus is the interface every sync-adjacent
+module emits on. No `Engine.time_scale`, no global RNG, no Dev A file, no
+`.tscn`, no `project.godot` / Input Map / autoload-signature / `Events` /
+`scripts/data/` / save-schema / CI / addons change.
 
 ---
 
