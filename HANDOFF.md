@@ -13,6 +13,10 @@ A and the human who review this handoff; the task list is `tasks/todo.md`.
   27 GUT scripts / 338 tests green in ~14 s; `tools/smoke_two.sh` 28/28
   (steps 1 + 2 + 3). `week-2` tag held off until Dev A's W2 tasks land (see
   `specs/WEEKLY.md`).
+- Week 2 gate re-verified (2026-10-19) on `main` @ `3b992de`, before Week 3
+  began: import exit 0; 27 GUT scripts / 338 tests green in ~7 s;
+  W2-B1 .. W2-B6 ticked, W2-B7 / W2-B8 and W2-A1 .. W2-A13 open; `week-2` not
+  tagged. Full verdict in decision 22 below.
 
 ---
 
@@ -475,6 +479,41 @@ already recorded in a spec or a comment, the location is given.
     acceptance criterion depends on the specific font. HUD is added lazily by
     `main.gd` and "visible in test room" is met by the fake-HudModel scene test
     + headless launch; the on-screen pointer check is manual.
+
+### Week 3 decisions
+
+22. **Week 2 gate verdict — recorded before Week 3 starts (2026-10-19).**
+    Verdict: **partial**. Re-verified on `main` @ `3b992de` immediately before
+    Week 3 began, from the repo rather than from memory:
+
+    - `tasks/todo.md`: W2-B1 .. W2-B6 are all ticked; W2-B7 and W2-B8 are open;
+      all 13 of Dev A's W2-A1 .. W2-A13 are open.
+    - `git tag`: lists `week-1` only. **`week-2` is not created and will not be
+      created retroactively** — the design doc's Week 2 "Done when" includes
+      Dev A's combat core (attacks, dodge, weapon swap, Health/Hitbox/Hurtbox,
+      3 enemies), none of which has landed, so the milestone is genuinely
+      unmet. `specs/WEEKLY.md` already records "Met: partial" and the withheld
+      tag; creating the tag now would claim a milestone that did not happen.
+    - `"$GODOT" --headless --path . --import` exits 0 with no parse errors
+      (`/c/Users/Dsedg/Downloads/Godot_v4.7.2-stable_win64.exe/Godot_v4.7.2-stable_win64_console.exe`),
+      log at `.goals/evidence/g1-import.log`.
+    - Full GUT suite exits 0: **27 scripts / 338 tests / 12110 asserts, all
+      passing**, ~7 s, log at `.goals/evidence/g1-gut.log`.
+    - `specs/WEEKLY.md` week-2 entry already says "Met: partial" and names the
+      open items.
+
+    What this means for the rest of the run: Dev B's lane is complete for
+    Week 2, so nothing in my lane is repaired here; the open ids
+    (**W2-A1..W2-A13, W2-B7, W2-B8**) are carried as blockers, not as tasks.
+    Week 3 proceeds on the basis that every Dev A dependency is unlanded, so
+    each W3-B task is built against the spec interface plus a `tests/helpers/`
+    stub and records `blocked on Dev A (W3-Ax)`. `week-3` will be tagged only
+    if Dev A's W3-A1 .. W3-A7 also land during this run; otherwise the gap is
+    stated in `WEEKLY.md`, here, and in `.goals/LOG.md`. This is recorded
+    rather than asked because the run is unattended (BRIEF Assumption 1) and
+    because the raw goal's own rule — tag `week-3` "once Dev A's tasks are also
+    done" — shows the human expects milestone tags gated on the whole
+    checkpoint.
 
 ---
 
