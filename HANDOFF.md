@@ -3886,8 +3886,8 @@ physics layer 6 "interactable", an interact `CircleShape2D` and the placeholder
 `Polygon2D` — the `Rope` scene's shape), one startup line in
 `scenes/main/main.gd` beside `Rope.register_populator()`, a `tests/helpers/`
 registry double (`shrine_registry_stub.gd`), and `tests/unit/test_shrine.gd`
-(19 cases). No relic is attached yet and no codex is written: the pick, the host
-attach and the codex are G10.
+(19 cases). No relic is attached and no codex is written here; that half is G10,
+directly below.
 
 **The spec's two sentences, implemented verbatim.** SPEC-relics "Shrine flow":
 "Interact (host validates one use per player per shrine) rolls 3 relics the player
@@ -3947,8 +3947,73 @@ the static `register_populator(type, populator)`.
 **Not claimed:** the offer is proven against the 20 shipped `.tres` and a
 hand-built hold, not against a live player scene — no player scene composes a
 `StatBlock` yet (**blocked on Dev A, W2-A1**), so Luck reads 0 and the roll is the
-run seed's. Nothing here attaches a relic, so a pickup can be offered and not yet
-taken.
+run seed's. Nothing here attaches a relic; the pick that does is G10 below.
+
+---
+
+### G10 — `request_pick_relic` / `relic_choice_offered` / `relic_picked` and the host attach (W4-B5, raw goals G30 + G31) (`relics`)
+
+**What shipped.** `scripts/relics/relic_flow.gd` (`class_name RelicFlow extends
+RefCounted`, the host half of the pick), the RPC trio and its seams on
+`scripts/autoload/network_manager.gd` (`request_pick_relic`, the two
+`authority` broadcasts, `send_pick_relic_request`, the two routers, the two
+`apply_*` receiving halves, the signals `relic_pick_requested` /
+`relic_offer_received`), three lines in `scripts/relics/shrine.gd` handing the
+offer over, and `tests/unit/test_relic_pick.gd` (18 cases, 123 asserts). No
+`.tscn`, no `Events` signal, no save-schema change, nothing in Dev A's lane.
+
+**One rule, host-only, ordered once.** `RelicFlow.pick_refusal_reason(sender,
+index)` is the whole validation and `apply_pick_request` is the only applier, so
+the RPC, the seam and every test share one answer: host only (`NOT_HOST`) ·
+sender > 0 (`NOT_A_REQUEST`, because a direct local call reports 0) · live run
+(`NO_RUN`) · that peer has an unpicked offer (`NO_OFFER`) · the offering shrine is
+still there (`SHRINE_GONE`) · `index` inside **that peer's** offer
+(`BAD_INDEX`) · the id resolves under `data/relics/` (`NO_DATA`) · the player has
+an `EffectHost` (`NO_EFFECT_HOST`) · the run keeps a slice (`NO_PLAYER`) · not
+already held at `max_stacks` (`AT_MAX_STACKS`). A refusal leaves the offer
+intact and records `last_refusal`.
+
+**The attach, exactly as the success criteria name it.** On success the host
+calls `EffectHost.add(data)` and returns the `Effect` — the test asserts the
+chosen id is in `host.list_tags()`, which is a real attach rather than a
+recorded id — then appends the id to the picker's `RunPlayerState.relics`,
+erases the pending offer (so three picks cannot be two), records the codex and
+emits `Events.relic_picked(player, data)` exactly once; `apply_pick_request`
+returns false when `add` returns null (`ATTACH_FAILED`).
+
+**The wire.** `request_pick_relic(index)` is `@rpc("any_peer", "call_remote",
+"reliable")`, carries an index only, and reads
+`multiplayer.get_remote_sender_id()` before calling the seam.
+`relic_choice_offered(peer_id, ids)` and `relic_picked(peer_id, relic_id)` are
+`@rpc("authority", "call_local", "reliable")` and both pass
+`can_accept_host_broadcast(sender)`. Routing is host-only and never echoes to a
+self or unknown peer; a solo host routes nothing and returns false. The test
+reads the attributes off `get_rpc_config()`, not the comments.
+
+**Codex (`SPEC-relics` "Codex").** Every id **offered** is recorded in
+`profile.codex.relics`, not only the picked one, so the offer case asserts all
+three are present before any pick; picking records again through the same
+idempotent `record_codex`, so the second write is a no-op (`seen.count(id) == 1`)
+and two offers of the same id add nothing.
+
+**Evidence** (`.goals/evidence/g10/`, run `1792508947701`): import exit 0 /
+0 errors; red first, a parse error naming `RelicFlow`; **18/18 / 123 asserts**;
+full suite **54 scripts / 963 tests / 963 passing / 58 396 asserts, exit 0**
+(73.8 s) against the step-12 baseline 53 / 945 / 58 273; negative control —
+`if not NetworkManager.is_host:` → `if false:` — fails exactly
+`test_a_client_applies_nothing_itself` (17/18, 120/123, exit 1), then restored
+byte-exact (`sha256sum -c` OK, `diff` empty) and re-green. `tools/smoke_two.sh`
+exit 0 with every existing check `ok`.
+
+**Not claimed.** Two-instance smoke step 4 (a client picks at a Shrine) is
+**blocked on Dev A (W4-A3)**: no generated floor places a `Shrine` yet, so the
+smoke has nothing to walk to; the pick is proved in-process on
+`apply_pick_request(sender, index)`, the same `apply_*` seam the revive contract
+uses. The attach needs a real `EffectHost` on the player, which is **blocked on
+Dev A (W2-A1)** — absent, a pick is refused with `NO_EFFECT_HOST` rather than
+silently dropped. The client-side *open-shrine* request is still not on the wire
+(SPEC-relics names none, and decision 85b chose not to invent one); the client's
+copy of the offer is the `relic_choice_offered` broadcast added here.
 
 ---
 
@@ -6421,6 +6486,44 @@ already recorded in a spec or a comment, the location is given.
     floor change; `blocker_warnings()` exists so the test asserts that rather
     than describing it — the prompt display of a shrine's prompt is `ui-hud`'s
     and is not built here.
+
+86. **The pick flow is a static `RelicFlow` behind three additive `NetworkManager`
+    RPCs, and the codex writes the spec's field through a minimal holder
+    (2026-10-20).** G10. (a) **Autoload API — additive only.** `NetworkManager`
+    gained `request_pick_relic`, `relic_choice_offered`, `relic_picked`,
+    `send_pick_relic_request`, `route_relic_choice_offered`,
+    `route_relic_picked`, `apply_relic_offer`, `apply_relic_pick_broadcast` and
+    two signals; nothing existing changed shape. This is the transport the
+    sanctioning clauses name: SPEC-networking "RPC conventions" (client -> host
+    is `any_peer` / `call_remote` / `reliable` and validated with
+    `get_remote_sender_id()`; host -> everyone is `authority` / `call_local` /
+    `reliable`) and SPEC-relics "Shrine flow" (which names all three messages).
+    The shrine node cannot carry the RPC — the host's populator spawns it, so a
+    client never holds one — which is the same reason `Rope`'s vote travels on
+    `NetworkManager` rather than the node. (b) **The pick's state lives in
+    `RelicFlow`, not on the `Shrine`.** One owner for the roll and the per-peer
+    use record (G9's `Shrine`), one for the offer-to-attach window (G10);
+    `Shrine._apply_use` hands its ids over on the line after it announces them.
+    `RelicFlow` is a `RefCounted` with static members, like `RelicRoller`, so it
+    needs no autoload slot and no scene. (c) **The codex writes
+    `profile.codex.relics` — the field SPEC-save-system already declares — and
+    creates a minimal `CodexProfile` holder in the existing `SaveManager.profile`
+    slot only while save-system's typed `PlayerProfile` is absent (week 5).**
+    No save schema, no serialisation and no `SaveManager` signature changed;
+    when `PlayerProfile` lands, `_ensure_profile()` returns it instead and the
+    holder stops being used. The alternative — waiting for week 5 — would leave
+    the codex half of G10 unbuilt against a spec that already names the field.
+    (d) **`EffectHost` is resolved by `EffectHost.NODE_NAME`**, the same path
+    `EffectHostPlayer` installs and `Effect` uses, so Dev A's W2-A1 swap-in is
+    one node in `player.tscn` and nothing here moves; until then a pick is
+    refused with `NO_EFFECT_HOST`. (e) **No two-instance smoke step 4**: it is
+    blocked on Dev A's W4-A3 (no generated floor places a shrine). The RPC
+    surface is additive and additive-only, so the existing smoke is unchanged
+    and still green; the pick itself is proved through the
+    `apply_pick_request(sender, index)` seam rather than faked over the wire.
+    (f) **The client's open-shrine request remains unnamed**: SPEC-relics gives
+    only `request_pick_relic`, so the offer is host-produced and the client's
+    copy is the `relic_choice_offered` broadcast. Recorded, not invented.
 
 ---
 
