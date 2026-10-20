@@ -16,9 +16,13 @@ extends Node
 ## land intact leaves `PATH` exactly as it was — the previous save is never
 ## replaced by a half one.
 ##
-## `load()` is G4's: reading `PATH`, stepping the migrations, filling missing
-## keys from `PlayerProfile.defaults()` and falling back to `BACKUP_PATH` all
-## arrive there. Until then it only guarantees that a profile object exists.
+## `load()` reads `PATH`, steps the migration chain (`SaveMigrations`) and hands
+## the result to `PlayerProfile.from_dict()`, which is where a key the file does
+## not have becomes its `defaults()` value — so a field added by a later build
+## arrives without a migration. Anything that stops the read is named on
+## `load_refusal` instead of being quietly passed over. The `.bak` /
+## `save.corrupt.<timestamp>` half of SPEC-save-system's "start fresh and keep the
+## corrupt file" sentence is G5's and lands behind the same branch.
 ##
 ## Sync: local file per machine; the host never writes a client's profile.
 
@@ -32,9 +36,17 @@ const PATH: String = "user://save.json"
 const TMP_PATH: String = PATH + ".tmp"
 ## The previous successful save, kept for `load()`'s fallback (G5).
 const BACKUP_PATH: String = "user://save.bak"
+## The file at `PATH` is not a JSON object — truncated, or not a save at all.
+const REFUSAL_CORRUPT_FILE: StringName = &"save_file_is_not_a_json_object"
 
-## The live profile; null until `load()` (G4) or a caller sets one.
+## The live profile; null until `load()` or a caller sets one.
 var profile: PlayerProfile = null
+
+## Why the last `load()` did not use the file it found: empty when it did, and
+## otherwise the name of the rule that stopped it — one of `SaveMigrations`'
+## refusal names, or `REFUSAL_CORRUPT_FILE`. Read-only state; `ui-hud` may show
+## it, and nothing in gameplay decides anything from it.
+var load_refusal: StringName = SaveMigrations.REFUSAL_NONE
 
 ## True when the profile has changed since the last completed write.
 var _dirty: bool = false
@@ -54,9 +66,37 @@ func save() -> void:
 	_flush.call_deferred()
 
 
-## Reads PATH on startup and runs migrations. G4 owns the chain.
+## Reads `PATH` on startup, steps the migrations and fills the profile's missing
+## keys from the defaults (SPEC-save-system, "Loading and migration"). A read
+## that cannot be trusted never becomes half a profile: the caller is given a
+## fresh one and the reason on `load_refusal`.
+##
+## Three outcomes, and each is observable:
+##   * **no file** — a new game. A fresh profile, no refusal: SPEC-save-system
+##     reserves the refusal vocabulary for files that exist and cannot be used.
+##   * **a file that is not a JSON object** — refused by name and a fresh
+##     profile. G5 replaces this branch with the `BACKUP_PATH` fallback and the
+##     `save.corrupt.<timestamp>` keep.
+##   * **a file that is a JSON object** — the migration chain runs; if it refuses
+##     (a newer build's save, or a version with no step) the reason is kept and
+##     the profile is a fresh one.
 func load() -> void:
-	if profile == null:
+	load_refusal = SaveMigrations.REFUSAL_NONE
+	var parsed: Variant = null
+	var exists: bool = FileAccess.file_exists(PATH)
+	if exists:
+		parsed = _parse_object(FileAccess.get_file_as_string(PATH))
+	if not parsed is Dictionary:
+		if exists:
+			load_refusal = REFUSAL_CORRUPT_FILE
+		profile = PlayerProfile.defaults()
+		loaded.emit(profile)
+		return
+	var outcome := SaveMigrations.migrate(parsed as Dictionary)
+	load_refusal = outcome.reason
+	if outcome.ok():
+		profile = PlayerProfile.from_dict(outcome.data)
+	else:
 		profile = PlayerProfile.defaults()
 	loaded.emit(profile)
 

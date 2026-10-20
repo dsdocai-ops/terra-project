@@ -4454,6 +4454,71 @@ a save does not survive a restart yet: the migration table and the
 `tests/fixtures/save_v1.json` fixture are G4, and the `.bak` /
 `save.corrupt.<timestamp>` recovery chain with the headless relaunch case is G5.
 W5-B1 stays `[ ]` for that reason. No Dev A dependency in this goal.
+**(Superseded by G4, 2026-10-20: `load()` below now reads `PATH`, steps the
+migration chain, names its refusals on `load_refusal`, and is covered by
+`tests/unit/test_save_migrations.gd` 23/23. The `.bak` chain and the relaunch
+case are still G5's.)**
+
+---
+
+### G4 — `load()` with ordered migrations and a version-1 fixture (W5-B1, PLAN G4) (`save-system`)
+
+**What landed.** `scripts/autoload/save_migrations.gd` — new,
+`class_name SaveMigrations extends RefCounted`, static only, never instantiated —
+and `SaveManager.load()`, which now reads `PATH`. SPEC-save-system, "Loading and
+migration", is the whole contract: *"read file, parse JSON, check `save_version`.
+If lower than current, run `migrations[version]` in order ... Missing keys get
+defaults from `PlayerProfile.defaults()` so new fields never need a migration
+unless semantics change."*
+
+**Three rules, each in one place.** (1) **A step is keyed by the version it
+migrates *from*** — `table()[1]` takes a v1 save to v2. (2) **The chain is checked
+whole before it runs**: every version in the range must have a step, and the steps
+work on a copy, so a refusal hands the caller its own dictionary back rather than
+a half-migrated one. (3) **A save from a newer build is refused by name**, never
+read as if it were this build's — reading it would default every field this build
+lacks and the next write would drop them for good. Missing keys are **not** the
+chain's job: `PlayerProfile.from_dict()` fills them from `defaults()`, which is
+why `table()` is **empty today** (the schema is still at version 1 and every
+week-5 field is on the spec's own table, BRIEF A5) and why
+`test_every_version_below_current_has_a_migration_step` fails on the next bump
+until that bump's step and fixture land with it.
+
+**Refusal vocabulary** (public `const`s on `SaveMigrations`; `SaveManager` adds
+`REFUSAL_CORRUPT_FILE`): `save_is_from_a_newer_build`, `no_migration_for_version`,
+`migration_did_not_return_an_object`, `save_file_is_not_a_json_object`.
+`SaveManager.load_refusal` is the new **read-only** field carrying whichever
+applies, empty when the read worked — an autoload public-API addition, decision
+107.
+
+**Accept.** New `tests/unit/test_save_migrations.gd` **24/24 / 142 asserts**,
+exit 0, written and run **red first** (`Parse Error: Identifier "SaveMigrations"
+not declared`, `Nothing was run`, `.goals/evidence/r1792536096839/g4/red-test.log`),
+over `tests/fixtures/save_v1.json` — which deliberately omits eleven of the thirty
+spec fields, so one file proves both halves of the spec sentence (values survive;
+missing keys arrive from `defaults()`) — and the recording chain double
+`tests/helpers/migration_recorder.gd`. **One deviation in form from PLAN G4's
+sub-task text, recorded rather than smoothed over**: the sub-task asks for the
+order to be proved "by a fixture that records the order it was stepped through",
+and a JSON file cannot run code — so the chain double drives the **shipped**
+`run()` loop, while the JSON fixture proves the other half. Full suite **63
+scripts / 1 183 tests / 1 183 passing / 62 113 asserts**, exit 0, 76.779 s (G3:
+62/1 159/61 971 — exactly this goal's +1 script / +24 cases / +142 asserts);
+`--import` exit 0 with **0** `ERROR` lines; both standing greps empty; the touched
+suites re-run one file at a time; headless `-- --host --smoke=6` exit 0 with 0
+error lines. One forced negative control — the apply loop made to run
+**descending**, on a two-line anchor inside `run()` — fails **exactly the three
+cases that state the order rule** (21/24, 139/142 asserts, exit 1) and nothing
+else, reverted from a snapshot (`diff -q` clean, `sha256` `db8f2051…` on both)
+and re-run green at the identical tally. No smoke run: this commit adds one
+`class_name` script, one helper, one test file and one fixture — no RPC, no
+replication, no `.tscn`, no autoload registration, no `scripts/data/` Resource
+(BRIEF C21). Detail in `.goals/evidence/r1792536096839/g4/`.
+
+**Not claimed.** Nothing calls `load()` at startup yet, so a save still does not
+survive a restart in the shipped game — the `.bak` / `save.corrupt.<timestamp>`
+chain and the headless relaunch case are G5, and that is where the startup call
+lands. W5-B1 stays `[ ]` for that reason. No Dev A dependency in this goal.
 
 ---
 
@@ -7314,6 +7379,48 @@ already recorded in a spec or a comment, the location is given.
     two `ERROR` lines and two GUT "unexpected errors" in the first green run.
     `TMP_PATH` and `BACKUP_PATH` are new `const`s naming the two paths the spec
     itself names.
+
+107. **`SaveManager.load_refusal` is a new read-only field on the autoload
+    (2026-10-20).** G4. PLAN G4's own criterion requires a save this build cannot
+    read to be "refused with a named reason rather than silently downgraded", and
+    SPEC-save-system's fixed interface (`func load() -> void`) has no return
+    value to carry one — so the reason is a field: `load_refusal: StringName`,
+    empty when the read worked, otherwise one of the four names above. It is
+    **read-only state**: `save-system` writes it, `ui-hud` may show it, and no
+    gameplay path branches on it. Sanctioned by SPEC-save-system's "Loading and
+    migration" ("check `save_version`") under the project's Ask-first rule for
+    autoload public API (BRIEF C10); the alternative — refusing silently, or
+    overloading `profile == null` — would have made a refusal indistinguishable
+    from a new machine, which is the exact failure the criterion names.
+
+108. **How a raw save's version is read, and what a refusal does (2026-10-20).**
+    G4. Three readings SPEC-save-system does not spell out, each chosen so a real
+    file cannot be mis-read:
+    - **A missing or non-numeric `save_version` reads as the *current* version**,
+      not as version 0. The spec's own next sentence is "missing keys get
+      defaults from `PlayerProfile.defaults()`", and this key's default is the
+      current version — so a file written before the key existed is this build's
+      rather than a refused one. A version-0 reading would have tripped the
+      no-migration rule below on a perfectly ordinary file.
+    - **The chain is validated whole before its first step runs**, and its steps
+      work on `duplicate(true)` of the input. A gap therefore refuses **without
+      half-applying**, and a refusal hands the caller its own dictionary back —
+      a half-migrated save is worse than one that did not load, because it looks
+      like a save.
+    - **`table()` is empty at version 1 and that is the correct state**, not an
+      unfinished one: nothing in the schema has changed meaning, so there is
+      nothing to migrate. The mechanism ships with the fixture and the ordering
+      proof so the next bump has a working path and a precedent (BRIEF A5).
+
+109. **A new `tests/fixtures/` folder, holding `save_v1.json` (2026-10-20).**
+    G4. SPEC-save-system's "Testing" section names the fixture by its full path
+    (`tests/fixtures/save_v1.json`), so the folder is the spec's own layout
+    rather than a new convention — recorded here for the same reason as
+    decision 58: a new directory in the tree should be a decision a reader can
+    find. The fixture is a real, hand-written v1 save that deliberately omits
+    eleven of the spec's thirty fields; the integration data walker
+    (`tests/integration/test_data_loads.gd`) walks `res://data` only and is
+    unaffected.
 
 ---
 
