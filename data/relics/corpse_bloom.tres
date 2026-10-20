@@ -1,0 +1,20 @@
+[gd_resource type="Resource" script_class="RelicData" load_steps=3 format=3]
+
+[ext_resource type="Script" path="res://scripts/data/relic_data.gd" id="1_relic"]
+[ext_resource type="Script" path="res://scripts/effects/relics/corpse_bloom.gd" id="2_effect"]
+
+[resource]
+script = ExtResource("1_relic")
+id = &"corpse_bloom"
+display_name = "Corpse Bloom"
+tags = Array[StringName]([&"on_kill"])
+effect_script = ExtResource("2_effect")
+vfx_id = &"relic_proc_on_kill"
+sfx_id = &""
+rarity = 1
+kind = 0
+description = "Dead enemies sprout healing flowers."
+max_stacks = 1
+active_cooldown = 0.0
+active_charges = 0
+weight = 1.0
