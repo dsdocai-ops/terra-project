@@ -4250,6 +4250,77 @@ decisions 90 and 91. W4-B8 stays `[ ]`.
 
 ---
 
+### G15 — Chests, the `TREASURE` populator, breakables, mining nodes and the ore hooks (W4-B8) (`run-economy`)
+
+**What shipped.** `scripts/run/room_populator.gd` (`RoomPopulator extends
+RefCounted` — the two seams every container shares: Dev A's generator script,
+and the `RoomType` value read off it); `scripts/run/chest.gd` (`Chest extends
+Area2D`), `scripts/run/breakable.gd`, `scripts/run/mining_node.gd`;
+`scenes/dungeon/interactables/{chest,breakable,mining_node}.tscn` (each an
+`Area2D` on layer 32 = Interactable with a zero mask, one `CollisionShape2D` and
+one placeholder `Body`); `data/loot/{chest_common,chest_rare,chest_legendary,
+breakable}.tres` (all four `LootTable`); `tests/helpers/room_registry_stub.gd`
+plus the `chest_gold_fixture` / `chest_relic_fixture` resources;
+`tests/unit/test_containers.gd` (46 cases). `main.gd`'s startup block gains
+`Chest.register_populator()`; `ore_payout.gd` gains `KIND_MINED` / `ORE_MINED`;
+`loot_drops.gd`'s `credit` and `spawn_drop` are now **static** and take the
+spawner, so a container pays and presents through the same call a death does.
+
+**The contract** is SPEC-player-controller's Interactable, followed literally on
+all three: `prompt_text` ("Open" / "Smash" / "Mine"), `hold_seconds = 0.0`
+(each resolves on the press — only the mining node counts hits), and
+`interact(player: Player) -> void`. All three are host-only, refusing off-host,
+with no live run, and once spent; a client's use is forwarded as
+`interaction_forwarded(peer_id)` and changes nothing.
+
+**The tier.** `LootTable.CHEST_TIERS` is `[COMMON, RARE, LEGENDARY]`, so
+`Chest.tier_from_rarity()` promotes anything at or below a tier into it — EPIC
+lands on LEGENDARY, which is what makes the three tier weights
+`RelicData.roll_weight`'s own 60 / 28 / (10 + 2) = 100 with nothing invented.
+The roll goes through `LootTable.shifted_rarity_roll(rng.randf(), luck)`, so a
+chest's tier moves with Luck exactly as a relic's rarity does, and the relic is
+drawn with `RelicRoller.roll(player, relic_count(tier), allows_cursed(tier))` —
+the helper SPEC-run-economy names — into the `relics_rolled` signal.
+
+**Evidence** (`.goals/evidence/r1792508947701/g15/`): red first (`red.log` — `Chest`,
+`Breakable`, `MiningNode` and `RoomPopulator` all undeclared, `Nothing was
+run`); `test_containers.gd` **46/46 / 396 asserts**, exit 0; `--import` exit 0
+with 0 `ERROR` lines; `test_scenes_load.gd` **1/1 / 42 asserts**, exit 0 — it
+walks 13 scenes through 15 directories, so the three new ones are in it
+(criterion 1); the full suite **60 scripts / 1 111 tests / 1 111 passing /
+61 696 asserts**, exit 0, 75.5 s, against G14's 59 / 1 065 / 61 289 (+1 script,
++46 tests, +407 asserts); `grep -n "blocked on Dev A (W3-A3)" scripts/run/*.gd`
+returns 9 lines (criterion 4); one forced negative control — `HITS_REQUIRED: int
+= 3` → `1` — fails exactly `test_a_mining_node_takes_three_hits_with_any_attack`
+(45/46, 392/396 asserts, exit 1) with every chest, breakable, populator and
+client case still green, reverted byte-exact (`sha256sum -c` OK,
+`6835347a…e419`); two-instance smoke **35 `ok` / 0 FAIL / exit 0** — run because
+the commit reworks the replicated-pickup spawn path — and headless boot
+`-- --host --smoke=6` exit 0 with 0 error lines, printing the three populator
+warnings once each (`[run] ROPE`, `[relics] SHRINE`, `[run] TREASURE`), which is
+the guard seen at runtime rather than only asserted. Detail behind this section
+is in that directory's `NOTES.md`.
+
+**Blocked on Dev A (W3-A3).** `scripts/generation/floor_generator.gd`, its
+`RoomType` and its `register_populator()` are `floor-generation`'s and are not in
+the tree, so `Chest.register_populator()` is a guarded no-op: `false`, plus one
+`[run] TREASURE populator not registered — blocked on Dev A (W3-A3)` line per
+process (asserted as `blocker_warnings() == 1`, and a second call adds none). The
+path is the same literal `FloorGeneratorSeam.GENERATOR_SCRIPT_PATH` networking
+already guards on, and a test pins the two constants equal so one landing swaps
+both. The cases drive resolution with `RoomRegistryStub`'s `RoomType.TREASURE`
+through `RoomPopulator.room_type_value()`. Nothing was created in Dev A's lane:
+no `scripts/generation/`, no `.tscn` of theirs, and no pre-existing scene was
+modified.
+
+**Not claimed.** Nothing in the shipped game builds a room yet, so the three
+containers are reachable and exercised, not seen on a live floor; the `TREASURE`
+populator's 2–3 chests are proven over 40 seeded rooms in the suite, not on
+screen. W4-B8 stays `[ ]` — live placement and the week-5 economy pass are open.
+Judgment calls are decisions 93–99.
+
+---
+
 ## Decisions made without a human
 
 
@@ -6908,6 +6979,74 @@ already recorded in a spec or a comment, the location is given.
     custom spawn function, plain-typed payload), so a client cannot conjure loot.
     Because the commit touches spawner wiring, it ran
     `tools/smoke_two.sh` **before** the commit.
+
+93. **`TREASURE` is the only populator this goal registers (2026-10-20).** G15.
+    SPEC-run-economy's registration sentence names `ROPE`, `SHOP`, `REST` and
+    `TREASURE`; SPEC-floor-generation's room-type table has no `ORE` or `SECRET`
+    row. So there is no interface to register a breakable or a mining node
+    against, and inventing `RoomType.ORE` would have fabricated Dev A's
+    enumeration. Both are instead room furniture placed by count —
+    `Breakable.place_in(room, count)` / `MiningNode.place_in(room, count)`, the
+    shape `Rope.place_in` already has — with the count owned by whoever authors
+    the room. The cases assert the two carry no `room_type_value()` seam at all.
+
+94. **A chest's tier is the game's own rarity weights with EPIC promoted to
+    LEGENDARY (2026-10-20).** G15. SPEC-run-economy names three chest tiers but
+    `RelicData` carries four rarities, so something must say where EPIC goes. The
+    promotion is `tier_from_rarity()`'s `tier >= rarity` scan over
+    `LootTable.CHEST_TIERS = [COMMON, RARE, LEGENDARY]`, which makes the three
+    tier weights `RelicData.roll_weight`'s own 60 / 28 / (10 + 2) — they sum to
+    100 with **no new number**. The tier is rolled as a rarity first
+    (`LootTable.shifted_rarity_roll(rng.randf(), luck)`), so Luck moves a chest's
+    tier the same way it moves a relic's rarity. A second, chest-only weight
+    table would have put a number in a file the design doc gives none for.
+
+95. **`RELIC_COUNT = 1` and `ALLOW_CURSED = false` are one-line seams
+    (2026-10-20).** G15. SPEC-run-economy's sentence is "rolled by the same
+    `RelicRoller.roll(player, count, allow_cursed)` helper the Shrine uses", so a
+    chest draws exactly one relic through that call. Cursed relics have exactly
+    one documented source (the `CURSED_ALTAR`), so a chest is not a second one.
+    Both are accessors (`relic_count(tier)`, `allows_cursed(tier)`) rather than
+    literals at the call site, because the design doc's Trickster "chests can
+    drop double" is a tier-scoped exception that lands there and nowhere else.
+
+96. **`Breakable.HITS_REQUIRED = 1`; only the mining node counts hits
+    (2026-10-20).** G15. SPEC-run-economy gives a breakable "drop small gold with
+    30 % chance" and gives a mining node "3 hits with any attack" — the count is
+    stated for one and not the other, so it is implemented once, in `MiningNode`.
+    A breakable resolves on its interaction and on any single `apply_hit()`.
+    `hold_seconds` is `0.0` on all three because none of them is hold-to-use.
+    Copying the 3 onto the breakable would have added a rule the spec does not
+    state.
+
+97. **Mining pays through `OrePayout`'s kill path, so `KIND_MINED` reuses the
+    mini-boss row (2026-10-20).** G15. SPEC-run-economy's owned sentence is
+    "Wren's +25 % ore yield applies", and that bonus already exists as an id read
+    off the holder's `EffectHost` inside `OrePayout.amount_for_kill()`. Rather
+    than grow a second, parallel bonus read, `ORE_MINED` is `ORE_MINI_BOSS` (3)
+    and `PAYOUT_BY_KIND` gains `KIND_MINED: ORE_MINED`. So a mined seam and a
+    mini-boss kill pay the same, and Wren is the same code on both. A case
+    asserts the row, and asserts 3 → 4 with Wren attached (`roundi`, once:
+    3 × 1.25 = 3.75 → 4), not merely that something rose.
+
+98. **`LootDrops.credit` / `spawn_drop` became static and take the spawner
+    (2026-10-20).** G15. A container is not the `LootDrops` node, and the two
+    halves of a drop — banking the currency and presenting the coin — must not be
+    separable, or a chest could pay without showing. Handing the `PickupSpawner`
+    in as an argument keeps `LootDrops` the single place that knows how a drop is
+    paid and presented; the containers call it with
+    `RoomPopulator.world_pickup_spawner()` (null-safe: a container with no world
+    still pays the currency, asserted). The call inside `on_enemy_killed` moved
+    to the same signature with no behaviour change. No external caller of either
+    method existed.
+
+99. **The four `data/loot/` tables hold placeholder currency numbers
+    (2026-10-20).** G15. SPEC-run-economy puts the economy pass in week 5, and
+    this goal's criterion is the *shape* — a chest rolls its tier's table, a
+    breakable drops small gold on 30 %. The amounts (chest common 5–15, rare
+    15–30, legendary 30–60 and their ore/potion companions; breakable 1–3 at
+    weight 0.3) are content-as-data in `.tres`, so the week-5 pass re-tunes them
+    without touching a script. Recorded so they are not mistaken for spec values.
 
 ---
 

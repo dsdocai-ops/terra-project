@@ -113,7 +113,7 @@ func on_enemy_killed(enemy: Node, hit: HitData) -> bool:
 			continue
 		var drop: Dictionary = _roll_drop(entry, rng)
 		credit(run, killer, drop)
-		spawn_drop(drop, at, killer)
+		spawn_drop(drop, at, killer, spawner)
 	return true
 
 
@@ -210,7 +210,11 @@ func _roll_drop(entry: LootTable.Entry, rng: RandomNumberGenerator) -> Dictionar
 ## the pool it moved — which is what the HUD's currency row listens to. A kill
 ## with no killer still moves the shared pools and announces nothing, because
 ## there is no player to name.
-func credit(run: RunState, killer: Player, drop: Dictionary) -> void:
+##
+## Static because it reads no node: a container (`Chest`, `Breakable`,
+## `MiningNode`) pays through this one function rather than growing a second way
+## for a coin to reach a pool.
+static func credit(run: RunState, killer: Player, drop: Dictionary) -> void:
 	var kind: StringName = drop.get("kind", &"")
 	var amount: int = int(drop.get("amount", 0))
 	if amount <= 0:
@@ -237,9 +241,12 @@ func credit(run: RunState, killer: Player, drop: Dictionary) -> void:
 ## drop with no spawner is still paid: the currency is the host's to give, and the
 ## coin is only how a player sees it.
 ##
-## A per-player drop (`PER_PLAYER_KINDS`) is visible to its earner alone; every
-## other kind is everyone's, because the pools they pay are the party's.
-func spawn_drop(drop: Dictionary, at: Vector2, killer: Player) -> void:
+## A per-player drop (`PER_PLAYER_KINDS`) is visible to its earner alone; every other
+## kind is everyone's, because the pools they pay are the party's.
+##
+## Static, with the spawner handed in, so a container pays and presents a drop
+## with the same call a death does.
+static func spawn_drop(drop: Dictionary, at: Vector2, killer: Player, spawner: PickupSpawner) -> void:
 	if spawner == null or not is_instance_valid(spawner):
 		return
 	var kind: StringName = drop.get("kind", &"")

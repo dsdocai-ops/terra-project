@@ -64,6 +64,7 @@ func _ready() -> void:
 	# a no-op that records its blocker once until the registry exists.
 	Rope.register_populator()
 	Shrine.register_populator()
+	Chest.register_populator()
 	_start_from_options()
 	if options.smoke_seconds > 0.0:
 		_start_smoke(options.smoke_seconds)

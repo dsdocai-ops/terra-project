@@ -33,23 +33,30 @@ const ORE_DIR: String = "res://data/ore"
 
 ## The three kill payouts, from the spec's own sentence: "elites 1, mini-boss 3,
 ## biome boss 6". Mining nodes are the fourth source and are not a kill — they
-## are `run-economy`'s own interactable (W4-B8, goal G15) and pay by the node's
-## own yield, so they are deliberately absent from this table.
+## are `run-economy`'s own interactable (`W4-B8`, goal G15) — but they are a row
+## in this table too, because the seam must reach Wren's +25% through the same
+## `amount_for_kill()` every other source uses rather than growing a second copy
+## of it. The spec gives the node no number, so `ORE_MINED` is run-economy's own
+## reading (`MiningNode.MINE_YIELD` is its one other home).
 const ORE_ELITE: int = 1
 const ORE_MINI_BOSS: int = 3
 const ORE_BIOME_BOSS: int = 6
+const ORE_MINED: int = ORE_MINI_BOSS
 
 ## The kill kinds the table is keyed by, so a caller names a kind with a constant
-## instead of a literal.
+## instead of a literal. `KIND_MINED` is not a kill kind: it is a seam's, and it
+## is keyed here so a caller reaches the same table with the same call.
 const KIND_ELITE: StringName = &"elite"
 const KIND_MINI_BOSS: StringName = &"mini_boss"
 const KIND_BIOME_BOSS: StringName = &"biome_boss"
+const KIND_MINED: StringName = &"mined"
 
-## The kill payout of each kind, keyed by the constants above.
+## The payout of each kind, keyed by the constants above.
 const PAYOUT_BY_KIND: Dictionary[StringName, int] = {
 	KIND_ELITE: ORE_ELITE,
 	KIND_MINI_BOSS: ORE_MINI_BOSS,
 	KIND_BIOME_BOSS: ORE_BIOME_BOSS,
+	KIND_MINED: ORE_MINED,
 }
 
 ## Wren, the Miner's Daughter: "Ore drops +25%" (design doc 4.1, SPEC-classes-
