@@ -2665,6 +2665,64 @@ already recorded in a spec or a comment, the location is given.
       `_resolve_rng()`, `_host_seed()`, and `HitData.proc_depth`. The two new
       `tests/helpers/` doubles are test-only.
 
+42. **`every_seconds` loops on `TimeManager`'s scaled timer, in the player's own
+    time group, and `detach()` disarms the pending tick (2026-10-20).** W4-B2's
+    periodic helper is the clock every "every N seconds" relic is written
+    against (Clockwork Heart is the named case). Sanctioned by
+    `SPEC-effect-system.md` "Effect base class" — `func every_seconds(interval:
+    float, callable: Callable) -> void # uses TimeManager.timer loop, PLAYER
+    group so time stops don't pause it` — read together with
+    `SPEC-time-manager.md` "Interfaces provided" (`func timer(node: Node,
+    seconds: float) -> Signal # scaled timer, fires once`) and its rule that
+    pure engine timers are forbidden for anything gameplay-relevant. `Effect` is
+    a script this run created, and `TimeManager`'s public surface was **not**
+    changed: the loop calls the spec's `timer()` and `set_group()` exactly as
+    declared, so nothing on the Ask-first list was touched. The decision is
+    recorded for the five choices a reader would otherwise have to
+    reverse-engineer.
+
+    - **One armed tick at a time; each tick re-arms itself.** `TimeManager.timer`
+      is a one-shot signal, so a loop is a chain, not a repeating timer. The
+      re-arm happens *after* the callable runs and only *if* the loop still
+      exists, so a relic that spends its last tick tearing itself down (Second
+      Wind, Panic Button) does not resurrect its own loop — re-arming first
+      would leave a detached effect ticking until someone noticed.
+    - **The player joins `TimeManager`'s PLAYER group at the point of use.** The
+      spec's parenthetical ("PLAYER group so time stops don't pause it") is the
+      behaviour, not a detail: an unregistered node also reads the default scale
+      today, which would make the exemption an accident of `scale_for`'s
+      fallback rather than a declared property — and `player-controller` does
+      not register the player itself yet, so the loop has to. `set_group` is an
+      idempotent assignment, so a player that already registered is unaffected.
+      The measured consequence: with `stop_enemies` live the clock still ticks
+      (the spec's negative control), while an override aimed at the player's own
+      node — hit-stop — does pause it. That second case is the one a plain
+      engine `Timer` would fail.
+    - **`detach()` disconnects the pending tick instead of cancelling the
+      manager's timer.** Stopping the loop is the effect's job and takes one
+      disconnect: the armed tick is `TimeManager`'s own `RefCounted`, expires on
+      its own, and after the disconnect holds no reference to the effect. No
+      method was added to `TimeManager` for this, because the spec's `timer()`
+      has no cancel and C9 says anything a spec does not require is left alone —
+      so "stops the loop and frees the timer" is discharged as *no further
+      callback, nothing holding the effect*. The residual, stated plainly: an
+      armed one-shot still sits in the manager's list until its interval
+      expires, and does nothing when it lands.
+    - **No engine timer is opened for a loop.** `_start_timer()` (plain engine
+      time, G10) stays what it is and is not used by `every_seconds`; the test
+      asserts `_timers` stays empty, because a plain `Timer` would ignore every
+      time effect — exactly the bug this goal exists to prevent.
+    - **New surface beyond the declared signatures** (additions only, nothing
+      renamed or removed): `_periodic`, `_next_periodic_id`, `_arm_periodic()`,
+      `_on_periodic_timeout()`, `_stop_periodic()`. All private; the only public
+      addition is the spec's own `every_seconds()`.
+    - **What is *not* claimed.** The loop is host-only local logic with no
+      replicated field and no RPC, so nothing here is asserted in two processes
+      beyond the standing smoke (35 `ok` / 0 FAIL, re-run in this goal's commit
+      even though no sync path changed). Nothing yet *attaches* a loop in the
+      game: no relic content exists until W4-B5/B6, so what is proved is that
+      the clock is correct when it does.
+
 ---
 
 ## Running the game

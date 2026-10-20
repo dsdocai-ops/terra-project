@@ -28,7 +28,7 @@ const EPSILON: float = 0.0001
 ## The spec's public surface for the base class (SPEC-effect-system, "Effect
 ## base class"), minus the helpers the later W4-B2 goals fill in.
 const SPEC_MEMBERS: Array[String] = ["player", "source", "stacks", "stat_block", "_handles", "_timers"]
-const SPEC_METHODS: Array[String] = ["attach", "detach", "_on_attach", "_on_detach", "listen", "once_per_room", "modify"]
+const SPEC_METHODS: Array[String] = ["attach", "detach", "_on_attach", "_on_detach", "listen", "every_seconds", "once_per_room", "modify"]
 
 ## The listeners `TrackedEffect` makes in `_on_attach()`, in order: one signal
 ## with no `Player` argument (`enemy_killed`, connected untouched), two whose

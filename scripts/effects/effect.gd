@@ -86,6 +86,14 @@ var trigger_depth: int = 0
 var _handles: Array[int] = []
 ## Timers parented to this effect, freed on detach.
 var _timers: Array[Timer] = []
+## Loops opened by `every_seconds()`, keyed by a per-effect id so a handler can
+## be identified after the fact: `{interval, callable, signal, connection}`. The
+## signal and the connection are what `detach()` disarms; the id is how a
+## timeout finds the loop it belongs to.
+var _periodic: Dictionary[int, Dictionary] = {}
+## Id handed to the next `every_seconds()` loop. Never reused, so a timeout that
+## arrives after its loop was stopped cannot be mistaken for a live one.
+var _next_periodic_id: int = 0
 ## {signal: Signal, callable: Callable} pairs, disconnected on detach. Kept as
 ## an explicit list because a connection cannot be found again by name alone
 ## once a wrapper is involved, and a lambda can never be disconnected.
@@ -126,6 +134,7 @@ func detach() -> void:
 		return
 	_release_handles()
 	_free_timers()
+	_stop_periodic()
 	_disconnect_all()
 	_room_keys.clear()
 	_attached = false
@@ -195,6 +204,54 @@ func once_per_room(key: StringName) -> bool:
 		return false
 	_room_keys[key] = true
 	return true
+
+
+## Runs `callable` every `interval` seconds of *this effect's own player's*
+## scaled time — the spec's pinned clock for a periodic relic (Clockwork Heart's
+## "every 10 s"), and the reason `every_seconds` exists at all rather than a
+## plain engine `Timer`.
+##
+## The loop is armed with `TimeManager.timer()` on the effect's player, so:
+##
+## - a time stop or slow aimed at the enemies never pauses it — a relic's own
+##   clock keeps counting while the dungeon is frozen, which is what makes
+##   Clockwork Heart a relic rather than a casualty of someone else's ult;
+## - a pause aimed at this player's own node (hit-stop) does pause it, because
+##   the player's scaled time is the clock's rate;
+## - and it is scaled rather than engine time, so nothing here ever reaches for
+##   the engine's global time scale (which would freeze every peer).
+##
+## The player is put in `TimeManager`'s PLAYER group here. Registration is
+## idempotent, and doing it at the point of use keeps the loop correct for any
+## player whose own registration has not run: an unregistered node silently
+## reads the default scale, which would make the exemption above accidental
+## rather than declared.
+##
+## The loop is tracked for `detach()`: the tick is disconnected from the armed
+## timer and the loop forgotten, so a relic dropped at a Shrine stops ticking
+## immediately and stops holding its effect alive through the timer. Nothing
+## else cancels the armed tick — it is `TimeManager`'s own one-shot and expires
+## silently, with no listener and no reference to this effect.
+func every_seconds(interval: float, callable: Callable) -> void:
+	if interval <= 0.0:
+		push_warning("[effect] %s: every_seconds() needs a positive interval" % source_id())
+		return
+	if not callable.is_valid():
+		push_warning("[effect] %s: every_seconds() needs a callable" % source_id())
+		return
+	if player == null:
+		push_warning("[effect] %s: every_seconds() needs an attached player" % source_id())
+		return
+	TimeManager.set_group(player, TimeManager.Group.PLAYER)
+	var id: int = _next_periodic_id
+	_next_periodic_id += 1
+	_periodic[id] = {
+		"interval": interval,
+		"callable": callable,
+		"signal": Signal(),
+		"connection": Callable(),
+	}
+	_arm_periodic(id)
 
 
 ## Adds a stat modifier carrying this effect's id as its source, and records
@@ -311,6 +368,50 @@ func _start_timer(seconds: float, callable: Callable = Callable()) -> Timer:
 	_timers.append(timer)
 	timer.start()
 	return timer
+
+
+## Arms the next tick of loop `id` on `TimeManager`'s scaled timer for this
+## effect's player, recording the signal and the connection so `detach()` can
+## disarm it. One armed tick per loop rather than a chain: each tick re-arms
+## itself from `_on_periodic_timeout`, so a stopped loop leaves nothing behind
+## but the single tick already in flight.
+func _arm_periodic(id: int) -> void:
+	var entry: Dictionary = _periodic.get(id, {}) as Dictionary
+	if entry.is_empty():
+		return
+	var sig: Signal = TimeManager.timer(player, float(entry["interval"]))
+	var connection: Callable = _on_periodic_timeout.bind(id)
+	sig.connect(connection)
+	entry["signal"] = sig
+	entry["connection"] = connection
+
+
+## One tick of an `every_seconds()` loop: runs the loop's callable, then arms the
+## next tick unless the callable detached the effect. The re-arm is skipped
+## rather than refused, because a relic that spends its last tick tearing itself
+## down (Second Wind, Panic Button) must not resurrect its own loop.
+func _on_periodic_timeout(id: int) -> void:
+	var entry: Dictionary = _periodic.get(id, {}) as Dictionary
+	if entry.is_empty():
+		return
+	var callable: Callable = entry["callable"]
+	callable.call()
+	if _periodic.has(id):
+		_arm_periodic(id)
+
+
+## Disarms and forgets every `every_seconds()` loop: each tick is disconnected
+## from its armed timer, so the pending one fires into nothing and holds no
+## reference to this effect. The timer itself is `TimeManager`'s object and
+## expires on its own; nothing here reaches into the manager's list.
+func _stop_periodic() -> void:
+	for id: int in _periodic.keys():
+		var entry: Dictionary = _periodic[id]
+		var sig: Signal = entry["signal"]
+		var connection: Callable = entry["connection"]
+		if connection.is_valid() and sig.is_connected(connection):
+			sig.disconnect(connection)
+	_periodic.clear()
 
 
 ## The stat block to write through: an explicitly set one wins, otherwise the
