@@ -1524,6 +1524,96 @@ the filter is exercised against the test doubles only; and `once_per_room`'s
 `floor-generation` (W3-A2) is still unlanded, so the reset is tested by
 emitting the bus directly.
 
+#### G12 — `modify`, `chance`, `apply_status`, `deal_damage` (2026-10-20)
+
+The four data helpers a relic's effect script actually calls. `modify` shipped
+in G10; this goal pins its contract and adds the other three.
+`tests/unit/test_effect_helpers.gd` is new: **22 tests / 57 asserts**, green
+(`g12/test-effect-helpers.log`), written red first — 17 of 22 failing, every
+failure for the right reason (`Nonexistent function 'chance' in base 'Nil'`,
+`'apply_status'`, `'deal_damage'`, `Invalid access to property or key 'rng'` —
+`g12/red-test-effect-helpers.log`).
+
+**`chance(p)`** rolls on the host's own generator and never on a global roll
+function. The two extremes short-circuit *without drawing* — `p <= 0.0` is
+false, `p >= 1.0` is true — so a guaranteed or impossible proc does not advance
+the run's stream and one effect's certainty cannot desynchronise another's
+rolls. Everything between them draws `_resolve_rng().randf() < p`. The
+generator is `Effect.rng`: `EffectHost` (G14) will hand every effect the run's
+generator on attach, and an effect with no host makes its own, seeded from
+`GameState.run.seed` (or the fixed `DEFAULT_RNG_SEED` when no run is live). Two
+consequences are asserted: the same seed replays the same sequence, and the
+fallback is a named seed rather than clock entropy, so the draws are
+reproducible without a live run. The "no draw at the extremes" claim is proven
+by the stream, not by the return value: a control generator at the same seed
+supplies the next two values, and the effect's generator is still exactly there
+after both extremes were asked.
+
+**`apply_status(target, status, stacks = 1)`** reaches the target's
+`StatusEffects` component (stats-status) and passes the effect itself as the
+`source`, so `Events.status_applied(target, status, stacks, source)` names the
+relic that applied it. `status` is an `int` today — `StatusEffects.Status` is
+W4-B4's (G20) and does not exist — and the parameter is retyped to the enum
+when it lands, with no call-site change. The component is found by node name
+and a `has_method("apply_status")` check rather than a typed cast, for the same
+reason; a target with no component is a warned no-op.
+
+**`deal_damage(target, hit)`** stamps `hit.proc_depth = trigger_depth + 1`, tags
+the hit `proc` (once — an already-tagged hit keeps one tag), and hands it to the
+target's `Hurtbox`, which is what computes the damage and announces it. It
+deliberately does **not** emit `hit_landed` itself: the spec's emitters are the
+owning modules, and combat-core's hurtbox is the one that owns that signal
+(`SPEC-combat-core`: "`receive(hit)` on the host: ... emit `Events.hit_landed`"),
+so the chain continues through the hurtbox and the hit is stamped before it gets
+there. `trigger_depth` is the depth of the event this effect is handling; the
+dispatch wrapper that sets it, the depth-3 gate and the self-retrigger check are
+W4-B3 (G16–G17). Until then it stays 0, which is the depth of a hit a weapon
+landed, so an effect's own damage lands one link deep.
+
+`HitData` gained `proc_depth: int = 0` (`scripts/components/hit_data.gd`) — the
+field G16's gate reads and the one G12's helper writes. It is additive with a
+zero default, so every existing `Damage.compute` test is unaffected (re-run: the
+full suite is green).
+
+**Test doubles.** `StatusEffects` and `Hurtbox` are other modules' and do not
+exist yet, so the two call sites are asserted against `tests/helpers/`
+doubles carrying the specs' own signatures: `StatusEffectsStub`
+(`apply_status(status, stacks, source: Node)`, `blocked on Dev B (W4-B4)`) and
+`HurtboxStub` (`receive(hit)`, `blocked on Dev A (W2-A2)`). Both are test-only,
+never game scenes.
+
+**Verified:** `-gtest=res://tests/unit/test_effect_helpers.gd` 22/22 green /
+57 asserts, exit 0 (`g12/test-effect-helpers.log`); full suite **40 scripts /
+635 tests / 635 passing / 55 271 asserts**, exit 0 (`g12/gut-full.log`, up from
+the 39 / 613 / 55 214 baseline); `--headless --path . --import` exit 0 with 0
+error or warning lines (`g12/import.log`); headless `-- --host --debug-tools
+--smoke=6` exit 0 with 0 script/parse errors (`g12/launch-host.log`);
+two-instance smoke `GODOT=… OUT=… PORT=… bash tools/smoke_two.sh` exit 0 with
+**35 `ok` / 0 FAIL** and the standing hashes `3600649381522393848` /
+`536024383148136417` (`g12/smoke-run.log`, per-peer logs in `g12/smoke/`), run
+even though this commit adds no RPC, as the standing two-process proof;
+`grep -rn "Engine.time_scale" scripts/ scenes/` empty; `grep -rn "\.base\["
+scripts/effects/` empty; the only RNG draw under `scripts/effects/` is
+`_resolve_rng().randf()`, a method call on the effect's own seeded generator —
+no bare global `randf()`/`randi()`/`randf_range()`/`randi_range()` call exists
+there. Three failing paths were **forced and kept**
+(`g12/negative-controls.log`): dropping `chance`'s extremes short-circuit fails
+exactly `test_chance_draws_nothing_at_the_extremes`; dropping the `+ 1` on the
+proc depth fails exactly the two depth tests; and writing `stat_block.base[stat]
+= flat` from an effect fails the base-stat rules — all three reverted before the
+green run.
+
+**Blocked / not claimed.** `apply_status` is asserted against a double, not the
+real component: `StatusEffects` (W4-B4 / G20) is where the seven statuses,
+their stacking rules and the scaled ticking land. `deal_damage` is asserted
+against a double too: Dev A's `Hurtbox` (W2-A2) is still a bare `Area2D`, so
+what is proven is the stamping and the delivery call, not a real damage number
+reaching `Health` or a real `hit_landed` on the bus. The proc-depth **gate**
+(depth 3), the self-retrigger check and the 64-spawns-per-frame cap are W4-B3
+(G16–G18); `trigger_depth` is the seam they will drive. `chance`'s
+Luck-aware sibling `chance_lucky()` is named in the spec's annotation but is
+loot-side (W4-B8, G40) and is not implemented here.
+
 ---
 
 ## Decisions made without a human
@@ -2525,6 +2615,55 @@ already recorded in a spec or a comment, the location is given.
       `_player_argument_index()`, `_forward()` and `_dispatch0`–`_dispatch4`.
       Every connect in the class now goes through `_connect_tracked()` so no
       subscription can escape `detach()`.
+
+41. **`deal_damage` stamps and delivers but never emits, `chance` owns its own
+    seeded generator, and `proc_depth` lands on `HitData` a goal early
+    (2026-10-20).** W4-B2's four data helpers (`modify`, `chance`,
+    `apply_status`, `deal_damage`) are the whole surface a relic's effect script
+    changes the game through. Sanctioned by `SPEC-effect-system.md` "Effect base
+    class" (the helper block: `deal_damage … increments proc depth, tags
+    "proc"`; `chance(p) # host RNG, Luck-aware for loot-type procs via
+    chance_lucky()`; `apply_status(target, status, stacks)`) and "Proc chain
+    limits" (`proc_depth = trigger.proc_depth + 1`). `Effect` is a script this
+    run created and `HitData` is Dev B's own stats-status component, so no
+    existing signature changed and nothing on the Ask-first list was touched;
+    the decision is recorded for the choices a reader would otherwise have to
+    reverse-engineer.
+
+    - **`deal_damage` does not emit `hit_landed`.** It stamps the hit and hands
+      it to the target's `Hurtbox`, which owns that signal — `SPEC-effect-system`
+      "Events bus" says the emitters are the owning modules and names combat for
+      `hit_landed`, and `SPEC-combat-core` names `Hurtbox.receive` as the place
+      it is emitted. An effect emitting a combat event would make two emitters
+      for one signal and would let a chain recurse without a hurtbox in it. The
+      consequence, stated plainly: the proc chain only continues through a real
+      hurtbox, which is Dev A's (W2-A2) and does not exist yet.
+    - **`chance` short-circuits at both extremes without drawing.** A guaranteed
+      or impossible proc must not consume a value from the run's generator: the
+      draw is shared state, and one effect's certainty silently shifting every
+      other effect's rolls is the kind of desync a seed cannot replay. The
+      spec's signature says only "host RNG"; this is the reading that keeps one
+      seed replaying one run.
+    - **The generator is `Effect.rng`, owned per effect today and injected by
+      `EffectHost` when it lands.** The plan's sub-task named `_rng` on
+      `EffectHost` (G14), which does not exist yet, so the generator lives on the
+      effect with a documented injection seam rather than the goal inventing an
+      `EffectHost` API ahead of the goal that owns it. An effect with no host
+      seeds itself from `GameState.run.seed`, or the fixed `DEFAULT_RNG_SEED`
+      when no run is live — never clock entropy, because a clock-seeded draw is
+      un-reproducible and this is the helper the relic harness asserts against.
+    - **`HitData.proc_depth` lands here, one goal before the gate that reads
+      it.** W4-B3's G16 owns the depth rule, but G12's own success criterion is
+      that `deal_damage` increments `hit.proc_depth`, which needs the field to
+      exist. It is additive with a zero default and the existing damage suite is
+      unchanged. `Effect.trigger_depth` is the second half of the same seam: it
+      is the field G16's dispatch wrapper will set, and until then it stays 0.
+    - **New surface beyond the declared signatures** (additions only, nothing
+      renamed or removed): `Effect.rng`, `Effect.trigger_depth`,
+      `Effect.DEFAULT_RNG_SEED`, `STATUS_NODE`/`HURTBOX_NODE`/
+      `DAMAGE_SINK_METHOD`/`STATUS_METHOD`/`PROC_TAG`, `_status_component()`,
+      `_resolve_rng()`, `_host_seed()`, and `HitData.proc_depth`. The two new
+      `tests/helpers/` doubles are test-only.
 
 ---
 

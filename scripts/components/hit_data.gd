@@ -28,6 +28,12 @@ var is_heavy: bool = false
 ## Set by Hurtbox's from-behind check; Rogue and Backstab read it.
 var from_behind: bool = false
 var tags: Array[StringName] = []
+## How many effect links deep this hit is (SPEC-effect-system, "Proc chain
+## limits"). A weapon or ability hit a player landed is 0; a hit an `Effect`
+## produces through `deal_damage` is its trigger's depth + 1. `Effect.listen`'s
+## dispatch wrapper drops events at depth 3, so a chain of relics cannot recurse
+## (the depth gate and the per-frame spawn cap are W4-B3, goal G16).
+var proc_depth: int = 0
 ## True when the target carries MARK (or an effect forces a crit). Week-2
 ## seam: StatusEffects has not landed, so the caller sets this flag directly.
 var force_crit: bool = false

@@ -19,6 +19,24 @@ extends Node
 
 ## Child node the `StatBlock` component lives on (the player scene's layout).
 const STAT_BLOCK_NODE: NodePath = ^"StatBlock"
+## Child node the `StatusEffects` component lives on (stats-status, W4-B4).
+const STATUS_NODE: NodePath = ^"StatusEffects"
+## Child node an entity's `Hurtbox` lives on (combat-core, W2-A2).
+const HURTBOX_NODE: NodePath = ^"Hurtbox"
+## The method `deal_damage` delivers a hit to, and the one `apply_status`
+## applies through. Called dynamically (never as a typed call) because both
+## components are owned by other modules and their classes do not exist yet:
+## `StatusEffects` is W4-B4's and `Hurtbox` is Dev A's.
+const DAMAGE_SINK_METHOD: StringName = &"receive"
+const STATUS_METHOD: StringName = &"apply_status"
+## The tag `deal_damage` stamps on a hit it produced, so a later listener can
+## tell an effect's damage from a weapon's (SPEC-effect-system, "Effect base
+## class": "increments proc depth, tags proc").
+const PROC_TAG: StringName = &"proc"
+## Seed for an effect's own generator when no run is live to take one from.
+## Fixed rather than clock-derived so the same inputs replay the same draws,
+## which is what makes `chance()` testable without a live run.
+const DEFAULT_RNG_SEED: int = 1
 
 ## The class name a signal's argument must carry to be the event's player
 ## (SPEC-effect-system, "Events bus").
@@ -50,6 +68,19 @@ var stacks: int = 1
 ## bare until their owning module lands), and each stat helper then warns and
 ## does nothing rather than failing silently.
 var stat_block: StatBlock = null
+## The generator `chance()` draws from. The host owns it: `EffectHost` (W4-B4,
+## goal G14) hands every effect the run's generator on attach so one seed
+## replays a whole run's procs. An effect with no host of its own makes one,
+## seeded from the run seed, so the draw is never a global roll function and is
+## still reproducible. A caller may replace it (the tests seed it directly).
+var rng: RandomNumberGenerator = null
+## The proc depth of the event this effect is currently handling, so
+## `deal_damage` produces a result one link deeper than its trigger
+## (`proc_depth = trigger.proc_depth + 1`, SPEC-effect-system "Proc chain
+## limits"). The dispatch wrapper sets it while a handler runs — that wrapper,
+## the depth-3 gate and the self-retrigger check are W4-B3 (goal G16); until
+## then it stays 0, the depth of a hit a weapon landed.
+var trigger_depth: int = 0
 
 ## `StatBlock` modifier handles to remove on detach.
 var _handles: Array[int] = []
@@ -174,6 +205,94 @@ func modify(stat: StatBlock.Stat, flat: float = 0.0, percent: float = 0.0) -> vo
 		push_warning("[effect] %s: no StatBlock on the player, modifier dropped" % source_id())
 		return
 	_handles.append(stat_block.add_modifier(stat, flat, percent, source_id()))
+
+
+## Rolls a host-side probability. The two extremes short-circuit without
+## drawing, so a guaranteed or impossible proc never advances the run's
+## generator stream and one effect's certainty cannot desynchronise another's
+## rolls. Everything between them draws from `rng` (the host's run generator,
+## created on first use when nothing supplied one) — never a global roll
+## function, so a seed replays the sequence. Loot-type procs that scale with
+## Luck go through `chance_lucky()` (W4-B8, run-economy) instead.
+func chance(p: float) -> bool:
+	if p <= 0.0:
+		return false
+	if p >= 1.0:
+		return true
+	return _resolve_rng().randf() < p
+
+
+## Applies a status to `target` through its `StatusEffects` component
+## (stats-status). The source argument the component records is this effect, so
+## `Events.status_applied(target, status, stacks, source)` names the relic that
+## applied it. `status` is `StatusEffects.Status` — an int until W4-B4's
+## component lands, at which point this parameter is retyped to the enum. A
+## target with no component (an enemy that is not yet wired, a double) is a
+## warned no-op rather than a crash.
+func apply_status(target: Node, status: int, stacks: int = 1) -> void:
+	if target == null:
+		push_warning("[effect] %s: apply_status() needs a target" % source_id())
+		return
+	var component: Node = _status_component(target)
+	if component == null:
+		push_warning("[effect] %s: %s carries no StatusEffects component, status %d dropped" % [
+			source_id(), target.name, status])
+		return
+	component.call(STATUS_METHOD, status, stacks, self)
+
+
+## Deals a hit to `target`: stamps its proc depth one link past the trigger,
+## tags it `proc`, then hands it to the target's `Hurtbox` (combat-core), which
+## computes the damage, applies it to `Health` and announces it on
+## `Events.hit_landed`. This helper deliberately does not emit a combat event
+## itself — the emitters are the owning modules (SPEC-effect-system, "Events
+## bus") — so a chain continues through the hurtbox, and the hit is stamped
+## before it gets there. A target with no hurtbox is a warned no-op.
+func deal_damage(target: Node, hit: HitData) -> void:
+	if target == null or hit == null:
+		push_warning("[effect] %s: deal_damage() needs a target and a hit" % source_id())
+		return
+	hit.proc_depth = trigger_depth + 1
+	if not hit.tags.has(PROC_TAG):
+		hit.tags.append(PROC_TAG)
+	var sink: Node = target.get_node_or_null(HURTBOX_NODE)
+	if sink == null or not sink.has_method(DAMAGE_SINK_METHOD):
+		push_warning("[effect] %s: %s has no Hurtbox to receive the hit, damage not applied" % [
+			source_id(), target.name])
+		return
+	sink.call(DAMAGE_SINK_METHOD, hit)
+
+
+## The `StatusEffects` component on `target`, or null when it carries none. A
+## `has_method` check rather than a typed cast because the component's class is
+## W4-B4's and does not exist yet; when it lands this becomes an `is
+## StatusEffects` check with no call-site change.
+func _status_component(target: Node) -> Node:
+	var component: Node = target.get_node_or_null(STATUS_NODE)
+	if component == null or not component.has_method(STATUS_METHOD):
+		return null
+	return component
+
+
+## The generator to draw from: the effect's own when one is set (a host's
+## injection or a test's seed), otherwise one created here and seeded from the
+## live run. Created once and kept, so the stream is continuous.
+func _resolve_rng() -> RandomNumberGenerator:
+	if rng != null:
+		return rng
+	rng = RandomNumberGenerator.new()
+	rng.seed = _host_seed()
+	return rng
+
+
+## The seed an effect's own generator starts from: the live run's, so a replay
+## of one seed replays the same procs, otherwise the fixed fallback. Read from
+## `GameState` rather than rolled, because a clock-derived seed would make every
+## draw in a test un-reproducible.
+func _host_seed() -> int:
+	if GameState.run != null:
+		return GameState.run.seed
+	return DEFAULT_RNG_SEED
 
 
 ## Opens a one-shot `Timer` parented to this effect, tracked in `_timers` so
