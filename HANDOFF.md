@@ -2857,7 +2857,12 @@ are **blocked on Dev A (W2-A1 / W4-A1)** and the cases assert the *request* —
 
 **Accept.** `-gtest=res://tests/unit/test_combos.gd` exit 0, **17/17, 118
 asserts**, one case per table row plus the negative half (re-apply, an unlisted
-pair, one-combo-per-application, a non-hosting peer). Red first against the
+pair, one-combo-per-application, a non-hosting peer). *(Corrected 2026-10-20 by
+G3a: 118 was not reproducible — a judge re-ran this file twice on this commit and
+read 125 both times, because the case asserting once per recorded Bleed tick
+followed the wall clock. The figure for the file as it stands now is **22/22 /
+161 asserts**; see the G3a section below and
+`.goals/evidence/g24-combos/CORRECTION-2026-10-20-G3a.md`.)* Red first against the
 component that did not have the rules yet: `Parse Error: Could not find type
 "Combo" in the current scope` and `Cannot find member
 "SHATTER_BURST_FRACTION" in base "StatusEffects"`
@@ -2940,7 +2945,9 @@ attacker's build.
 **`tests/helpers/combo_consumer_stub.gd`** (`class_name ComboConsumerStub extends
 Effect`, one `multiplier: float = 1.0` and `combo_damage_multiplier()`) is the
 double standing in for both real consumers. `test_combos.gd` gains five cases
-(22/22 / 163 asserts, was 17/17 / 118): an Elementalist consumer doubles a 200
+(22/22 / 163 asserts, was 17/17 / 118 — *(corrected 2026-10-20 by G3a to **22/22
+/ 161 asserts**: 163 was a single run's reading of a count that followed the
+wall clock, and the two per-hit loops are now one aggregate assertion each)*): an Elementalist consumer doubles a 200
 burst to 400 and 400 is what the target's health loses; a Reactive consumer adds
 40 % (`roundi(200 × 1.4) = 280`); the two on one host compose to 2.8 and 560
 rather than summing to 3.4; with no consumer at all — a null source, and a source
@@ -2987,9 +2994,16 @@ the first attempt at a green run failed with the same "Identifier" error until i
 had. Green: `test_scaling.gd` **8/8 / 195 asserts**, `test_combos.gd` **22/22 /
 163 asserts**, and the full suite **49 scripts / 844 tests / 844 passing /
 56 636 asserts** exit 0 in 70 s (`full-suite.log`) — one script and 13 tests more
-than G24's 48 / 831 / 831 / 56 403. The `3 ObjectDB instances were leaked` and
-`1 resources still in use at exit` lines are byte-identical to G24's log, so they
-are pre-existing and not this goal's. `grep -rn "Engine.time_scale" scripts/
+than G24's 48 / 831 / 831 / 56 403. *(Corrected 2026-10-20 by G3a: the
+`test_combos.gd` figure is **22/22 / 161 asserts** and the suite figure is
+**50 scripts / 854 tests / 854 passing / 56 735 asserts** — the file's count
+followed the wall clock, and the two assertions removed bring both numbers down
+by two. This paragraph originally claimed the engine's two exit warnings — the
+leaked-`ObjectDB` one and `1 resources still in use at exit` — were byte-identical
+to G24's log and therefore pre-existing and not this goal's. That was **wrong**:
+they came from this suite's own one orphan, the bare `StatBlock.new()` in
+`test_status_effects.gd`, and G3a removed both the orphan and the lines. See the
+G3a section below.)* `grep -rn "Engine.time_scale" scripts/
 scenes/` is empty: `status_effects.gd`'s doc comment used the literal as an
 example and now says "the engine's own time scale", while the rule it states
 (`TimeManager.scale_for(entity)`) is unchanged. Two forced negative controls,
@@ -3134,6 +3148,91 @@ have no production emitter (the Shrine flow and `request_pick_relic` are G10),
 and `SynergyData` is still a placeholder. `tasks/todo.md`'s **W4-B5 stays open** —
 this goal ships `RelicData` and its test; the roller, the Shrine, the pick RPC,
 the codex record and the 20 relics are the rest of it.
+
+---
+
+#### G3a — reproducible counts and a clean exit (2026-10-20)
+
+Not a raw goal: it is the two findings the independent judges raised at steps 1
+and 3, run before G4 because both recur on every future pass until fixed and
+neither is a feature. No production file changed — the diff is two test files
+and `.goals/` evidence.
+
+**Finding 1 — the cited assert count moved between runs.** The G24 write-up and
+the G24 `LOG.md` line quote `test_combos.gd` at **17/17 / 118 asserts**; a judge
+re-ran the same file on the same commit twice and got **125** both times.
+`test_hemorrhage_makes_bleed_ticks_crit_for_four_seconds` asserted **once per
+recorded hit**, in two loops over `_health.hits`, and `StatusEffects._tick()`
+lands a Bleed tick whenever its per-status carry accumulates past the next whole
+point of damage — the carry advances by `BLEED_DAMAGE_PER_SECOND × scaled_delta`
+with a **real** delta, so a fixed 60-physics-frame window holds a tick count that
+follows the wall clock. Both loops are now one aggregate assertion each, keeping
+every claim they made: `assert_eq(_crit_count(), 0, …)` is the old "Bleed does
+not crit on its own" and `assert_eq(_crit_count(), crit_ticks, …)` is the old
+"every Bleed tick in the window is critical", with the hit count in the failure
+message so a failure still says how many ticks there were. The "double damage"
+claim moved from a total-to-total comparison to a **per-tick** one
+(`_per_tick_damage()`, tolerance 0.5), because the two windows need not contain
+the same number of ticks and the total-to-total form drifted with the same clock
+— a second latent flake the aggregate form removes. Three consecutive runs of the
+file now print **22/22 / 161 asserts** each, exit 0
+(`.goals/evidence/g3a/combos-after.log`, `-2.log`, `-3.log`). 161, not 118,
+because the file grew by G25–G26's five hook cases since G24: 161 = 163 (the
+G25–G26 figure) minus the two collapsed loop assertions.
+
+**Finding 2 — the suite's one orphan and the engine's exit warning.** GUT's
+Totals block carried `Orphans               1` and the engine printed its
+`ObjectDB`-leaked-at-exit warning plus `1 resources still in use at exit`. The
+orphan GUT named was the bare `StatBlock.new()` in
+`tests/unit/test_status_effects.gd::test_damage_compute_reads_the_targets_unravel_multiplier`,
+which was never added to the tree and never freed; `StatBlock extends Node`, so
+it outlived the run. It now reads
+`var attacker: StatBlock = autofree(StatBlock.new())` — GUT's own free hook, the
+same shape every other fixture in that file uses. The whole suite on this working
+tree is **50 scripts / 854 tests / 854 passing / 56 735 asserts**, exit 0
+(`.goals/evidence/g3a/full-suite.log`); the Totals row that read
+`Orphans               1` at `65637fb` is gone, and the engine's exit warning is
+gone from the run entirely. 56 735 = 56 737 at `65637fb` minus the two collapsed
+assertions. **A judge should not grep for a zero-valued row:** GUT emits the
+`Orphans` Totals row only when the count is above zero
+(`addons/gut/summary.gd:69`, `_log_non_zero_total`), and `addons/` is vendored
+and is never edited (BRIEF C10), so zero prints as the *absence* of the row.
+`.goals/evidence/g3a/orphans-and-exit-check.log` records the greps, both before
+and after, the GUT source line, and why the three remaining per-test `16 Orphans`
+reports under `tests/unit/test_player_spawner.gd` are not exit leaks (they are
+printed during that script's run, are cleaned by `orphanage.clean()`, never reach
+the Totals block, and are 3 in each log — unchanged from the baseline).
+
+**Verification.** One `--import`, exit 0 with 0 error and 0 warning lines
+(`.goals/evidence/g3a/import.log`); the full suite as above, **run twice** —
+`full-suite.log` and `full-suite-2.log` print the identical 50 / 854 / 854 /
+56 735 and both exit 0, which is the point of the goal (a repetition gate is
+sanctioned for a suite-integrity goal); both touched files
+re-run individually green (`test_status_effects.gd` 65/65 / 371 asserts,
+`test_combos.gd` 22/22 / 161 asserts); one forced negative control on a unique
+anchor inside the target case — `assert_eq(_crit_count(), 0, …)` made
+unconditionally false as `assert_eq(_crit_count() + 1, 0, …)` — which fails
+**exactly one case** (`test_hemorrhage_makes_bleed_ticks_crit_for_four_seconds`)
+on **exactly one assertion**, 21/22 with `160/161` asserts, exit 1
+(`.goals/evidence/g3a/negative-control.log`), then reverted **byte-exact**
+(`sha256sum -c test_combos.sha256` = OK, `diff -q` prints nothing, patched-marker
+count back to 0, re-green 22/22 / 161 in `regreen.log`). **No two-instance smoke
+run**: the commit adds no RPC, replication or spawner wiring (BRIEF C17) — it
+changes two GUT test files and no production script. **No production file was
+touched**, so no Ask-first surface moved: no `project.godot`, no Input Map, no
+autoload API, no `scripts/data/` Resource, no `Events` signal, no `.tscn`, no
+save schema, no CI, no addon — hence **no new numbered decision** beyond
+recording the correction here and in the two evidence directories.
+
+**The old numbers are dated in place, not deleted.** `HANDOFF.md`'s G24
+`**Accept.**` paragraph (118 asserts) and its G25–G26 verification paragraph
+(163 asserts, 56 636, and the claim that the leaked-`ObjectDB` and
+resources-at-exit lines are byte-identical to G24's log and therefore
+pre-existing) carry dated correction notes, as does the G24 line in
+`.goals/LOG.md`. The corrected figures live in
+`.goals/evidence/g24-combos/CORRECTION-2026-10-20-G3a.md` and
+`.goals/evidence/g25-g26/CORRECTION-2026-10-20-G3a.md`, which are the G24 and
+G25–G26 evidence logs' own correction entries.
 
 ---
 

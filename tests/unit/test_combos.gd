@@ -168,6 +168,34 @@ func _target_status() -> StatusEffects:
 	return _target.get_node(STATUS_NODE) as StatusEffects
 
 
+## How many of the hits the target has taken are flagged critical.
+##
+## An aggregate read rather than an assertion inside a loop: the number of Bleed
+## ticks inside a fixed number of physics frames follows the *real* deltas the
+## tick accumulates (a hitch lets one frame's carry reach the next whole point
+## sooner), so asserting once per hit made this file's assert count follow the
+## wall clock. Every claim the per-hit loop made is kept — "Bleed does not crit
+## on its own" is `_crit_count() == 0`, and "every Bleed tick in the window is
+## critical" is `_crit_count() == _health.hit_count()`.
+func _crit_count() -> int:
+	var crits := 0
+	for hit: HitData in _health.hits:
+		if hit.is_crit:
+			crits += 1
+	return crits
+
+
+## The damage an average recorded hit carried. Comparing the two windows per
+## tick rather than in total is what keeps the "double damage" claim
+## tick-count-independent: the two windows need not contain the same number of
+## ticks, so a total-to-total comparison would drift with the same wall clock
+## the assert count did.
+func _per_tick_damage() -> float:
+	if _health.hits.is_empty():
+		return 0.0
+	return float(_health.total_damage()) / float(_health.hits.size())
+
+
 func _on_combo_triggered(target: Node, combo: Combo, source: Node) -> void:
 	_combos.append(combo)
 	_combo_targets.append(target)
@@ -322,10 +350,11 @@ func test_hemorrhage_makes_bleed_ticks_crit_for_four_seconds() -> void:
 	_target.velocity = Vector2(50.0, 0.0)
 	_status.apply_status(StatusEffects.Status.BLEED, 1)
 	await wait_physics_frames(TPS)
-	assert_gt(_health.hit_count(), 0, "a moving, bleeding target ticks")
-	for hit: HitData in _health.hits:
-		assert_false(hit.is_crit, "Bleed does not crit on its own")
-	var baseline: int = _health.total_damage()
+	var plain_ticks: int = _health.hit_count()
+	assert_gt(plain_ticks, 0, "a moving, bleeding target ticks")
+	assert_eq(_crit_count(), 0,
+		"Bleed does not crit on its own: %d of %d ticks were critical" % [_crit_count(), plain_ticks])
+	var baseline_per_tick: float = _per_tick_damage()
 	_health.hits.clear()
 
 	_status.apply_status(StatusEffects.Status.MARK, 1, null, TRIGGER_DAMAGE)
@@ -337,10 +366,11 @@ func test_hemorrhage_makes_bleed_ticks_crit_for_four_seconds() -> void:
 	assert_true(_status.bleed_ticks_crit(), "and the component says so")
 	assert_true(_target_status().has(StatusEffects.Status.BLEED), "Bleed is not consumed by the combo")
 	await wait_physics_frames(TPS)
-	assert_gt(_health.hit_count(), 0, "the bleeding target still ticks")
-	for hit: HitData in _health.hits:
-		assert_true(hit.is_crit, "every Bleed tick in the window is critical")
-	assert_almost_eq(float(_health.total_damage()), float(baseline) * 2.0, 1.0, "and the ticks deal double damage")
+	var crit_ticks: int = _health.hit_count()
+	assert_gt(crit_ticks, 0, "the bleeding target still ticks")
+	assert_eq(_crit_count(), crit_ticks,
+		"every Bleed tick in the window is critical: %d of %d ticks were" % [_crit_count(), crit_ticks])
+	assert_almost_eq(_per_tick_damage(), baseline_per_tick * 2.0, 0.5, "and the ticks deal double damage")
 
 	await wait_physics_frames(int((StatusEffects.HEMORRHAGE_SECONDS - 1.0) * float(TPS)) + 20)
 	assert_false(_status.bleed_ticks_crit(), "the window ends after its 4 s")

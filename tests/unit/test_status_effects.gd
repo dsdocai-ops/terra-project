@@ -837,7 +837,10 @@ func test_unravel_stacks_to_five_and_adds_ten_percent_damage_taken_per_stack() -
 
 
 func test_damage_compute_reads_the_targets_unravel_multiplier() -> void:
-	var attacker := StatBlock.new()
+	# `StatBlock` is a `Node`, so a bare `.new()` is an ObjectDB instance that
+	# outlives the run: it is handed to GUT to free, the same way every other
+	# fixture in this file is. (The suite used to report it as its one orphan.)
+	var attacker: StatBlock = autofree(StatBlock.new())
 	attacker.base = {StatBlock.Stat.ATTACK: 100.0}
 	var plain := HitData.new()
 	plain.base_damage = 100.0
