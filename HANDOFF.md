@@ -3753,6 +3753,69 @@ exercise. Recorded as decision 76.
 
 ---
 
+### G8a — the last "On Kill" batch, 17 to 20 (W4-B6, raw goal G35's content half) (`relics`)
+
+Design doc 9.1 nos. **17 to 20**, shipped 2026-10-20 as the fourth and final
+instalment of **W4-B6**: Bloodthirst, Corpse Bloom, Domino, Trophy Belt. **All
+twenty of the task's relics are now in the tree**; the box stays **open** until
+G8b's harness-completeness gate is green (PLAN's split of raw goal G35).
+
+**What shipped.** `data/relics/<id>.tres` × 4 and `scripts/effects/relics/<id>.gd`
+× 4 — one effect script per relic (decision 59), the shape G5 to G7 used — plus one
+method on an existing double (`StatusEffectsStub.active_statuses()`, the read Domino
+makes of a corpse's statuses) and the batch's nine cases in
+`tests/integration/test_relic_triggers.gd`. No new system, field, signal or `.tscn`.
+
+**The batch's signal rule: one signal each (decision 77).** Bloodthirst, Corpse
+Bloom and Domino listen on `enemy_killed`; Trophy Belt alone on the `elite_killed`
+SPEC-enemies-ai names it for. None listens on both, so an elite's death — announced
+on both — is counted once: the shared case fires `_kill()` and `_elite_kill()` at one
+corpse and asserts one stack, one flower, one spread and one elite.
+
+**Bloodthirst is one restartable clock and one re-set modifier (decisions 78–79).**
+A kill deepens the buff and restarts its three seconds, so five kills read as five
+stacks for 3 s and lapse together; the row is added with `add_modifier()` and taken
+back by handle in `_expire()` and `_on_detach()`, because `Effect.modify()` does not
+hand its handle back and this buff leaves long before the relic does. `max_stacks = 5`
+doubles as the buff's cap and the relic's stack rule.
+
+**Corpse Bloom arms nothing, deliberately (decisions 80–82).** No. 18 states no
+number — no heal, no duration — so the flower is spawned unarmed rather than handed a
+balance value this lane invented, and the healing stays the root's own body
+(**blocked on Dev A (W4-A4)**, art-audio W4-B12/B13). Domino reads the corpse's
+statuses by name (`active_statuses()`/`stacks()`), spreads each whole through
+`Effect.apply_status()` so the component records Domino as their source, and takes
+SHOCK's own chain radius, not a second 96.0. Trophy Belt's accumulation is one
+re-set modifier, per-run, reset on detach.
+
+**Evidence** (`.goals/evidence/g8a/`): `test_relic_triggers.gd` **44/44 / 796 asserts**
+exit 0 (G7: 35/35 / 623); `test_relic_data.gd` **10/10 / 165**, its folder scan meeting
+**20 relic `.tres` files** (G7: 10/10 / 153 over 16); full suite **52 scripts / 923 tests
+/ 923 passing / 58 018 asserts** exit 0 (G7: 52/914/57 809 — this goal's nine cases);
+red log first (the parse error for the four missing classes); `--import` exit 0 with 0
+`ERROR` and 0 `SCRIPT ERROR` lines; `ls data/relics/*.tres | wc -l` is **20**.
+
+**Two forced negative controls, both reverted byte-exact** (`sha256sum -c` OK,
+`diff -q` clean, against `1792508947701-g8a-negative-control.sha256`).
+`PER_KILL_BONUS` 0.10 → 0.20 fails **exactly one** case — the data case that reads the
+design doc's number — the honest measure of where it is pinned: the arithmetic cases
+read the constant, so the chain is behaviour → constant → doc and this case holds the
+doc end. `bonus()` pinned to one stack fails **exactly the two** cases asserting the
+doc's +50 % (42/44, both `1.1 expected to equal 1.5`).
+
+**A deliberate deviation from PLAN's criterion 4 (decision 83).** PLAN expects
+W4-B6's annotation to read "PARTIAL — 19 of the 20 landed"; the tree holds 20, so the
+annotation says 20 with the box still `[ ]` — box, annotation and tree must agree.
+That line's stale clause is corrected too (9.1's nos. 19 and 20 are Domino and Trophy
+Belt, both On Kill).
+
+**No ask-first surface moved, and no smoke run (decision 83).** Host-only content by
+spec; no RPC, no `MultiplayerSynchronizer`, no replication config, no `NetworkManager`
+surface, so there is no sync delta to exercise. No base-stat write and no engine time
+scale: `grep -rn "set_base\|Engine.time_scale" scripts/effects/relics/*.gd` is empty.
+
+---
+
 ## Decisions made without a human
 
 These are the judgment calls taken during weeks 1 and 2 that were not dictated
@@ -6086,6 +6149,73 @@ already recorded in a spec or a comment, the location is given.
     errors) was run as the standing launch check, not as a sync check — so the
     absence of a smoke log in `.goals/evidence/g7/` reads as a decision rather
     than an omission.
+
+77. **One kill signal per relic in the 17-to-20 batch (2026-10-20).** G8a. An
+    elite's death is announced on both `enemy_killed` and `elite_killed`, so a
+    relic listening on both would count one death twice. Bloodthirst, Corpse
+    Bloom and Domino listen on `enemy_killed` (an elite's death is a death);
+    Trophy Belt alone listens on `elite_killed`, and SPEC-enemies-ai names it as
+    one of that signal's two consumers. Both code comments record the reading
+    and the one-line swap if W4-A4 lands the other way, and the batch's shared
+    case fires `_kill()` and `_elite_kill()` at one corpse and asserts one
+    stack, one flower, one spread and one elite — so the swap fails a test
+    rather than double-counting silently.
+78. **Bloodthirst's buff is one restartable clock and one re-set modifier
+    (2026-10-20).** G8a. No. 17's "for 3s (stacks 5x)" read as one buff the
+    kills keep feeding: a kill deepens the stacks and restarts the three
+    seconds, so five kills read as five stacks for 3 s and lapse together —
+    rather than five overlapping timers whose earliest expiry would drop the
+    player mid-fight. `_arm_clock()` restarts the single timer
+    `Effect._start_timer()` parented, so `detach()` frees exactly one. The
+    modifier is added through `StatBlock.add_modifier()` and removed by handle,
+    because `Effect.modify()` does not hand its handle back and this buff leaves
+    long before the relic does.
+79. **`max_stacks = 5` is read twice, as the buff's cap and the relic's stack
+    rule (2026-10-20).** G8a. The number has one home in the design doc, so the
+    `.tres` carries 5 and `BloodthirstEffect.MAX_STACKS` is the cap. A second
+    copy is then worth holding, because `stacks_per_kill()` adds one per copy —
+    the reading Soul Jar's `charge_per_kill()` established. A balance call this
+    lane made and the doc does not state; the week-12 pass owns it.
+80. **Corpse Bloom arms nothing, and counts only flowers the seam handed back
+    (2026-10-20).** G8a. No. 18 states no number — no heal, no duration — so the
+    flower is spawned unarmed rather than handed a balance value this lane
+    invented, and the root's healing stays its own body (**blocked on Dev A
+    (W4-A4)**; art-audio W4-B12/B13 own the scene). `flowers_planted()` counts
+    only spawns `Effect.spawn()` returned non-null for, so a missing container
+    or scene reads as zero flowers rather than as a relic that fired.
+81. **Domino borrows SHOCK's radius, reads by name, spreads whole stacks
+    (2026-10-20).** G8a. `SPREAD_RADIUS` is
+    `StatusEffects.SHOCK_CHAIN_RADIUS` (96.0, asserted) — no. 19 gives no
+    distance and a second 96.0 in the tree would be a second source of truth.
+    The corpse's statuses are read by name (`active_statuses()` / `stacks()` via
+    `get_node_or_null` + `has_method`, never a cast), and each is spread
+    through `Effect.apply_status()` at its full held stack count, so the
+    component records Domino as their source and the neighbours get no weaker a
+    status than the corpse carried.
+82. **Trophy Belt accumulates on one re-set modifier, for the run, reset on
+    detach (2026-10-20).** G8a. No. 20's "+3% damage for the rest of the run"
+    is the relic's own per-run state: nothing resets it while the relic is
+    held — not a room, not a floor — which the batch's case walks a
+    `room_entered` and a `floor_entered` across. A fresh `modify()` per elite
+    would leave one modifier row per elite in the `StatBlock` for the run, so
+    the row is re-set by handle instead (hundreds of rows each walked by every
+    stat read, otherwise). On detach both the count and the damage go: a player
+    who sells the belt keeps neither.
+83. **W4-B6's annotation says 20, and this commit runs no smoke test
+    (2026-10-20).** G8a. Two departures from what PLAN's G8a line literally
+    expects. (a) PLAN expects the annotation to read "PARTIAL — 19 of the 20
+    landed"; all twenty are in the tree, so it says **20** with the box still
+    `[ ]` — box, annotation and tree must agree, and the box waits on G8b's
+    harness-completeness gate. The same line's stale clause is corrected: it
+    called nos. 19 and 20 "On Getting Hit" when 9.1 makes them Domino and
+    Trophy Belt, both On Kill. (b) No two-instance smoke run: the four effects
+    are host-only by spec and touch no RPC, `MultiplayerSynchronizer`,
+    replication config or `NetworkManager` surface, so there is no sync delta —
+    G6's and G7's reason (decisions 68 and 76). The headless boot
+    (`-- --host --smoke=6`, exit 0, 0 script errors,
+    `.goals/evidence/g8a/1792508947701-g8a-headless-boot.log`) ran as the
+    standing launch check, not as a sync check, so the absence of a smoke log in
+    `.goals/evidence/g8a/` reads as a decision rather than an omission.
 
 ---
 
