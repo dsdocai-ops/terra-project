@@ -2233,6 +2233,125 @@ the duplication rule's. The copy carries no client half: clients hold no
 
 ---
 
+#### G20 — the `StatusEffects` core, and ticking on scaled time (2026-10-20)
+
+The first goal of W4-B4 and the component the whole stats-status module hangs
+off. SPEC-stats-status's "Statuses" section fixes the API in as many words —
+`apply_status()`, `has()`, `stacks()`, `clear()`, `clear_all()`, plus the two
+signals — and its table fixes eight rows (seven statuses, with FREEZE listed as
+a row of its own), each with a stacking rule and a duration. Its last line fixes
+the one gate the component has to carry: "Players can receive BURN, CHILL,
+TOXIN, BLEED from enemies and hazards, never MARK/UNRAVEL/FREEZE." And its
+"Multiplayer ownership" paragraph fixes the sync story: "All computation on the
+host", with the stacks "replicated by the entity's `StateSync` so clients can
+render icons and tints."
+
+The one piece of the goal that is not a table entry is the ticking rule, and it
+is the piece that decides the component's shape: a status tick must advance on
+**scaled** time. `_physics_process` multiplies its delta by
+`TimeManager.scale_for(entity())`, so a time stop aimed at the enemies freezes a
+burning enemy's damage with it — not `Engine.time_scale`, which the project
+forbids, and not a raw delta, which would have a stopped enemy keep burning.
+
+**What changed.** Two production files, three test files:
+
+- `scripts/components/status_effects.gd` (new, `class_name StatusEffects extends
+  Node`) — the deliverable. `enum Status { BURN, CHILL, FREEZE, SHOCK, TOXIN,
+  MARK, BLEED, UNRAVEL }`, the two signals (`status_applied(status, stacks)`,
+  `status_expired(status)`), the API above, and the reads the rest of the game
+  needs (`active_statuses()`, `remaining()`, `allows()`, `max_stacks()`,
+  `duration()`, `status_name()`, `damage_per_second()`, `max_hp()`). Every
+  number in the spec's table is a **named constant** (`BURN_MAX_STACKS` = 5,
+  `BURN_DURATION` = 4.0, `BLEED_MAX_STACKS` = 10, `TOXIN_MAX_STACKS` =
+  `UNLIMITED_STACKS`, …) and the four tables the component keys off
+  (`STATUS_NAMES`, `STATUS_ELEMENT`, `STATUS_MAX_STACKS`, `STATUS_DURATION`,
+  `STATUS_DAMAGE_PER_SECOND`) are built from those constants, so a status that
+  the spec adds or renumbers is one edit and no literal.
+- `scripts/effects/effect.gd` — `apply_status()`'s `status` parameter is
+  **retyped to `StatusEffects.Status`**, which is the retype its own doc comment
+  promised ("an int until W4-B4's component lands, at which point this parameter
+  is retyped to the enum"), and the `_status_component()` comment now says why
+  the duck-typed lookup stays a duck-typed lookup now that the class exists.
+- `scripts/network/player_spawner.gd` — one line,
+  `player.add_to_group(StatusEffects.PLAYER_TAG)`, in `_spawn_from_data()`.
+- `tests/unit/test_status_effects.gd` (new) — 26 cases, 192 asserts, written and
+  run red first.
+- `tests/helpers/status_health_stub.gd` (new) — the double for Dev A's `Health`
+  (combat-core, W2-A1), which records every hit so a tick's damage is assertable
+  without a real component.
+- `tests/unit/test_player_spawner.gd` — one case, written and run red first, that
+  a spawned player carries the tag.
+- `tests/helpers/status_effects_stub.gd` — doc comment only: the real component
+  now exists, so the stub is no longer "the component, which does not exist yet"
+  but the effect tests' recorder.
+
+**Accept.** `-gtest=res://tests/unit/test_status_effects.gd` exit 0, **26/26,
+192 asserts** (`g20/test-status-effects.log`). Full suite **47 scripts / 768
+tests / 768 passing / 56 069 asserts, exit 0** (`g20/suite.log`, up from 46 / 741
+/ 741 / 55 875 at `8948af4`), the delta being exactly this file's 26/192 plus the
+spawner case's 1 test and 2 asserts. `--headless --path . --import` exit 0 with
+zero error and zero `Parse Error` lines (`g20/import.log`). The three touched
+files re-run in one loop with the pre-existing counts unchanged —
+`test_effect_helpers` 22/57 (the effect-family call site still applies a status
+through the stub after the retype), `test_status_effects` 26/192,
+`test_player_spawner` 17/55 (`g20/touched-*.log`). `tools/smoke_two.sh` **exit 0,
+every check `ok`**, because the spawner tag is spawner wiring and spawner wiring
+is sync (BRIEF C17): two real peers still spawn, move, cross the wire, run the
+step-3 enemy path and agree on both floor hashes (`g20/smoke-two.log`, raw pair
+logs in `g20/smoke/`). Red first: the component's file was authored before the
+class existed and the red is "Parse Error: Could not find base class
+\"StatusEffects\"" (`g20/red-test-status-effects.log`), and the tag case was
+authored before the tag was applied and the red is 16/17 with the one failure
+being "a spawned player joins player" (`g20/red-test-player-tag.log`).
+
+**Judgment calls (HANDOFF decision 50).** (1) The player gate reads a **group**,
+not a class: `PLAYER_TAG` = `&"player"` and `is_player()` is
+`entity().is_in_group(PLAYER_TAG)`, which is what "guarded on the entity's tag
+rather than a hard-coded class" means in this engine, and an untagged entity is
+treated as an enemy — the permissive default, so an enemy double or a bare
+fixture behaves as the spec's table says. The tag is applied by
+`PlayerSpawner`, the module that *composes* a player, so the player scene and
+`player.gd` stay the other lane's. (2) Stacking is **one uniform rule** — stacks
+add to the cap, the duration is refreshed, never accumulated — which is the
+spec's own wording for BURN ("refresh duration, stacks add DPS") read across
+every row; the rows' individual behaviour (CHILL→FREEZE, MARK's consumption,
+SHOCK's chaining, TOXIN's healing penalty, UNRAVEL's taken-damage rule) is G21
+and G22, and this file pins the core they extend. (3) A tick is handed to
+`Health` as a **finished `HitData`**, through `apply_damage()` and never by
+writing HP, which is SPEC-combat-core's one entry point; it deliberately bypasses
+`Hurtbox`, because damage over time is not a connecting attack — it takes no
+i-frames, rolls no crit and wakes no on-hit proc. (4) The tick's damage is a
+fraction of the entity's **`StatBlock` max HP** (BURN 4 % per stack per second,
+TOXIN 1.5 %, BLEED 2 %), read from the StatBlock rather than from `Health`, so
+the fraction stays correct when a modifier moves max HP and a status tick needs
+no component but this one. (5) The client half is the seam, not a `StateSync`
+property: `_resolves_statuses()` returns `multiplayer.is_server()` and gates both
+`apply_status()` and the tick, so a client applies nothing and deals nothing
+while still *tracking* the stacks it is told about; the replicated-stacks
+property itself is the HUD's work (W4-B10, G51). (6) `Events.status_applied`'s
+`status` parameter stays a plain `int` — the enum now exists, so A4 would allow
+the retype, but no Week 4 goal needs it and it would touch the bus and the
+emitter tests for no gain; it is left for whoever first needs a typed bus read.
+
+**Not claimed.** The component is **not on the player scene yet** — the
+`StatusEffects` node there is a bare `Node`, and wiring it (plus the stacks
+property on `StateSync`) is **blocked on Dev A (W2-A1, player.tscn)**; nothing in
+a running build carries a status today, and no enemy scene carries the component
+either, because enemy composition is Dev A's. The `Health` a tick hands its
+`HitData` to is `StatusHealthStub`, not the real component — **blocked on Dev A
+(W2-A1, combat-core `Health`)** — and the swap-in is a type rename, since
+SPEC-combat-core's `HitInfo` and the week-2 `HitData` already agree on the
+damage-relevant field names. CHILL's slow, FREEZE's immobility, SHOCK's chain,
+TOXIN's healing penalty, MARK's consumption and UNRAVEL's taken-damage bonus are
+**not** implemented: this goal ships the core and its tables, and G21/G22 add the
+rows' own behaviour on top. The week-12 balance pass (SPEC-stats-status, "Open
+questions") owns CHILL, SHOCK, BLEED and UNRAVEL's durations and TOXIN's and
+BLEED's rates; they are starting values here, named so the pass has one place to
+edit. No status is yet applied by any content — no relic, weapon or hazard calls
+`Effect.apply_status()` in a build.
+
+---
+
 ## Decisions made without a human
 
 These are the judgment calls taken during weeks 1 and 2 that were not dictated
@@ -3732,6 +3851,75 @@ already recorded in a spec or a comment, the location is given.
       "the last picked" — which it reads off host attach order in the test and
       the shipped relic will read off the replicated `RunPlayerState`. Week 8
       deletes the double and re-points its case at `data/relics/mimic_crown.tres`.
+50. **`StatusEffects` reads an entity's kind off a group, applies one uniform
+    stacking rule, and hands a tick to `Health` as a finished hit (2026-10-20,
+    W4-B4 / G20).** SPEC-stats-status fixes the component's API, its eight rows
+    and its "All computation on the host" ownership, but not the four things
+    below; they are choices, so they are recorded here. `StatusEffects` gains
+    `PLAYER_TAG`, `PLAYER_FORBIDDEN`, the per-status constant tables, the
+    `_resolves_statuses()` seam and the `STATUS_TAG` a tick carries, all of it
+    new surface on the module's own component rather than on an autoload, so
+    nothing on the project's Ask-first list moved. The one signature outside the
+    module that changed is `Effect.apply_status`'s `status` parameter (int ->
+    `StatusEffects.Status`), which is the retype that method's own comment
+    promised and is not a change of meaning: every caller passes an enum member
+    or an int literal, and the effect suite is unchanged at 22/57.
+    - **The player gate is a group, not a class.** `is_player()` is
+      `entity().is_in_group(PLAYER_TAG)`, which is what the goal's "guarded on
+      the entity's tag rather than a hard-coded class" comes to here; an entity
+      with no tag is treated as an enemy, the permissive default, so an enemy
+      double or a bare fixture behaves exactly as the spec's table says and no
+      test has to know how a player is built. The tag is applied by
+      `PlayerSpawner` — the module that composes a player — so `player.tscn` and
+      `player.gd` stay the other lane's. This is the one thing in G20 that
+      touches sync, which is why the two-instance smoke ran before the commit.
+    - **Stacking is one rule for every row: add to the cap, refresh the
+      duration, never accumulate it.** The spec gives BURN's rule in those words
+      ("refresh duration, stacks add DPS") and is silent on the rest, so the same
+      reading is applied to all eight rows rather than inventing a per-row rule
+      the table does not state. `UNLIMITED_STACKS` (`-1`) is TOXIN's cap, and a
+      cap of `1` (MARK, FREEZE, SHOCK) is what makes re-application a refresh
+      only. If a later row needs different treatment, it is G21/G22's to add
+      where its own case can see it.
+    - **A tick is a finished `HitData` handed to `apply_damage()`, and it
+      bypasses `Hurtbox` on purpose.** SPEC-combat-core makes `apply_damage()`
+      the one entry point and says HP is never written directly, so a tick is a
+      hit whose damage is already decided (both `base_damage` and `final_damage`
+      set to it, so whichever the real `Health` reads, the number is the tick's).
+      The `Hurtbox` is skipped deliberately: damage over time is not a connecting
+      attack, so it must not take i-frames, roll a crit or wake an on-hit effect.
+      The hit carries `STATUS_TAG` and the status's own name, so a listener can
+      tell a tick from a connecting hit — `Effect`'s `proc` tag is the precedent
+      for a hit tag outside the `Tags` vocabulary, and the tag answers "what
+      carried this" rather than "what is it".
+    - **The tick's rate is a fraction of the `StatBlock`'s max HP, not of
+      `Health`'s.** BURN 4 % per stack per second, TOXIN 1.5 %, BLEED 2 %, read
+      through `StatBlock.get_value()` so a modifier that moves max HP moves the
+      tick with it and a status tick needs no component but this one. It also
+      means the component never needs to know how much HP is left — it is a
+      damage *rate*, and the health bar is `Health`'s business.
+    - **The client half is the `_resolves_statuses()` seam, and the replicated
+      stacks are left to the HUD.** `_resolves_statuses()` returns
+      `multiplayer.is_server()` and gates **both** application and ticking, so a
+      client deals no damage and applies nothing while still tracking the stacks
+      it is told about — "what a client displays is its own business". It is a
+      method rather than an inline `is_server()` call for the reason
+      `EffectHost._can_spawn()` is: one process can flip it, so the client half
+      is unit-tested here instead of only in the smoke. The property that
+      actually replicates the stacks belongs to the entity's `StateSync` and
+      lands with the HUD status icons (W4-B10, G51).
+    - **The duration and rate constants the spec does not fix are starting
+      values, named so the week-12 balance pass has one place to edit.** BURN
+      (4 s), FREEZE (2 s) and TOXIN (6 s) are the spec's; CHILL, SHOCK, BLEED and
+      UNRAVEL durations and TOXIN's and BLEED's rates come from
+      SPEC-stats-status's "Open questions" and are marked as such in the
+      component's comments. MARK's duration is `NO_EXPIRY` (0.0), which is how
+      the code says "consumed, not timed" without a second flag.
+    - **`Events.status_applied`'s `status` parameter stays a plain `int`.** The
+      enum now exists, so the A4 rule that permits retyping to a real type would
+      allow it, but no Week 4 goal needs a typed bus read and the change would
+      touch the bus and its emitter tests for no behavioural gain. Whoever first
+      needs it can do it with A4 in hand.
 
 ---
 

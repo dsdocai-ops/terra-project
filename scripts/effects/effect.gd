@@ -344,11 +344,11 @@ func chance(p: float) -> bool:
 ## Applies a status to `target` through its `StatusEffects` component
 ## (stats-status). The source argument the component records is this effect, so
 ## `Events.status_applied(target, status, stacks, source)` names the relic that
-## applied it. `status` is `StatusEffects.Status` — an int until W4-B4's
-## component lands, at which point this parameter is retyped to the enum. A
-## target with no component (an enemy that is not yet wired, a double) is a
-## warned no-op rather than a crash.
-func apply_status(target: Node, status: int, stacks: int = 1) -> void:
+## applied it. `status` is `StatusEffects.Status`: the component landed in W4-B4
+## (G20), so the parameter is typed to its enum and a bogus id is refused by the
+## component rather than by this helper. A target with no component (an entity
+## that is not yet wired, a double) is a warned no-op rather than a crash.
+func apply_status(target: Node, status: StatusEffects.Status, stacks: int = 1) -> void:
 	if target == null:
 		push_warning("[effect] %s: apply_status() needs a target" % source_id())
 		return
@@ -443,10 +443,14 @@ func _resolve_host() -> EffectHost:
 	return null
 
 
-## The `StatusEffects` component on `target`, or null when it carries none. A
-## `has_method` check rather than a typed cast because the component's class is
-## W4-B4's and does not exist yet; when it lands this becomes an `is
-## StatusEffects` check with no call-site change.
+## The `StatusEffects` component on `target`, or null when it carries none.
+##
+## A `has_method` check rather than an `is StatusEffects` cast, and deliberately
+## so now that the component has landed (W4-B4, G20): the effect tests attach a
+## recording double (`StatusEffectsStub`, tests/helpers/) in the component's
+## place, and a cast would refuse it, so an effect's application could no longer
+## be asserted without a real component on every fixture. The component's own
+## contract is what the name and the method pin.
 func _status_component(target: Node) -> Node:
 	var component: Node = target.get_node_or_null(STATUS_NODE)
 	if component == null or not component.has_method(STATUS_METHOD):
