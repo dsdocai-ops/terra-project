@@ -4142,6 +4142,54 @@ rather than silently edited.
 
 ---
 
+### G13 — `LootTable` and the weighted roll with Luck (W4-B8, raw goal G40) (`run-economy`)
+
+**What shipped.** `scripts/data/loot_table.gd` (`class_name LootTable extends
+Resource`), the weighted drop table SPEC-run-economy's "Chests, breakables,
+mining nodes" names: exported `entries` as the spec's own shape
+`{kind, id or rarity, weight, min, max}`, converted immediately by `entry_list()`
+into typed `Entry` objects; `roll(rng, luck)` returning
+`{kind, id, rarity, amount}`; `roll_many`; `total_weight`; `parse_entry`; the
+Luck roll `shifted_rarity_roll`; `rarity_for_roll`; `CHEST_TIERS` (common, rare,
+legendary) and `is_chest_tier`. `tests/helpers/loot_table_fixture.tres` is the
+committed fixture (gold 60, copper ore 25, echo 10, rare relic 5) and
+`tests/unit/test_loot_table.gd` is the 14-case unit suite. No Dev A file, no
+`.tscn`, no autoload API, no `Events` signal, no save schema.
+
+**The roll.** Entries are picked by `weight`, so a table's shares are its entry
+weights and nothing else; `amount` is uniform in `[min, max]` and `min == max` is
+deterministic. An entry names a fixed `id` (ore type, relic id) or a `rarity`;
+its own rarity is a **floor** and the Luck-shifted rarity roll may raise it. The
+rarity roll is the spec's `rarity_roll += LUCK * 0.01`, clamped to 0..1 and
+mapped over `RelicData`'s four Shrine tier weights; it **delegates** to
+`RelicRoller.shifted_roll()` / `rarity_for_roll(roll, false)` and takes
+`LUCK_SHIFT_PER_POINT` from there, because one spec sentence must have one
+implementation. Cursed is not in the tier table at all: a loot table never hands
+one out. `rng` null falls back to `RelicRoller.seeded_rng()` (the run's seed,
+never the clock), so a drop replays from its seed.
+
+**Evidence** (`.goals/evidence/r1792508947701/g13/`, plus `NOTES.md`): red first
+— a parse error because `LootTable` did not exist, `Nothing was run`;
+`--import` exit 0, 0 `ERROR` lines; **14/14 / 2 248 asserts**; the touched suites
+re-run individually (`test_loot_table` 14/14/2248, `test_relic_roller` 25/25/346,
+`test_data_loads` 2/2/81, `test_pickup` 24/24/129); full suite **57 scripts /
+1 028 tests / 1 028 passing / 60 921 asserts**, exit 0, 74.343 s, against G12's
+56 / 1 014 / 58 673 (+1 script, +14 tests, +2 248 asserts — exactly this file);
+negative control — the Luck argument replaced by `0.0` inside
+`shifted_rarity_roll()` — fails **exactly the two Luck cases** (12/14,
+2 230/2 248, exit 1) while the distribution, range, determinism and boundary
+cases stay green, reverted byte-exact (`sha256sum -c` OK, `diff` empty, marker
+count back to 0). No two-instance smoke: the commit adds one pure-logic Resource
+and two test files — no RPC, replication or spawner wiring.
+
+**Not claimed.** No production caller exists yet — chests, enemies and shops are
+G14/G15 — and there is no shipped `.tres` under `data/loot/`; every number above
+is proven on the committed test fixture. The rarity-floor reading is a judgment
+call recorded as decision 89. W4-B8 stays `[ ]`: the drops and `currency_gained`,
+Ore/Echo payouts, chests, breakables and mining nodes are still open.
+
+---
+
 ## Decisions made without a human
 
 These are the judgment calls taken during weeks 1 and 2 that were not dictated
@@ -6723,6 +6771,24 @@ already recorded in a spec or a comment, the location is given.
     parameter name, order or count moves, so no call site changes — the only
     edit is the declared type. Recorded here because `Events` signal signatures
     are on the project's ask-first list.
+
+89. **`LootTable` is a new `scripts/data/` Resource definition, and a rarity
+    entry's tier is a floor (2026-10-20).** G13. SPEC-run-economy's "Data model"
+    says "`LootTable extends Resource` under `data/loot/`", which puts the class
+    on the ask-first list (`scripts/data/` Resources); sanctioned by that line
+    and by "Chests, breakables, mining nodes", which fixes the entries' shape
+    (`{kind, id or rarity, weight, min, max}`) and the Luck term
+    (`rarity_roll += LUCK * 0.01`). Two shape calls are recorded here because the
+    spec does not settle them: (a) the class lives in `scripts/data/` with the
+    other Resources and its `.tres` instances will live under `data/loot/`, the
+    layout `RelicData` already uses; (b) an entry that names a `rarity` treats it
+    as a **floor**, and the table's Luck-shifted rarity roll may raise it — the
+    reading that keeps both spec sentences true (the entry's tier is never lost,
+    Luck always has something to move, and the result can never pass legendary
+    or reach cursed). `entries` is an `Array[Dictionary]` at the `.tres`
+    boundary, converted immediately into typed `Entry` objects, which is the
+    form C12 allows. Nothing else on the ask-first list moved: no `Events`
+    signal, no autoload, no Input Map, no save schema, no `.tscn`.
 
 ---
 
