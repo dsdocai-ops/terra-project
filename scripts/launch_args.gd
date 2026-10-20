@@ -14,6 +14,12 @@ extends RefCounted
 ##                     host to spawn and kill a stub enemy through
 ##                     request_debug, the host resolves one hit, and
 ##                     enemy_killed registers exactly once. See smoke_two.sh
+##   --smoke-floor[=<sec>]
+##                     headless two-instance floor-sync smoke: the host starts a
+##                     run (which broadcasts floor_ready for floor 1) once a
+##                     client has joined, and both peers log the seed, floor,
+##                     biome and the layout_hash each generated locally from it.
+##                     See smoke_two.sh
 ## Owned by foundation. Sync: none.
 
 enum Mode { MENU, HOST, JOIN }
@@ -31,6 +37,8 @@ var debug_tools: bool = false
 var smoke_seconds: float = 0.0
 ## 0 means not a smoke-step-3 run.
 var smoke3_seconds: float = 0.0
+## 0 means not a floor-sync smoke run.
+var smoke_floor_seconds: float = 0.0
 ## Human-readable problems with the arguments; main.gd logs them.
 var errors: Array[String] = []
 
@@ -56,6 +64,14 @@ static func parse(args: PackedStringArray) -> LaunchArgs:
 				opts.smoke3_seconds = float(value3)
 			else:
 				opts.errors.append("--smoke3 needs a positive number of seconds, got '%s'" % value3)
+		elif arg == "--smoke-floor":
+			opts.smoke_floor_seconds = DEFAULT_SMOKE_SECONDS
+		elif arg.begins_with("--smoke-floor="):
+			var value_floor := arg.trim_prefix("--smoke-floor=")
+			if value_floor.is_valid_float() and float(value_floor) > 0.0:
+				opts.smoke_floor_seconds = float(value_floor)
+			else:
+				opts.errors.append("--smoke-floor needs a positive number of seconds, got '%s'" % value_floor)
 		elif arg.begins_with("--join="):
 			opts._parse_join(arg.trim_prefix("--join="))
 		elif arg.begins_with("--seed="):

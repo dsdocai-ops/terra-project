@@ -54,6 +54,12 @@ var last_advance_refusal: StringName = ADVANCE_REFUSAL_NONE
 ## ui-hud builds the real panel (week 5); keeping the text here makes what the
 ## player sees readable from code and from tests, not only from a log.
 var last_run_summary: String = ""
+## The floor the host's floor_ready named, recorded on a client so the HUD and
+## anything else that follows the floor can read it without a RunState. 0 until
+## the host has declared a floor (W3-B3a).
+var remote_floor_index: int = 0
+## The modifiers the host named for that floor.
+var remote_floor_modifiers: Array[int] = []
 
 
 ## Host only. Starts a run: resolves the seed, builds the RunState at
@@ -113,6 +119,30 @@ func next_floor() -> void:
 ## Reading it on a client is safe; only the host's next_floor() acts on it.
 func can_advance_floor() -> bool:
 	return run != null and run.exit_open
+
+
+## Client only. The host's floor_ready named a floor; this peer has already
+## generated its layout locally (NetworkManager) and now records which floor it
+## is, so the HUD and everything else that follows the floor agrees with the
+## host. Refused on the host, which owns the live run and emits floor_changed
+## from next_floor() itself — accepting a remote floor there would also loop:
+## this signal is what the host broadcasts on.
+func apply_remote_floor(floor_index: int, biome_id: int, modifiers: Array[int]) -> bool:
+	if NetworkManager.is_host:
+		push_warning("[run] apply_remote_floor refused: the host owns floor state")
+		return false
+	remote_floor_index = floor_index
+	remote_floor_modifiers.assign(modifiers)
+	floor_changed.emit(floor_index, biome_for_index(biome_id))
+	print("[run] client follows the host to floor %d (biome %d)" % [floor_index, biome_id])
+	return true
+
+
+## The biome resource a floor's biome id names. This is the single swap point
+## for Dev A's BiomeData (blocked on Dev A W3-A1/A6): when it lands this returns
+## BiomeData and BiomePlaceholder is deleted.
+func biome_for_index(biome_id: int) -> Resource:
+	return BiomePlaceholder.from_index(biome_id)
 
 
 ## Records why an advance was refused and logs it once. Called from every
@@ -332,4 +362,4 @@ func _slice_from(info: PlayerSpawnInfo) -> RunPlayerState:
 ## The biome resource floor_changed carries. Dev A's BiomeData (W6) replaces
 ## the placeholder; the parameter type stays Resource (BRIEF Assumption 17).
 func _biome_for(state: RunState) -> Resource:
-	return BiomePlaceholder.from_index(state.biome_index)
+	return biome_for_index(state.biome_index)

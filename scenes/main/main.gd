@@ -5,6 +5,10 @@ extends Node
 ## Owned by foundation. Sync: none; NetworkManager owns connection state.
 
 const WORLD_SCENE: PackedScene = preload("res://scenes/main/world.tscn")
+## How often the floor-sync smoke driver looks for the client before starting
+## the run, and how long it waits for one before starting it alone.
+const SMOKE_FLOOR_POLL_SECONDS: float = 0.25
+const SMOKE_FLOOR_CLIENT_WAIT_SECONDS: float = 5.0
 
 var world: World
 var options: LaunchArgs
@@ -27,6 +31,15 @@ var _smoke3_logged_hp_client: int = -1
 ## Full-HP ticks seen before resolving the partial hit: gives StateSync a
 ## beat to deliver the spawn (hp=10) to the client before the drop.
 var _smoke3_full_hp_ticks: int = 0
+
+## Floor-sync smoke (SPEC-networking "Seed sync", W3-B3a). The host starts a run
+## once a client has joined, which broadcasts floor_ready for floor 1; both
+## peers then log the seed, floor, biome and the layout_hash they generated
+## locally from it under [floor] markers, and smoke_two.sh compares the two
+## hashes. Driven by --smoke-floor.
+var _smoke_floor_poll: Timer
+var _smoke_floor_started: bool = false
+var _smoke_floor_waited: float = 0.0
 
 @onready var menu: PlaceholderMenu = $UI/PlaceholderMenu
 
@@ -55,6 +68,8 @@ func _ready() -> void:
 		_start_smoke(options.smoke_seconds)
 	elif options.smoke3_seconds > 0.0:
 		_start_smoke3(options.smoke3_seconds)
+	elif options.smoke_floor_seconds > 0.0:
+		_start_smoke_floor(options.smoke_floor_seconds)
 
 
 ## Headless smoke support: the local player walks right as soon as its node
@@ -179,6 +194,41 @@ func _smoke3_client_tick() -> void:
 	if hp == 0 and not _smoke3_death_logged:
 		_smoke3_death_logged = true
 		print("[smoke3] client sees %s hp=0 (dead)" % enemy.name)
+
+
+## Floor-sync smoke driver (W3-B3a). The host waits for a client to join, then
+## starts a run: GameState's run_started makes NetworkManager broadcast
+## floor_ready for floor 1, and both peers generate that floor locally from the
+## seed. Both print the [floor] line NetworkManager writes on receipt, so
+## smoke_two.sh can compare the two layout hashes for one --seed. The client
+## only waits; the host's broadcast is what tells it which floor to build.
+func _start_smoke_floor(seconds: float) -> void:
+	_smoke_floor_poll = Timer.new()
+	_smoke_floor_poll.wait_time = SMOKE_FLOOR_POLL_SECONDS
+	_smoke_floor_poll.autostart = true
+	_smoke_floor_poll.timeout.connect(_on_smoke_floor_poll)
+	add_child(_smoke_floor_poll)
+	print("[smoke-floor] armed on peer %d (%s)" % [NetworkManager.local_peer_id, "host" if NetworkManager.is_host else "client"])
+	get_tree().create_timer(seconds).timeout.connect(func() -> void:
+		print("[smoke-floor] done, quitting")
+		get_tree().quit())
+
+
+## Host: start the run once the client is here (or after the wait, so a
+## single-instance launch still exercises the path). Client: nothing to drive —
+## it logs the floor the host names. Both quit on the timer above.
+func _on_smoke_floor_poll() -> void:
+	if not NetworkManager.is_host or _smoke_floor_started:
+		return
+	_smoke_floor_waited += SMOKE_FLOOR_POLL_SECONDS
+	if NetworkManager.player_count() < 2 and _smoke_floor_waited < SMOKE_FLOOR_CLIENT_WAIT_SECONDS:
+		return
+	_smoke_floor_started = true
+	var party: Array = []
+	for peer_id: int in NetworkManager.peer_ids:
+		party.append(PlayerSpawnInfo.new(peer_id))
+	GameState.start_run(0, 1, party)
+	print("[smoke-floor] host started the run with %d player(s)" % party.size())
 
 
 ## Records the parsed options: forced seed into GameState, menu shown only

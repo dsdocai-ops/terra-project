@@ -106,6 +106,30 @@ func test_no_smoke3_by_default() -> void:
 	assert_eq(LaunchArgs.parse(PackedStringArray()).smoke3_seconds, 0.0)
 
 
+func test_smoke_floor_flag_uses_default_seconds() -> void:
+	var opts := LaunchArgs.parse(PackedStringArray(["--host", "--smoke-floor"]))
+	assert_eq(opts.smoke_floor_seconds, LaunchArgs.DEFAULT_SMOKE_SECONDS, "no value uses the smoke default")
+	assert_eq(opts.mode, LaunchArgs.Mode.HOST, "smoke-floor does not change the mode")
+
+
+func test_smoke_floor_seconds_can_be_set() -> void:
+	assert_eq(LaunchArgs.parse(PackedStringArray(["--smoke-floor=12"])).smoke_floor_seconds, 12.0)
+	var bad := LaunchArgs.parse(PackedStringArray(["--smoke-floor=soon"]))
+	assert_eq(bad.smoke_floor_seconds, 0.0)
+	assert_gt(bad.errors.size(), 0, "non-numeric seconds is reported")
+
+
+func test_smoke_floor_is_not_confused_with_the_other_smokes() -> void:
+	var floor_smoke := LaunchArgs.parse(PackedStringArray(["--smoke-floor=9"]))
+	assert_eq(floor_smoke.smoke_seconds, 0.0, "smoke-floor leaves smoke off")
+	assert_eq(floor_smoke.smoke3_seconds, 0.0, "smoke-floor leaves smoke3 off")
+	var smoke := LaunchArgs.parse(PackedStringArray(["--smoke=9"]))
+	assert_eq(smoke.smoke_floor_seconds, 0.0, "smoke leaves smoke-floor off")
+
+func test_no_smoke_floor_by_default() -> void:
+	assert_eq(LaunchArgs.parse(PackedStringArray()).smoke_floor_seconds, 0.0)
+
+
 func test_debug_tools_flag() -> void:
 	var opts := LaunchArgs.parse(PackedStringArray(["--debug-tools"]))
 	assert_true(opts.debug_tools)

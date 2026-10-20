@@ -32,6 +32,13 @@ var local_peer_id: int = 0
 var peer_ids: Array[int] = []
 ## peer_id -> Player node, filled by PlayerSpawner as spawns complete.
 var players: Dictionary[int, Player] = {}
+## The seed every peer generated the current floor from: the last floor_ready.
+var floor_seed: int = 0
+## The layout this peer generated locally for that floor, or null before the
+## first floor_ready. RefCounted so Dev A's FloorLayout drops in unchanged.
+var last_floor_layout: RefCounted = null
+## The modifiers the host named for the current floor.
+var last_floor_modifiers: Array[int] = []
 
 
 func _ready() -> void:
@@ -40,6 +47,10 @@ func _ready() -> void:
 	multiplayer.connected_to_server.connect(_on_connected_to_server)
 	multiplayer.connection_failed.connect(_on_connection_failed)
 	multiplayer.server_disconnected.connect(_on_server_disconnected)
+	# Floor sync (SPEC-networking "Seed sync"): the host picks the run seed, and
+	# every floor change sends floor_ready so each peer generates it locally.
+	GameState.run_started.connect(_on_run_started)
+	GameState.floor_changed.connect(_on_floor_changed)
 
 
 ## Opens an ENet server. Refused while a session is active (call
@@ -97,6 +108,9 @@ func disconnect_all() -> void:
 	local_peer_id = 0
 	peer_ids.clear()
 	players.clear()
+	floor_seed = 0
+	last_floor_layout = null
+	last_floor_modifiers = [] as Array[int]
 
 
 func get_player(peer_id: int) -> Player:
@@ -142,6 +156,83 @@ func request_vote_rope(yes: bool) -> void:
 		push_warning("[net] request_vote_rope refused: sender %d cannot apply a rope use here" % sender)
 		return
 	GameState.request_extract_vote(sender, yes)
+
+
+## Host -> every peer: the floor about to be played, and the seed it comes from
+## (SPEC-networking "Seed sync"). Every peer runs FloorGenerator.generate()
+## locally with these inputs and must produce the same layout; the hash
+## assertion that follows is W3-B3b. Sent when the run starts — floor 1 is ready
+## before anyone moves — and again on every floor change, on the same run seed.
+## Sync: host-authoritative. The sender is validated first: on the host only its
+## own local authority call may apply (Godot reports sender 0 for a call_local
+## invocation, so a client's floor_ready is refused), and on a client only the
+## host's broadcast may.
+@rpc("authority", "call_local", "reliable")
+func floor_ready(seed: int, floor_index: int, biome_id: int, modifiers: Array[int]) -> void:
+	var sender: int = multiplayer.get_remote_sender_id()
+	if not can_accept_floor_ready(sender):
+		push_warning("[net] floor_ready refused: sender %d may not declare a floor here" % sender)
+		return
+	apply_floor_ready(seed, floor_index, biome_id, modifiers)
+
+
+## True when a floor_ready may be applied on this peer. The host accepts only
+## its own local broadcast (sender 0); a client accepts only the host's (peer 1).
+func can_accept_floor_ready(sender: int) -> bool:
+	if is_host:
+		return sender == 0
+	return sender == HOST_PEER_ID
+
+
+## Host only. Sends the floor every peer generates locally. The host applies it
+## here too, so solo and co-op run the identical one-call path; remote peers get
+## it through rpc_id, so the host never generates the same floor twice.
+func broadcast_floor_ready(seed: int, floor_index: int, biome_id: int, modifiers: Array[int] = []) -> bool:
+	if not is_host:
+		push_warning("[net] broadcast_floor_ready refused: only the host declares a floor")
+		return false
+	apply_floor_ready(seed, floor_index, biome_id, modifiers)
+	for peer_id: int in peer_ids:
+		if peer_id == local_peer_id:
+			continue
+		floor_ready.rpc_id(peer_id, seed, floor_index, biome_id, modifiers)
+	return true
+
+
+## Generates `floor_index` locally from the host's seed and records it. Every
+## peer runs this on the same inputs, which is what makes one seed one floor.
+## On a client it also tells GameState which floor the host is on — a client has
+## no RunState, so that signal is how the HUD follows — while the host has
+## already emitted floor_changed from its own run state.
+func apply_floor_ready(seed: int, floor_index: int, biome_id: int, modifiers: Array[int]) -> RefCounted:
+	floor_seed = seed
+	last_floor_modifiers.assign(modifiers)
+	var layout: RefCounted = FloorGeneratorSeam.generate(seed, floor_index, biome_id, modifiers)
+	last_floor_layout = layout
+	print("[floor] ready seed %d floor %d biome %d — layout_hash %d from %s on peer %d" % [
+		seed, floor_index, biome_id, FloorGeneratorSeam.layout_hash_of(layout),
+		FloorGeneratorSeam.source_of(layout), local_peer_id])
+	if not is_host:
+		GameState.apply_remote_floor(floor_index, biome_id, modifiers)
+	return layout
+
+
+## The host's run began, so floor 1 is ready. A client never runs this: it never
+## owns a run and gets floor 1 from the broadcast like every other floor.
+func _on_run_started(run_seed: int) -> void:
+	if not is_host or GameState.run == null:
+		return
+	broadcast_floor_ready(run_seed, GameState.run.floor_index, GameState.run.biome_index)
+
+
+## The host advanced a floor, so it goes out to every peer on the same run seed.
+## A client's own floor_changed (from the host's broadcast) stops at the host
+## guard, so the client cannot echo a floor back up.
+func _on_floor_changed(floor_index: int, _biome: Resource) -> void:
+	if not is_host or GameState.run == null:
+		return
+	var modifiers: Array[int] = FloorGeneratorSeam.roll_modifiers(GameState.run.seed, floor_index)
+	broadcast_floor_ready(GameState.run.seed, floor_index, GameState.run.biome_index, modifiers)
 
 
 ## True when this peer is a joined client, so a request_* RPC actually travels
@@ -205,6 +296,19 @@ func _remove_peer(peer_id: int) -> void:
 
 func _on_peer_connected(peer_id: int) -> void:
 	_add_peer(peer_id)
+	_send_floor_to_late_joiner(peer_id)
+
+
+## A peer that joined after the run started missed the floor broadcast, and
+## deterministic generation means the floor is fully described by
+## (seed, floor_index, biome_id, modifiers) — so the host just sends it again to
+## that peer rather than making it wait for the next floor.
+func _send_floor_to_late_joiner(peer_id: int) -> void:
+	if not is_host or GameState.run == null or floor_seed == 0:
+		return
+	var modifiers: Array[int] = FloorGeneratorSeam.roll_modifiers(floor_seed, GameState.run.floor_index)
+	floor_ready.rpc_id(peer_id, floor_seed, GameState.run.floor_index, GameState.run.biome_index, modifiers)
+	print("[floor] sent floor %d to late-joining peer %d" % [GameState.run.floor_index, peer_id])
 
 
 func _on_peer_disconnected(peer_id: int) -> void:

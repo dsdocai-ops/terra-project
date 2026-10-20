@@ -410,6 +410,69 @@ the tree, so nothing in Dev A's `player.tscn` or its states is touched
 emitters; the swap-in is nothing on my side — the host already listens to the
 spec's events).
 
+### W3-B3a — `floor_ready` broadcast, client-local generation, `--seed` plumbing (`networking`)
+
+The seed-sync half of the week-3 co-op promise: one broadcast seed, one floor on
+every screen.
+
+- **New `scripts/network/floor_generator_seam.gd`** (`FloorGeneratorSeam`) — the
+  bridge to Dev A's `FloorGenerator`: `generate(run_seed, floor_index,`
+  `biome_id, modifiers)`, `layout_hash_of(layout)`, `source_of(layout)`,
+  `roll_modifiers(run_seed, floor_index)`, and a test-only injected generator.
+  **blocked on Dev A (W3-A1)**: `scripts/generation/floor_generator.gd` still
+  does not exist, so generation runs on the lane-B placeholder and says so once
+  per process. The swap-in is nothing on this side — the seam resolves the real
+  script the moment it lands and calls its `generate`/`roll_modifiers`. The one
+  remaining swap is `GameState.biome_for_index`, which returns `BiomeData`
+  instead of `BiomePlaceholder` then (**blocked on Dev A W3-A1/A6**); until it
+  does, the generator is deliberately skipped rather than called with a biome
+  its typed signature would reject.
+- **New `scripts/network/floor_layout_placeholder.gd`**
+  (`FloorLayoutPlaceholder`) — the lane-B stand-in for Dev A's `FloorLayout`:
+  the same `layout_hash` field, derived deterministically from
+  (seed, floor_index, biome_id, modifiers) through a seeded
+  `RandomNumberGenerator`, with 8–14 room rects sampled from it (SPEC's room
+  count and size ranges) and integer-only seed/hash arithmetic, so two processes
+  cannot disagree.
+- **`NetworkManager.floor_ready(seed, floor_index, biome_id, modifiers)`** —
+  `@rpc("authority", "call_local", "reliable")`, exactly the payload
+  SPEC-networking declares. Its first line validates the sender through
+  `can_accept_floor_ready(sender)`: the host accepts only its own local
+  authority call (sender 0), a client only the host's broadcast (peer 1).
+  `apply_floor_ready` is the one place a floor is generated and recorded
+  (`floor_seed`, `last_floor_layout`, `last_floor_modifiers`), and on a client it
+  tells `GameState` which floor the host is on. `broadcast_floor_ready` (host
+  only) applies locally and `rpc_id`s every remote peer. The broadcast is
+  triggered by `GameState.run_started` (floor 1, before anyone moves) and
+  `GameState.floor_changed` (every later floor), and re-sent to a peer that
+  joins mid-run.
+- **`GameState`** — `apply_remote_floor(floor_index, biome_id, modifiers)` (client
+  only; refused on the host, which owns the run and already emits
+  `floor_changed`), `biome_for_index(biome_id)` as the single biome swap point,
+  and the `remote_floor_index` / `remote_floor_modifiers` the client records.
+- **`--seed` plumbing** — the launch arg already landed in
+  `GameState.forced_seed`; `start_run` resolves it, `run_started` carries it, and
+  `broadcast_floor_ready` puts that same value in the payload. Two instances
+  launched with `--seed=20261020` logged the same `layout_hash`
+  (`3525914442204165144`, floor 1, biome 1) in the manual pair recorded at
+  `.goals/evidence/g7-floor-smoke/`.
+- **`--smoke-floor[=<sec>]`** (new `LaunchArgs` arg, the `--smoke3` pattern) and
+  a `Main._start_smoke_floor` driver: the host starts a run once a client has
+  joined (5 s wait, so a single instance still exercises the path) and both
+  peers log the `[floor]` line, which is what the W3-B3a-2 smoke will compare.
+- **Tests**: `tests/unit/test_floor_sync.gd` (20 tests / 65 asserts) written and
+  confirmed red first (GUT ignored the script — parse error, both new classes
+  absent), plus `tests/helpers/floor_generator_stub.gd` (a `FloorGenerator`-shaped
+  double, **blocked on Dev A (W3-A1)**) and 4 new
+  `tests/unit/test_launch_args.gd` cases. Verified: full GUT 33 scripts / 459
+  tests / 12674 asserts exit 0 (`.goals/evidence/g7-gut.log`); headless import
+  exit 0 with 0 error lines (`.goals/evidence/g7-import.log`); `tools/smoke_two.sh`
+  28/28 ok exit 0 before the sync-touching commit (`.goals/evidence/g7-smoke.log`);
+  headless `-- --host --smoke-floor=8` exit 0 with no script errors
+  (`.goals/evidence/g7-launch-floor.log`); a `grep` for `Engine.time_scale` under
+  `scripts/` and `scenes/` and a `grep` for `randi()` / `randf()` / `shuffle(`
+  under `scripts/` both came back empty; no Dev A file touched.
+
 ---
 
 ## Decisions made without a human
@@ -809,6 +872,71 @@ already recorded in a spec or a comment, the location is given.
     it, and the null path still rolls in band — plus a clean headless launch.
     Threading `GameState`'s run generator into `compute` is on the manual-check
     list until that caller lands.
+
+29. **Floor sync: the broadcast shape and the generator seam (W3-B3a/G7).**
+    SPEC-networking fixes the payload and the RPC conventions but not how the
+    host reaches the broadcast, how a client receives it, or what generates a
+    floor while Dev A's `FloorGenerator` does not exist. Seven calls:
+    - *The host applies its own floor explicitly and `rpc_id`s the remotes,
+      instead of relying on `rpc()` with `call_local`.* `call_local` on an
+      authority RPC does make a host's `floor_ready.rpc(...)` run locally, but
+      it would also mean the host has to know it must never call the bare
+      method, and it makes "did the host already generate this floor?" depend on
+      multiplayer internals. `broadcast_floor_ready` calls `apply_floor_ready`
+      once and then sends to every peer that is not `local_peer_id`, so the host
+      generates exactly one floor per floor, solo and co-op take the identical
+      path, and the counting is visible in one function. `call_local` stays on
+      the declaration (it is the spec's convention and it is what makes the
+      late-joiner `rpc_id` path symmetric), but nothing depends on it firing.
+    - *The broadcast hangs off `run_started` and `floor_changed`, not off a new
+      signal.* Floor 1 is ready when the run starts and never before, so
+      `run_started` is the exact moment; every later floor is already announced
+      by `floor_changed` (W3-B1c's threshold seam emits it). Listening to those
+      two means no new `Events` signal and no lane-B owner of the floor-advance
+      decision — the host's run state is the only trigger, which is the
+      host-only rule for free.
+    - *A peer that joins mid-run is sent the floor again.* Deterministic
+      generation means the floor is fully described by
+      `(seed, floor_index, biome_id, modifiers)`, so `_send_floor_to_late_joiner`
+      re-sends rather than making the joiner wait for the next floor. This was
+      not speculative: the first two-process `--smoke-floor` run failed exactly
+      here — the client connected after the host had broadcast and logged no
+      `[floor]` line at all.
+    - *`apply_remote_floor` is client-only.* On a client, `floor_changed` is how
+      the rest of the game (HUD, world) learns which floor it is on, and a
+      client has no `RunState` to emit it. Letting the host accept a remote floor
+      would mean a client's `floor_changed` could reach the host's own
+      `_on_floor_changed` and echo the floor back out; refusing on the host
+      makes that loop impossible rather than merely unlikely, and the test
+      asserts the refusal.
+    - *The generator seam skips a real `FloorGenerator` while its biome argument
+      is still a `BiomePlaceholder`.* The spec's signature takes `BiomeData`; DEV
+      A's `BiomeData` does not exist yet (W3-A1/A6), so calling the real
+      `generate` with the placeholder would fail its typed signature. The seam
+      therefore resolves the script *and* checks the biome type, logging the
+      blocker once per process — so the moment both land, generation switches
+      over with no edit here. Until then a lane-B `FloorLayoutPlaceholder`
+      carries the same `layout_hash` field, derived from the same four inputs
+      through a seeded `RandomNumberGenerator` with integer-only seed arithmetic
+      (`absi(run_seed * 2654435761 + floor * 40503) + 1`, no engine `hash()`),
+      sampling 8–14 room rects in the spec's size ranges. It is a stand-in for
+      the *layout*, not a fake of Dev A's algorithm: what it proves is that one
+      seed reaches every peer and every peer derives the same hash from it.
+      **blocked on Dev A (W3-A1)** for the real generator, and the swap-in is
+      `GameState.biome_for_index` returning `BiomeData`.
+    - *Modifiers travel as `[]` for now.* `roll_modifiers` is Dev A's
+      (`FloorGenerator.roll_modifiers`), so the seam returns an empty array with
+      a test pinning that. The field is in the payload and in
+      `last_floor_modifiers` from day one so the wire shape does not change when
+      the roll lands — but an empty list today must not be read as "no modifiers
+      rolled".
+    - *`--smoke-floor[=<sec>]` is a new launch arg.* The two-instance proof needs
+      a run to start on its own in a headless process, and the existing `--smoke`
+      / `--smoke3` drivers only walk and shoot. It follows the `--smoke3` pattern
+      exactly (default seconds, `=value` form, one test per branch), and its 5 s
+      client wait is the fix for the failure above: at 3 s the host was starting
+      the run before the client had connected. Both peers logged
+      `layout_hash 3525914442204165144` for `--seed=20261020`.
 
 ---
 
