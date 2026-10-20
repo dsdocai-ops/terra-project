@@ -34,9 +34,10 @@ extends Area2D
 ## the scene's `MultiplayerSynchronizer` at that peer alone, so a relic a player
 ## earned never appears in a team-mate's world.
 ##
-## Nothing places a pickup in a live scene yet: the spawner the drop goal adds
-## (`W4-B8`) is what calls `spawn_in()`, and the enemy/elite death that feeds it
-## is Dev A's W4-A4. Recorded, not worked around.
+## Nothing places a pickup in a live scene yet: `PickupSpawner` (W4-B8, the drop
+## goal) is what calls `spawn_pickup()`, and `LootDrops` beside it in
+## `world.tscn` is what rolls the table that feeds it. The enemy/elite death
+## those listen for is Dev A's W4-A4. Recorded, not worked around.
 
 ## The six kinds, in the order SPEC-run-economy lists them.
 const KIND_GOLD: StringName = &"gold"

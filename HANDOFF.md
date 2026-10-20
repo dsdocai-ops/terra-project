@@ -4190,7 +4190,69 @@ Ore/Echo payouts, chests, breakables and mining nodes are still open.
 
 ---
 
+### G14 — the drop path: `EnemyData.loot_table`, `currency_gained`, Ore and Echo Shards (W4-B8, raw goals G41 + G42) (`run-economy`)
+
+**What shipped.** `scripts/data/ore_data.gd` (`OreData extends ContentData`, one
+new field `biome_index`) and the six `data/ore/*.tres` (copper 1, iron 2,
+crystal 3, pearl 4, ember_ore 5, heartstone 6); `scripts/run/echo_shards.gd`
+(the payout table and its three multipliers); `scripts/run/ore_payout.gd` (the
+ore table, the biome lookup and Wren's +25%); `scripts/run/loot_drops.gd` (the
+host drop path off `Events.enemy_killed` / `elite_killed`);
+`scripts/network/pickup_spawner.gd` (`PickupSpawner extends MultiplayerSpawner`);
+the two new nodes under `World/Entities` in `scenes/main/world.tscn` plus their
+`@onready` refs in `world.gd`; `tests/helpers/enemy_data_stub.gd` and
+`tests/helpers/loot_enemy_stub.gd`; `tests/unit/test_echo_shards.gd` (15 cases)
+and `tests/unit/test_currency_gained.gd` (22 cases).
+
+**The numbers.** Echo: 1 per floor (2 in biomes 4–6), 1–2 per elite, 10 per
+mini-boss, 20 per biome boss; Echo Collector +50 % read as an id off the
+holder's `EffectHost`; Echo Resonance +10 %/rank and the Heat multiplier arrive
+as arguments, because the skill tree (week 7) and the endgame (week 11) own
+them. **The three multiply**, in the spec's order, rounded once. Ore: elites 1,
+mini-boss 3, biome boss 6, always the biome's ore; Wren's +25 % is the same
+id-off-the-host read. Echo Shards write `RunPlayerState.echo_shards_earned`
+(per player); Gold and Ore write `RunState.shared_gold` / `shared_ore`.
+
+**Evidence** (`.goals/evidence/r1792508947701/g14/`): red first — a parse error
+because `EchoShards`/`LootDrops` did not exist, `Nothing was run` (`red.log`);
+`--import` exit 0, 0 `ERROR` lines, all six new classes registered;
+**37/37 / 349 asserts** for the two new suites; `test_data_loads` **2/2 / 100
+asserts**, "**27 data resources checked**" (21 before, +6 ore) — criterion 4; the
+full suite **59 scripts / 1 065 tests / 1 065 passing / 61 289 asserts**, exit 0,
+74.616 s, against G13's 57 / 1 028 / 60 921 (+2 scripts, +37 tests, +368
+asserts); negative control — `for_floor_cleared()`'s deep-biome step dropped
+(`return PER_FLOOR_DEEP` → `return PER_FLOOR`, the only occurrence) — fails
+**exactly the two biome cases** (biomes 4, 5, 6 and the past-6 clamp; 13/15,
+exit 1) while every multiplier, award, elite, ore and client case stays green,
+reverted byte-exact (`diff` empty, `sha256sum` back to
+`cd32fbf1e81ccfa748560a82ac020b4ae886374345165187d63a1cfbc2b95e6b`).
+Two-instance smoke (`tools/smoke_two.sh`, `smoke_two.log`) — **required**: this
+commit adds a `MultiplayerSpawner` to `world.tscn`.
+
+**Blocked on Dev A.** `EnemyData` (**W2-A9**) and the production
+`enemy_killed` / `elite_killed` emitters (**W4-A4**) are `enemies-ai`'s and are
+not in the tree. The two fields are therefore read duck-typed off whatever enemy
+node the signal carries — `enemy.get("data").get("loot_table")` in
+`LootDrops.loot_table_of()` — and the cases drive the spec-shaped doubles
+`EnemyDataStub` / `LootEnemyStub`. **Swap line:** when W2-A9 lands, delete
+`tests/helpers/enemy_data_stub.gd` and `tests/helpers/loot_enemy_stub.gd` and
+retype `LootDrops.loot_table_of(enemy: Node) -> LootTable`'s body to
+`var data: EnemyData = enemy.data; return data.loot_table if data != null else
+null`; the field names are already the spec's, so nothing else moves. Wren's
+passive (**W5-A**) and the Shard-side "1 per floor cleared" caller (floor
+advance, W3-A3's exit) are the same class of gap.
+
+**Not claimed.** Nothing emits `enemy_killed` / `elite_killed` in the shipped
+game, so the drop path is exercised by the suite and reachable from
+`world.tscn`, not observed live. Mining nodes, chests and breakables (the
+table's other callers) are G15. Two readings are judgment calls recorded as
+decisions 90 and 91. W4-B8 stays `[ ]`.
+
+---
+
 ## Decisions made without a human
+
+
 
 These are the judgment calls taken during weeks 1 and 2 that were not dictated
 by a spec, so the accountability contract is explicit. Where a decision is
@@ -6789,6 +6851,63 @@ already recorded in a spec or a comment, the location is given.
     boundary, converted immediately into typed `Entry` objects, which is the
     form C12 allows. Nothing else on the ask-first list moved: no `Events`
     signal, no autoload, no Input Map, no save schema, no `.tscn`.
+
+90. **`OreData` is a new `scripts/data/` Resource definition, and the six ore
+    are six `.tres` files whose `biome_index` is the lookup key (2026-10-20).**
+    G14. SPEC-run-economy's "Data model" says "`OreData extends ContentData`
+    under `data/ore/` (6)", which puts the class on the ask-first list
+    (`scripts/data/` Resources); sanctioned by that line and by SPEC-biomes'
+    biome table, which gives the same six ore in biome order. (a) The class adds
+    **one** field, `biome_index`, and nothing else — `id`, `display_name` and
+    `icon` come from `ContentData`, and the payout amounts (1 / 3 / 6) are
+    `OrePayout`'s constants rather than per-file numbers, because the spec states
+    them once for all ore rather than once per ore. (b) A biome's ore is read by
+    **scanning the folder** (`OrePayout.all_ore()` / `id_for_biome()`), not by a
+    hard-coded id list in code, so a new ore is one `.tres` and no code
+    (SPEC-project: content is data); `biome_index` is unique across the six
+    because the spec's table gives exactly one ore per biome. (c) `OrePayout`'s
+    payout helpers live in `scripts/run/`, as PLAN's G14 sub-task says.
+    `OreData`'s own class comment carries the spec quotes.
+
+91. **An enemy's `loot_table` entry is read as a drop *chance*, and the credit
+    happens at the roll rather than at the coin (2026-10-20).** G14. The spec
+    does not settle either, and both readings are load-bearing. (a) **Every entry
+    is rolled independently and its `weight` is the chance it drops** (1.0 =
+    always). `LootTable.roll()` picks exactly one entry by *relative* weight, and
+    that reading cannot express SPEC-run-economy's own breakable sentence
+    ("drop small gold with 30% chance") — a single-entry table always picks its
+    entry, whatever its weight — so the two readings have to be split by caller:
+    `roll()` stays the one-of-a-pick shape a chest wants, and the death path
+    rolls each entry. The `Entry` objects and the rarity formula are still
+    `LootTable`'s, read rather than copied, so the numbers cannot drift. (b)
+    **The credit is at the host's roll, not at the pickup.** SPEC-run-economy's
+    "Shared currencies are collected by whoever touches them" describes the
+    collection path; `Pickup.collect()` banks nothing and only announces
+    `pickup_collected`, so a coin is the *presentation* of an already-paid drop
+    and a second touch cannot pay twice (a case asserts it). (c) **The two
+    signals are split by what they pay**, not by which enemy died: the table's
+    drops come from `enemy_killed` alone, the elite's flat Ore + Echo Shards from
+    `elite_killed` alone, so the double announcement of an elite death (G8a
+    decision 77) pays each exactly once. (d) A hazard kill (`hit.owner_player ==
+    null`) still moves the shared pools and announces nothing, because the drop
+    is the enemy's and only the announcement names a player; a per-player drop
+    with no killer pays nobody.
+
+92. **The drop path lands in `world.tscn` as two additive nodes under
+    `Entities`, and `PickupSpawner` is a new `scripts/network/` spawner
+    (2026-10-20).** G14. SPEC-run-economy's "Pickups are physical: `Pickup`
+    scene ... spawned by host" and G12's own record ("the spawner the drop goal
+    adds (W4-B8) is what calls it") put the spawner in this goal.
+    `scenes/main/world.tscn` is the foundation scene both lanes share, so the
+    change is **additive only** — two new children (`PickupSpawner`, `LootDrops`)
+    beside the two existing spawners, two new `ext_resource` lines, and two new
+    `@onready` refs in `world.gd`; nothing existing changed shape, no existing
+    node was moved, retyped or re-parented, and the scene is the one SPEC-project
+    already records networking's spawners being PR'd into. `PickupSpawner` is
+    the enemy spawner's shape one step over (same `_can_spawn()` seam, same
+    custom spawn function, plain-typed payload), so a client cannot conjure loot.
+    Because the commit touches spawner wiring, it ran
+    `tools/smoke_two.sh` **before** the commit.
 
 ---
 
