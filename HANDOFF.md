@@ -2491,7 +2491,9 @@ multiplier hooks, `Scaling`) are unlanded too, so `mark_forces_crit()` and
 damage" is armed and spendable but read by nothing.
 *(Both later halves landed on 2026-10-20: G22's four rows in `eb2d0a3`, and G23's
 formula terms — which is what gives `mark_forces_crit()` and
-`consume_freeze_double()` their production caller, `Damage.compute`.)*
+`consume_freeze_double()` their production caller, `Damage.compute`. G24's six
+combos, G25's two multiplier hooks and G26's `Scaling` landed later the same day
+too: the `#### G24` and `#### G25–G26` sections below.)*
 
 ---
 
@@ -2654,6 +2656,9 @@ remaining `status_mult` terms, MARK's forced crit, `status_resistance`) and G24�
 (the six combos, the two multiplier hooks, `Scaling`) are unlanded, so
 `healing_multiplier()` and `damage_taken_multiplier()` have one production reader
 between them and no producer of a status at all.
+
+*(G23's terms landed later the same day, and G24–G26 after them: the `#### G23`,
+`#### G24` and `#### G25–G26` sections below.)*
 
 ---
 
@@ -2875,7 +2880,137 @@ tiles)**). SHATTER's burst, BLIGHT's explosion and CONDUCT's spread deliver
 through the same `Health.apply_damage()` seam as SHOCK's chain, so they inherit
 its blocker: a target with no `Health` child takes nothing. The `Reactive`
 (+40 %) and `Elementalist` (x2) multipliers that SPEC-stats-status's last line
-names are G25's, and are not applied here.
+names were **not applied at this goal's commit**. **G25 landed them the same day**
+(the `#### G25–G26` section below): `Combo.damage` is now multiplied by both
+factors in `scaled_combo_damage()` before the payload is emitted.
+
+#### G25–G26 — the combo-damage multipliers and the `Scaling` curves (2026-10-20)
+
+SPEC-stats-status's last two sentences are now code. "Element combos" ends
+"Reactive skill node (+40%) and Elementalist synergy (x2) multiply combo damage.
+Mage Arcane Flow listens to `combo_triggered`", and "Scaling constants" reads
+"`Scaling` static class: `enemy_hp_mult(biome_index) = 1.12 ** (biome_index - 1)`,
+same for damage; `enemies_per_room(floor)`, `elite_chance(floor)`; elite base
+`+100% HP`; co-op HP multiplier comes from `NetworkManager`." This goal lands the
+first sentence's two multipliers (G25) and the whole of the second (G26). The
+sentence's third clause, Mage Arcane Flow, is an ability passive and belongs to
+the roster's lane (SPEC-abilities, "Mage Arcane Flow -1 s on combo"), not here.
+
+**The multipliers are a hook on the applying entity, not a table of relic ids.**
+`StatusEffects.scaled_combo_damage(raw, source)` multiplies a settled
+`Combo.damage` by `combo_damage_multiplier(source)`, and `source` is the entity
+that applied the status — the same `source` argument `apply_status()` already
+took for SHOCK's chain and the combos' damage. `combo_damage_multiplier()` casts
+the source to `Effect`, keeps its `host`, and walks `host.effects()`; every
+attached effect that answers `has_method(COMBO_MULTIPLIER_METHOD)`
+(`&"combo_damage_multiplier"`) contributes `_combo_factor(effect)`, and the
+factors multiply from `COMBO_DAMAGE_BASE` (1.0). A null source, a source that is
+not an effect, an effect with no live host, or a method answering a non-number
+all contribute nothing. `COMBO_ELEMENTALIST_MULTIPLIER` (2.0) and
+`COMBO_REACTIVE_BONUS` (0.40) name the spec's two numbers once, so the tests read
+the spec rather than retyping 2.0 and 0.40; the factor itself is the consumer's
+own field, so a future Reactive node or Elementalist synergy carries its number
+as content.
+
+**`Combo.damage` is multiplied in exactly one place, before the emit.**
+`_maybe_trigger_combo()` was already two passes: the first match settles a row's
+fields (damage, radius, stacks, the window it arms) and the second delivers it.
+`combo.damage = scaled_combo_damage(combo.damage, source)` now sits between them,
+and the delivery pass is guarded by `if combo.damage > 0`, so a row that lands no
+damage (HEMORRHAGE's flag, COLLAPSE's pull) is untouched by a multiplier and a
+doubled zero is still no burst. `Events.combo_triggered` then carries the scaled
+number, which is what `Combo`'s doc comment now promises — the stale "the field
+is here and unmodified today" line is gone. A row added to the first match by a
+later goal cannot be silently excluded from the multiplication, because there is
+nowhere else to multiply.
+
+**Why the attacker's host and not the target's.** The Reactive skill node and the
+Elementalist synergy are build content on the player who landed the application;
+a combo's target is usually an enemy, and an enemy's host holds affixes. The hook
+therefore reads the entity that applied the status — the same entity whose
+`StatBlock`, relics and class the rest of the game already treats as the
+attacker's build.
+
+**`tests/helpers/combo_consumer_stub.gd`** (`class_name ComboConsumerStub extends
+Effect`, one `multiplier: float = 1.0` and `combo_damage_multiplier()`) is the
+double standing in for both real consumers. `test_combos.gd` gains five cases
+(22/22 / 163 asserts, was 17/17 / 118): an Elementalist consumer doubles a 200
+burst to 400 and 400 is what the target's health loses; a Reactive consumer adds
+40 % (`roundi(200 × 1.4) = 280`); the two on one host compose to 2.8 and 560
+rather than summing to 3.4; with no consumer at all — a null source, and a source
+that is not an effect — the multiplier is exactly 1.0 and the burst is unscaled;
+and, pinning that the hook is the *method* rather than the relic's name, a
+`RelicMarkerEffect` attached under the `elementalist` id contributes nothing.
+
+**`scripts/scaling.gd`** (`class_name Scaling extends RefCounted`) is the second
+half: never instantiated, every member a `const` or a static function, and no
+state. `enemy_hp_mult(biome_index)` is `pow(BIOME_HP_MULTIPLIER, biome_index - 1)`
+with `BIOME_HP_MULTIPLIER = 1.0 + BIOME_STEP`, so the design doc's "about 12% per
+biome" and the spec's `1.12` cannot drift apart; `enemy_damage_mult` delegates to
+it rather than repeating it, because the spec's sentence is "same for damage";
+the curve is clamped below at the first biome and deliberately not clamped above,
+because the spec's formula is defined for any depth. `elite_hp(max_hp)` returns
+`max_hp * ELITE_HP_MULTIPLIER` (2.0, the design doc's "+100% HP") as a pure
+function, so `enemies-ai`'s elite spawn can call it on a number it has already
+computed and no part of an elite's HP lives outside this class.
+
+**The two floor curves are the run's own shape, and the co-op half is read.** The
+design doc asks for "more enemies per room and more elites on deeper floors"
+without giving either a formula, so `enemies_per_room` and `elite_chance` are a
+base plus a step per floor, capped, and what the tests pin is the shape the design
+doc asks for — both curves non-decreasing across floors 1 to 30, strictly greater
+on the last floor than the first, and clamped at both ends so floor 0 reads as
+floor 1 and a floor past the design doc's depth reads as the last one — never a
+balance number. `enemy_max_hp(base_hp, biome_index)` composes the biome curve with
+`NetworkManager.enemy_hp_multiplier()`, and the co-op rule (`1.0 + 0.5 ×
+(players - 1)`) is not restated here: pushing peer id 2 into
+`NetworkManager.peer_ids` makes `NetworkManager.enemy_hp_multiplier()` read 1.5
+and `Scaling.enemy_max_hp(100.0, 1)` read 150.0, and erasing it puts both back,
+which is what proves the read rather than a copy. `Scaling.rune_room_chance` and
+`Scaling.modifier_chance`, which SPEC-floor-generation names, are deliberately
+**not** provided: SPEC-stats-status's own "Scaling constants" sentence does not
+list them and no Week 4 goal asks for them, so they are recorded as absent rather
+than invented under this module's name.
+
+**Verification.** Both test files were run red first: `test_scaling.gd` against a
+tree with no `scripts/scaling.gd` (`red-test-scaling.log`, `Identifier "Scaling"
+not declared in the current scope`), and `test_combos.gd` before the hook existed
+(`red-test-combos.log`). `--import` exits 0 with 0 error and 0 warning lines
+(`import.log`) — needed because a new `class_name` changes the global scope, and
+the first attempt at a green run failed with the same "Identifier" error until it
+had. Green: `test_scaling.gd` **8/8 / 195 asserts**, `test_combos.gd` **22/22 /
+163 asserts**, and the full suite **49 scripts / 844 tests / 844 passing /
+56 636 asserts** exit 0 in 70 s (`full-suite.log`) — one script and 13 tests more
+than G24's 48 / 831 / 831 / 56 403. The `3 ObjectDB instances were leaked` and
+`1 resources still in use at exit` lines are byte-identical to G24's log, so they
+are pre-existing and not this goal's. `grep -rn "Engine.time_scale" scripts/
+scenes/` is empty: `status_effects.gd`'s doc comment used the literal as an
+example and now says "the engine's own time scale", while the rule it states
+(`TimeManager.scale_for(entity)`) is unchanged. Two forced negative controls,
+each reverted byte-exact (`diff -q` printing `restored-identical`, the patched
+marker back to `grep -c` 0):
+
+- `BIOME_STEP` 0.12 → 0.20 (`negative-control-scaling.log`): **6/8**, failing
+  exactly the three assertions that read the spec's 12 % — biome 2, biome 6 and
+  the co-op × biome composition — while monotonicity, both clamps, the
+  damage-parity loop and the elite HP rule did not move.
+- the host scan short-circuited (`if false and effect.has_method(...)`,
+  `negative-control-combos.log`): **19/22**, failing exactly the three multiplier
+  cases (Elementalist, Reactive, both together) while the no-consumer case, the
+  id-not-the-hook case and the six row cases stayed green.
+
+No two-instance smoke run is owed: this commit adds no RPC, no replication
+property and no spawner wiring (BRIEF C17).
+
+**Not claimed.** Nothing in a running build reads either half yet. `Scaling`'s
+real callers are `SpawnDirector` v2 and the elite affix work — **blocked on Dev A
+(W4-A1, W4-A2)** — so no enemy spawns with these numbers today. No real consumer
+is attached to any player: `ComboConsumerStub` is a test double, and the week-7
+Reactive skill node and the week-8 Elementalist relic synergy are content that
+will attach to the player's `EffectHost` (the `EFFECT_HOST_NODE` the hook reads),
+so until they exist no live combo is multiplied. Mage Arcane Flow is not
+implemented. And the two floor curves' numbers are a balance choice, not a
+specification — decision 55 records them as the human's to correct.
 
 ---
 
@@ -4745,7 +4880,114 @@ already recorded in a spec or a comment, the location is given.
       on the status hit path — `tick_hit(status, amount, is_crit)` is the one new
       argument, defaulted, so every existing caller and every existing status
       row is unchanged. Reactive's +40 % and Elementalist's x2 (SPEC-stats-status,
-      last line) are G25's hooks and are not applied to `Combo.damage` here.
+      last line) are G25's hooks, which landed the same day: the `#### G25–G26`
+      section and decision 55 below are where they are applied, so `Combo.damage`
+      carries both factors by the time it is emitted.
+
+55. **The combo multiplier is a duck-typed hook on the applying entity's
+    `EffectHost`, and the two floor curves are the run's own shape (2026-10-20,
+    W4-B4 / G25–G26).** SPEC-stats-status names the Elementalist and Reactive
+    numbers but not where a consumer lives or how one is found, and it names
+    `enemies_per_room`/`elite_chance` while the design doc gives neither a
+    formula. Those are choices, so they are recorded here. New surface:
+    `scripts/scaling.gd` (a whole new script — twelve `const`s and seven static
+    functions), a new test helper `tests/helpers/combo_consumer_stub.gd`, and
+    `StatusEffects` gains `COMBO_DAMAGE_BASE`, `COMBO_ELEMENTALIST_MULTIPLIER`,
+    `COMBO_REACTIVE_BONUS`, `COMBO_MULTIPLIER_METHOD`, `scaled_combo_damage()`,
+    `combo_damage_multiplier()` and `_combo_factor()`, plus one restructure of
+    `_maybe_trigger_combo()`'s two passes. No `@export`, so no instance a scene
+    has saved moves; no `.tscn`, no `scripts/data/` Resource, no `Events` signal,
+    no input map, no save schema and no CI moved — nothing on the **Ask-first**
+    list this time.
+
+    - **"An injected consumer list" is `EffectHost.effects()`, not a new
+      registry.** The plan asked for the multiplier to be read "through an
+      injected consumer list (host-side)". This codebase's injected list is
+      already `EffectHost.effects()`: the effects a player carries *are* the
+      content that was injected onto them, and week-7's Reactive node and
+      week-8's Elementalist synergy land there. Building a second list — a static
+      registry on `Scaling`, or a `Callable` array on the component — would have
+      been global state that leaks between GUT files and would have contradicted
+      "all `const`/static functions" for `Scaling`; it would also have needed a
+      registration step no goal asks for. The hook is a named method
+      (`combo_damage_multiplier()`), so a consumer needs no id, no base class and
+      no registration to be found.
+    - **The multiplier belongs to the attacker, not the target.** A combo's
+      target is usually an enemy, and an enemy's host holds its affixes; the
+      Elementalist synergy and the Reactive skill node are build content on the
+      player who landed the application. `combo_damage_multiplier()` therefore
+      reads `source` — the entity whose application triggered the combo, the same
+      argument `apply_status()` already took for SHOCK's chain and the rows'
+      damage — and not the entity holding the statuses.
+    - **Factors multiply, 1.0 is the base, and a non-number is ignored.** Two
+      consumers on one host give 2.0 × 1.4 = 2.8, not 3.4, because the spec says
+      both "multiply combo damage"; a null source, a source that is not an
+      `Effect`, an effect whose host is freed, and a method answering something
+      that is not a number all contribute `COMBO_DAMAGE_BASE`. That last rule
+      matters because the seam is duck-typed: a consumer with a broken return
+      type cannot silently scale a burst by nothing.
+    - **`Combo.damage` is scaled once, in `scaled_combo_damage()`, and a zero
+      stays zero.** The multiplication sits between the settling pass and the
+      delivery pass of `_maybe_trigger_combo()`, and delivery is guarded by
+      `combo.damage > 0`, so HEMORRHAGE's flag and COLLAPSE's pull are not
+      "multiplied" into a burst of 0 and a row added to the first match by a
+      later goal cannot be excluded from the multiplication by accident.
+      `roundi()` keeps the payload an `int` as `Combo` declares it.
+    - **The two consumer numbers are named in the component but supplied by
+      content.** `COMBO_ELEMENTALIST_MULTIPLIER` (2.0) and `COMBO_REACTIVE_BONUS`
+      (0.40) exist so the spec's two numbers have one home and the tests assert
+      against the spec rather than retyping them; the factor actually applied is
+      whatever the consumer returns, so a later goal can rebalance the Reactive
+      node in its own content without editing this component.
+    - **`BIOME_HP_MULTIPLIER` is derived from `BIOME_STEP`, not typed as 1.12.**
+      The design doc says "about 12%" and the spec says `1.12 ** (biome_index -
+      1)`; writing 0.12 and 1.12 as two independent literals is how the two drift
+      apart. `1.0 + 0.12` is bit-identical to the double `1.12`, which was
+      checked in float64 before the test was written, so `enemy_hp_mult(6) ==
+      1.12 ** 5` still holds under `assert_eq` (bit-exact) and not just under an
+      epsilon. The negative control that moves `BIOME_STEP` to 0.20 is what
+      proves the derivation is live.
+    - **The curves are constants plus a static function, not the plan's
+      `ENEMIES_PER_ROOM_BY_FLOOR` / `ELITE_CHANCE_BY_FLOOR` tables.** The plan
+      named a table-shaped constant for each absent formula; what shipped is the
+      same information in arithmetic form — a base, a per-floor step and a cap —
+      because a table would have to be *kept* monotonic and clamped by hand, and
+      the tests pin exactly those two properties ("monotonically non-decreasing
+      across floors 1…30 and clamped at both ends"). `ENEMIES_PER_ROOM_BASE`,
+      `ENEMIES_PER_ROOM_PER_FLOOR`, `ENEMIES_PER_ROOM_MAX`, `ELITE_CHANCE_BASE`,
+      `ELITE_CHANCE_PER_FLOOR` and `ELITE_CHANCE_MAX` are the six numbers a human
+      would edit, and they are the reason this decision exists.
+    - **The two floor curves' numbers are a balance choice and the spec's are
+      not.** Four enemies per room on floor 1 growing by one every two floors to
+      a cap of 18, and a 5 % elite chance growing 0.4 points per floor to a 25 %
+      cap, are the run's shape; the design doc fixes no value, and the week-12
+      balance pass owns tuning. Both curves clamp at *both* ends — a floor below
+      1 reads as floor 1 and a floor past 30 reads as floor 30 — so a caller
+      beyond the design doc's depth reads a sane number rather than an
+      extrapolated one. `elite_chance` also stays well under 1.0 on purpose: a
+      floor that is nothing but elites is a floor modifier's business ("Double
+      Elites", Pit Pact), not the depth curve's.
+    - **`enemy_damage_mult` delegates to `enemy_hp_mult`.** The spec's sentence
+      is "same for damage", and a second copy of the curve is the drift risk the
+      sentence is guarding against; the damage-parity test walks all six biomes
+      to keep it delegating.
+    - **`elite_hp()` takes a number, not an entity.** It is a pure function of
+      the max HP the caller already computed, so `enemies-ai`'s elite spawn (Dev
+      A, W4-A1) can call it on a value it holds and no part of an elite's HP
+      lives outside this class. The 2.0 is `ELITE_HP_MULTIPLIER`, the design
+      doc's "+100% HP", named once so the affix work and this helper cannot read
+      it differently.
+    - **`enemy_max_hp` reads the co-op multiplier, and `Scaling` does not hold a
+      second copy of the rule.** `NetworkManager.enemy_hp_multiplier()` (`1.0 +
+      0.5 × (players - 1)`) is the only place that arithmetic exists; the test
+      proves the read by making a second peer appear and watching `Scaling`'s
+      answer move, which a duplicated constant would fail. The co-op curve's
+      owner stays networking, as SPEC-networking's own test already pins it.
+    - **`Scaling.rune_room_chance` and `Scaling.modifier_chance` are deliberately
+      not here.** SPEC-floor-generation names them, but SPEC-stats-status's
+      "Scaling constants" sentence does not, and no Week 4 goal asks for them;
+      they are floor-generation's room and modifier rolls. `scripts/scaling.gd`'s
+      doc comment records the absence so a later goal does not assume they exist.
 
 ---
 
