@@ -1539,8 +1539,9 @@ function. The two extremes short-circuit *without drawing* — `p <= 0.0` is
 false, `p >= 1.0` is true — so a guaranteed or impossible proc does not advance
 the run's stream and one effect's certainty cannot desynchronise another's
 rolls. Everything between them draws `_resolve_rng().randf() < p`. The
-generator is `Effect.rng`: `EffectHost` (G14) will hand every effect the run's
-generator on attach, and an effect with no host makes its own, seeded from
+generator is `Effect.rng`: `EffectHost` (G14, landed 2026-10-20) hands every
+effect its player's generator on attach, and an effect with no host makes its
+own, seeded from
 `GameState.run.seed` (or the fixed `DEFAULT_RNG_SEED` when no run is live). Two
 consequences are asserted: the same seed replays the same sequence, and the
 fallback is a named seed rather than clock entropy, so the draws are
@@ -1613,6 +1614,81 @@ reaching `Health` or a real `hit_landed` on the bus. The proc-depth **gate**
 (G16–G18); `trigger_depth` is the seam they will drive. `chance`'s
 Luck-aware sibling `chance_lucky()` is named in the spec's annotation but is
 loot-side (W4-B8, G40) and is not implemented here.
+
+#### G14 — `EffectHost`: attach lifecycle, lookup, `list_tags` (2026-10-20)
+
+The node every player carries and the only place an effect is attached.
+`scripts/effects/effect_host.gd` is `class_name EffectHost extends Node`, with
+the spec's four methods (`add(source, stacks)`, `remove(source)`,
+`get_effect(id)`, `list_tags() -> Dictionary`) each carrying its own `##` line,
+and the `## Sync: host only` ownership line: the host exists on the host for
+every player, clients hold no `Effect` instances.
+
+**Attach lifecycle.** `add(source, stacks)` resolves the host's player from its
+parent, refuses with a warning when the source is null, has no id, has no
+`effect_script`, has a script that does not extend `Effect`, or whose id is
+already attached, then instantiates `source.effect_script` as a child of the
+host, injects the host's generator and calls `Effect.attach(player, source,
+stacks)`. It returns the live effect (or null on a refusal), which is what the
+pick flow (G30) and the harness will use. The effect is parented before
+`attach()`, so an `_on_attach()` may use the tree. `remove(source)` erases the
+key, calls `detach()` **while the node is alive** (so its modifiers, timers and
+`Events` connections are released) and then `queue_free()`s it; it returns
+whether there was anything to remove and warns on an unknown source.
+`get_effect(id)` returns the live effect or null, `has_effect`/`effect_count`/
+`effects` expose the set in attach order.
+
+**The generator is the host's.** `EffectHost.rng` is created on first use and
+seeded from `GameState.run.seed` (or `Effect.DEFAULT_RNG_SEED` when no run is
+live) — never clock entropy — and every effect added is handed the same object,
+which is what G12's decision 41 promised the host would do. One stream per
+player means one seed replays that player's procs.
+
+**`list_tags()` counts by stacks.** Every tag on every attached effect's
+`source.tags`, with each occurrence weighting by that effect's `stacks`
+(`fire` on a 3-stack relic counts 3), an empty `Dictionary` when nothing is
+attached and no zero entries for tags nothing carries. That is the exact shape
+`SynergyTracker` (W4-B5's consumer) evaluates `SynergyData.required_count`
+against on `relic_picked`/`relic_removed`.
+
+**Event dispatch.** Effects subscribe to the `Events` bus themselves through
+`Effect.listen()`, whose player filter (G11) already keeps an event from
+reaching another player's effects; the host is therefore the single place the
+effects' lifetime is enforced rather than a second bus. The dispatch case in
+the test proves the path end to end with two hosts on two players: a
+`player_dodged` for one player reaches exactly that player's effect, the other
+player's effect sees nothing, and a removed effect stops receiving events. The
+proc-ruled wrapper (depth 3, self-retrigger and the 64-per-frame cap) is W4-B3
+(G16–G18) and lands in this same subscription path.
+
+**Player installation.** `player.tscn` is Dev A's scene and is not edited, so
+the host is installed by `tests/helpers/effect_host_player.gd`
+(`EffectHostPlayer.install(player)`, idempotent, node named `EffectHost` from
+`EffectHost.NODE_NAME`), the `fake_health.gd` pattern. When the player scene
+gains its composition the child moves into `player.tscn` and the helper keeps
+working unchanged; recorded as **blocked on Dev A (W2-A1, player.tscn)** in the
+helper's doc comment.
+
+**Verified:** new `tests/unit/test_effect_host.gd` **17/17 green / 85 asserts**
+(`.goals/evidence/g14/test-effect-host.log`), written red first (GUT refused the
+file with a parse error — `EffectHost` and its helper did not exist,
+`g14/red-test-effect-host.log`). The failing path was forced and kept for the
+tag weighting: counting each tag once instead of by stacks failed exactly the
+two `list_tags` cases (`[2] expected to equal [4]: fire: 1 + 3 stacks`) and
+nothing else (`g14/negative-control-tag-stacks.log`), then reverted. Full suite
+**42 scripts / 668 tests / 668 passing / 55 411 asserts** exit 0
+(`g14/gut-full.log`, up from 41 / 651 / 55 326); `--headless --path . --import`
+exit 0 with 0 error or warning lines (`g14/import.log`); two-instance smoke
+35 `ok` / 0 FAIL (`g14/smoke-run.log`), run even though this commit adds no RPC.
+`grep -rn "Engine.time_scale" scripts/ scenes/` empty; no Dev A file and no
+`.tscn` touched.
+
+**Blocked / not claimed.** `add()` is a container operation: it does not emit
+`relic_picked`, update `RunPlayerState` or roll anything — the pick flow is
+G30's. Nothing calls `add()` in the game yet because no relic content exists
+until W4-B5/B6, so what is proved is that the lifecycle is correct when it
+does. There is no client path: clients hold no `Effect` instances. The proc
+caps, the harness and Mimic Crown's id-suffixed duplicate are W4-B3.
 
 ---
 
@@ -2644,9 +2720,12 @@ already recorded in a spec or a comment, the location is given.
       other effect's rolls is the kind of desync a seed cannot replay. The
       spec's signature says only "host RNG"; this is the reading that keeps one
       seed replaying one run.
-    - **The generator is `Effect.rng`, owned per effect today and injected by
-      `EffectHost` when it lands.** The plan's sub-task named `_rng` on
-      `EffectHost` (G14), which does not exist yet, so the generator lives on the
+    - **The generator is `Effect.rng`, owned per effect and injected by
+      `EffectHost` when it lands (landed as G14 on 2026-10-20: the host now
+      creates one generator per player and hands the same object to every
+      effect it adds; the per-effect fallback stays for effects attached
+      outside a host).** The plan's sub-task named `_rng` on
+      `EffectHost` (G14), which did not exist at G12, so the generator lived on the
       effect with a documented injection seam rather than the goal inventing an
       `EffectHost` API ahead of the goal that owns it. An effect with no host
       seeds itself from `GameState.run.seed`, or the fixed `DEFAULT_RNG_SEED`
@@ -2722,6 +2801,63 @@ already recorded in a spec or a comment, the location is given.
       even though no sync path changed). Nothing yet *attaches* a loop in the
       game: no relic content exists until W4-B5/B6, so what is proved is that
       the clock is correct when it does.
+
+43. **`EffectHost` keys one effect per source id, refuses rather than
+    reconciles, and hands out its own seeded generator (2026-10-20).** W4-B2's
+    container node — the attach/lookup/tag path `relics`, `weapons`,
+    `abilities` and `progression-trees` all go through. Sanctioned by
+    `SPEC-effect-system.md` "Effect base class" (`EffectHost` … "holds attached
+    effects, keyed by source id, and exposes `add(source, stacks)`,
+    `remove(source)`, `get_effect(id)`, `list_tags() -> Dictionary` (tag ->
+    count) for synergies") and "Tags and synergies" (`list_tags()` counts tags
+    across attached relics). `EffectHost` is a script this run created; the
+    only existing surface it touches is `Effect` (also this run's) and
+    `ContentData`'s already-declared `tags`/`effect_script` fields, which are
+    read, not changed — so nothing on the Ask-first list was touched. The
+    decision is recorded for the four choices a reader would otherwise have to
+    reverse-engineer.
+
+    - **One effect per id; a duplicate is refused, not stacked.** The spec keys
+      the host's dictionary by source id and gives `stacks` as `Effect`'s
+      duplicate counter, so a second `add()` of the same id would be two
+      `Effect` instances with one key — one of them unreachable and both adding
+      modifiers. The pick flow raises `stacks` on the existing effect (or, for
+      Mimic Crown, adds an id-suffixed copy, W4-B3) instead. A refusal is a
+      `push_warning` and a null return, not an error: a caller asking twice is
+      a bug to surface, not a reason to take the host down.
+    - **A source without a usable `effect_script` is refused, and a non-`Effect`
+      script is freed rather than parented.** `ContentData.effect_script` is
+      optional on the base type, so `add()` has to answer for null; and because
+      `GDScript.new()` will happily build any script, the result is
+      `is Effect`-checked before `add_child()`. The refused instance is freed so
+      a bad data file cannot leak a node per attempt.
+    - **The host owns one generator per player and injects the same object into
+      every effect.** Decision 41 left `Effect.rng` as the injection seam and
+      said the host would fill it. A per-effect fallback remains for effects
+      attached outside a host (tests, tools), but in the game every effect on a
+      player draws from the host's stream, seeded from `GameState.run.seed` or
+      the fixed fallback — never clock entropy — so one seed replays one
+      player's procs and a host can be rebuilt deterministically.
+    - **`remove()` detaches before freeing, and returns whether it removed
+      anything.** `queue_free()` alone would leave the effect's modifiers,
+      timers and bus connections live until the end of the frame, which is a
+      window in which a relic dropped at a Shrine still buffs its old owner;
+      `detach()` runs first and `queue_free()` then takes the node out safely
+      even when `remove()` is called from inside a signal handler. The boolean
+      lets the pick/removal flow distinguish "removed" from "was not there"
+      without reading a warning out of the log.
+    - **New surface beyond the declared signatures** (additions only, nothing
+      renamed or removed): `EffectHost.NODE_NAME`, `player`, `rng`,
+      `has_effect()`, `effect_count()`, `effects()`, `_resolve_player()`,
+      `_resolve_rng()`, `_host_seed()`. The player is installed by
+      `tests/helpers/effect_host_player.gd` rather than in Dev A's
+      `player.tscn`, which is the recorded swap-in (**blocked on Dev A (W2-A1,
+      player.tscn)**).
+    - **What is *not* claimed.** `add()` is a container operation: no
+      `relic_picked`, no `RunPlayerState` write, no roll (G30 owns the pick
+      flow). Nothing in the game calls it yet — there is no relic content until
+      W4-B5/B6 — and there is no client path, because clients hold no `Effect`
+      instances. The proc caps and Mimic Crown are W4-B3.
 
 ---
 

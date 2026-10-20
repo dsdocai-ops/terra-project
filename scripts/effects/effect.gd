@@ -68,10 +68,11 @@ var stacks: int = 1
 ## bare until their owning module lands), and each stat helper then warns and
 ## does nothing rather than failing silently.
 var stat_block: StatBlock = null
-## The generator `chance()` draws from. The host owns it: `EffectHost` (W4-B4,
-## goal G14) hands every effect the run's generator on attach so one seed
-## replays a whole run's procs. An effect with no host of its own makes one,
-## seeded from the run seed, so the draw is never a global roll function and is
+## The generator `chance()` draws from. The host owns it: `EffectHost`
+## (effect-system, goal G14) hands every effect its player's generator on
+## attach so one seed replays a whole run's procs. An effect with no host makes
+## its own, seeded from the run seed, so the draw is never a global roll function
+## and is
 ## still reproducible. A caller may replace it (the tests seed it directly).
 var rng: RandomNumberGenerator = null
 ## The proc depth of the event this effect is currently handling, so
