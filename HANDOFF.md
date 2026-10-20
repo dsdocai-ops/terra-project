@@ -4017,6 +4017,69 @@ copy of the offer is the `relic_choice_offered` broadcast added here.
 
 ---
 
+### G11 — `ActiveRelicController`: slot 1 on `relic_active_1`, charges, cooldown, `request_activate_relic` with the host apply (W4-B7, raw goals G36 + G37) (`relics`)
+
+**What shipped.** `scripts/relics/active_relic_controller.gd` (`class_name
+ActiveRelicController extends Node`, `for_player`, `slot_of`,
+`request_activation`, `activate`, `apply_activate_request`,
+`apply_local_activation`, `slot_data`, `charges`, `is_ready`,
+`cooldown_fraction`, `time_scale`, `advance`, the `slot_activated` signal, nine
+refusal reasons), the `request_activate_relic` / `relic_activated` RPC pair and
+its seams on `scripts/autoload/network_manager.gd` (`send_activate_request`,
+`route_relic_activated`, `apply_relic_activation`, the signals
+`relic_activate_requested` / `relic_activated_received`), the two `Effect` seams
+`activate()` / `refills_charges_per_room()` in `scripts/effects/effect.gd`,
+`tests/helpers/active_relic_stub.gd`, and `tests/unit/test_active_relic.gd`
+(27 cases, 149 asserts). No `.tscn`, no `Events` signal, no save-schema change,
+no new `.tres`, nothing in Dev A's lane.
+
+**The slot is pick order, not new state.** Slot 1 is the first `Kind.ACTIVE`
+entry in the peer's `RunPlayerState.relics` and slot 2 the second, read through
+`RelicRoller.run_slice`, so the loadout is never stored twice and a pick needs no
+extra bookkeeping (decision 87a). The binding is the Input Map's:
+`action_for(slot)` derives the action name and `slot_of()` matches through
+`InputMap.event_is_action`, so no keycode is written down. `relic_active_1` and
+`relic_active_2` already exist in `project.godot`; **nothing was added to the
+Input Map**.
+
+**One ordered rule, one applier.** `_refusal_for(slot)` is the whole host rule
+and `activate(slot)` the only applier, so the RPC, the seam, the HUD's read and
+the tests share one answer: host only (`not_host`) · slot 1..2 (`bad_slot`) · a
+player to act for (`no_player`) · an active held in that slot (`no_active`) · its
+effect attached through the player's `EffectHost` (`not_attached`) · a charge
+left (`no_charges`) · not still counting down (`on_cooldown`); the relic's own
+`Effect.activate()` may then refuse (`effect_refused`). A charge and a cooldown
+are spent **after** the relic agreed, so a relic that says no costs nothing. A
+client's own `activate()` is refused `not_host`; a direct local call reports
+sender 0 and is refused `not_a_request`, and the press path is one call —
+`NetworkManager.send_activate_request(slot)`, whose host branch is
+`apply_local_activation` (decision 87c).
+
+**Time comes from `TimeManager`.** `advance(delta)` scales by
+`TimeManager.scale_for(player)`, so an enemy time stop does not stall a player's
+relic cooldown while the player's own entity-scale does — asserted both ways.
+`cooldown_fraction(slot)` runs 1 → 0 and the refill is the relic's own
+`refills_charges_per_room()` on `room_entered` **for that player**.
+
+**Evidence** (`.goals/evidence/g11/`, run `1792508947701`): red first, a parse
+error naming both new classes; import exit 0; **27/27 / 149 asserts**; full suite
+**55 scripts / 990 tests / 990 passing / 58 545 asserts, exit 0** (73.8 s)
+against the step-13 baseline 54 / 963 / 58 396; negative control —
+`_cooldown[slot] = data.active_cooldown` → `_cooldown[slot] = 0.0` in
+`activate()` — fails **exactly the four cooldown cases** (23/27, 141/149, exit
+1), reverted byte-exact (`sha256sum -c` OK, `diff` empty, same hash) and re-green;
+`tools/smoke_two.sh` exit 0, 35 checks `ok`, 0 `FAIL`.
+
+**Not claimed.** The HUD's sweep is **G19** — this ships `cooldown_fraction` and
+the two signals it reads, not the bar. The actives are week 8's batch, so the
+tests drive the slots with an `Effect` double. Two-instance smoke step 4 has no
+driver for that reason plus Dev A's W4-A3 (no floor places a Shrine); the request
+is proved in-process on `apply_activate_request(sender, slot)`, the same `apply_*`
+seam the revive and pick contracts use. Nothing is added to `player.tscn`
+(**blocked on Dev A, W2-A1**); `for_player()` installs the node at run time.
+
+---
+
 ## Decisions made without a human
 
 These are the judgment calls taken during weeks 1 and 2 that were not dictated
@@ -6524,6 +6587,62 @@ already recorded in a spec or a comment, the location is given.
     (f) **The client's open-shrine request remains unnamed**: SPEC-relics gives
     only `request_pick_relic`, so the offer is host-produced and the client's
     copy is the `relic_choice_offered` broadcast. Recorded, not invented.
+
+87. **The active-relic slot is pick order over the run slice, and the use travels
+    on two additive `NetworkManager` RPCs (2026-10-20).** G11. (a) **Slot 1 is the
+    peer's first `Kind.ACTIVE` relic and slot 2 the second**, read out of
+    `RunPlayerState.relics` through `RelicRoller.run_slice` — the list the host
+    already replicates (SPEC-relics "Interfaces consumed") — rather than a new
+    replicated slot field, a per-slot dictionary on the run, or a second
+    `EffectHost` lookup list. Nothing is stored twice, a pick needs no new
+    bookkeeping, and the pick-order reading is also the one week 11's "picking an
+    active when slots are full offers replace-or-skip" will need. A passive relic
+    in the list is skipped rather than occupying a slot. The alternative — a
+    replicated `active_slots: Array[StringName]` on `RunPlayerState` — was
+    rejected because it is save/replication schema for information the slice
+    already carries. (b) **Autoload API — additive only.** `NetworkManager` gained
+    `request_activate_relic`, `relic_activated`, `send_activate_request`,
+    `route_relic_activated`, `apply_relic_activation` and two signals; nothing
+    existing changed shape. Sanctioned by SPEC-networking "RPC conventions"
+    (`any_peer` / `call_remote` / `reliable` + `get_remote_sender_id()` for
+    client -> host; `authority` / `call_local` / `reliable` for host ->
+    everyone), SPEC-relics "Multiplayer ownership" (`request_activate_relic(slot)`
+    is named there and actives are the host's) and SPEC-relics "Interfaces
+    provided" (which names `ActiveRelicController.activate(slot)` and
+    `cooldown_fraction(slot)`). The controller node cannot carry the RPC for the
+    same reason the `Shrine` cannot (decision 86a): it lives under a player the
+    client does not own. (c) **A direct local call reports sender 0 and is refused
+    `not_a_request`** — the RPC reads `get_remote_sender_id()` and the seam is
+    `apply_activate_request(sender, slot)`, the same `apply_*` shape the revive
+    and pick contracts ship, which is how one process proves a client's
+    validation. The host validates against **the requesting peer's own**
+    controller, so a client can neither use a relic it does not hold nor spend a
+    teammate's charge; the only value it contributes is a slot index. (d) **The
+    refill is the relic's own answer, not a `RelicData` field**:
+    `Effect.refills_charges_per_room()` defaults false and an active that states
+    the refill overrides it. A new `active_refill_per_room` bool on `RelicData`
+    would have been a `scripts/data/` Resource change (ask-first) for one clause
+    of one spec sentence, and it would put a behaviour flag on data whose whole
+    job is to point at the script that has the behaviour. (e) **Charges and
+    cooldown are spent after the relic agreed**, so a relic whose `activate()`
+    refuses costs nothing; the refusal reason is a `StringName` constant and
+    `_refusal_for(slot)` is the one ordered rule, in the run's existing style.
+    (f) **The press path is one call**: `request_activation(slot)` is always
+    `NetworkManager.send_activate_request(slot)`, whose host branch is
+    `apply_local_activation`, so a hosting press and a client's press differ only
+    by the wire and there is no second host path to keep in step. (g) **Nothing
+    was added to the Input Map**: `relic_active_1` (C) and `relic_active_2` (B)
+    already exist, and `action_for()` derives the name while `slot_of()` matches
+    through `InputMap.event_is_action`, so the binding stays the Input Map's.
+    (h) **The tests drive the slots with an `Effect` double and a `RelicData`
+    built in memory** rather than authoring a 21st `.tres`: the actives are week
+    8's content batch and `data/relics/` holds exactly the 20 week-4 relics,
+    which `test_relic_data.gd` pins. The controller takes an injectable `pool`,
+    the shape `RelicRoller.roll_from_pool` already uses. (i) **No `Events` signal
+    is added**: the bus is pinned to SPEC-effect-system's 37-signal table with no
+    extras (`test_events_bus.gd`), so the use is announced with the controller's
+    own `slot_activated` node signal plus the `relic_activated_received` broadcast
+    signal — the same choice decisions 85a and 86 made for the shrine's offer.
 
 ---
 
