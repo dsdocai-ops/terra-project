@@ -1690,6 +1690,80 @@ until W4-B5/B6, so what is proved is that the lifecycle is correct when it
 does. There is no client path: clients hold no `Effect` instances. The proc
 caps, the harness and Mimic Crown's id-suffixed duplicate are W4-B3.
 
+#### G15 — `spawn` and `fire_projectile` through the spawner seam (2026-10-20)
+
+The "my dodge spawns lightning clones that explode" half of the effect system:
+the two helpers an effect script calls when it wants a node in the world rather
+than a number changed.
+
+**The seam.** New `scripts/effects/effect_spawner.gd` —
+`class_name EffectSpawner extends Node` — is the one place an effect's spawn
+request lands. It is *not* reached by path: SPEC-project forbids cross-module
+tree-path reach-through, so the world hands the player's `EffectHost` one
+(`EffectHost.spawner`, with `spawner_path` resolved once on `_ready()` for a
+world that would rather wire a node path), and `EffectHost.spawn_proc()` /
+`fire_proc_projectile()` forward to it. `Effect.host` is set by
+`EffectHost.add()`, so `Effect.spawn()` and `Effect.fire_projectile()` reach the
+host without walking the tree either.
+
+`EffectSpawner.spawn_node(scene, pos, setup, source_id, depth)` instantiates,
+stamps, positions, runs the caller's `setup` callable **and only then parents**
+the instance under `container` — so a spawner can still configure a node that
+has not entered the tree, and before any `_ready()` on it could run.
+`EffectSpawner.spawn_projectile(spec, from, dir, source_id, depth)` hands the
+`ProjectileSpec` to the shipping `ProjectileSpawner` whole — scene, speed,
+damage, element, pierce and bounce are exactly the spec's fields — and then
+stamps the same numbers onto the projectile that came back, so the result
+carries what the spec described.
+
+**Provenance.** Every result carries `proc_source_id` (the effect's `source.id`)
+and `proc_depth`, which is SPEC-effect-system's "Visual language" rule: the VFX
+library colours by element and the debug overlay (W4-B11) says which relic made
+what. A root that declares the field gets it as a property (the
+`ProjectileSpawner.synced_position` convention); one that does not gets it as
+metadata, so an art-audio scene can never silently lose the value. The one
+reader for both is `EffectSpawner.read_stamp(node, key)`.
+
+**Proc depth.** Both helpers pass `trigger_depth + 1` — SPEC-effect-system,
+"Proc chain limits": "`deal_damage`, `spawn`, and `fire_projectile` from an
+effect create results with `proc_depth = trigger.proc_depth + 1`". A spawned
+node therefore carries *the depth the trigger produced*, one link past the event
+that caused it, which is the same rule `deal_damage` applies to a hit and the
+depth G16's gate will read. The test asserts `deal_damage`'s result and
+`fire_projectile`'s result side by side so the two cannot drift.
+
+**The client gate has exactly one home.** `EffectHost.can_spawn()` (over the
+`_can_spawn()` seam, defaulting to `multiplayer.is_server()`, the shape
+`EnemySpawner`/`ProjectileSpawner` already use) refuses before the seam is
+reached. Putting a second check inside `EffectSpawner` was rejected: two gates
+means a spawner reached another way is *hidden* rather than reported, and one
+gate is one thing to test.
+
+**Verified:** new `tests/unit/test_effect_spawn.gd` **25/25 green / 93 asserts**
+(`.goals/evidence/g15/test-effect-spawn.log`), written first and run red for the
+right reason — against an `Effect` without the two helpers, 23 of the 25 cases
+fail with `Nonexistent function 'spawn'` (`g15/red-test-effect-spawn.log`). Full
+suite **43 scripts / 693 tests / 693 passing / 55 504 asserts** exit 0
+(`g15/gut-full.log`, up from 42 / 668 / 55 411). `--headless --path . --import`
+exit 0 with 0 error lines. Two-instance smoke **35 `ok` / 0 FAIL / exit 0**
+(`g15/smoke-run.log`, `PORT=28901`), run even though this commit adds no RPC.
+The failing path was forced and kept: dropping the `+ 1` on `spawn`'s depth
+failed exactly the four depth cases and nothing else
+(`g15/negative-control.log`), then reverted. The whole seam is exercised for
+real as well as through the spy — `test_fire_projectile_through_the_real_projectile_spawner`
+fires through the shipping `ProjectileSpawner` and its placeholder scene.
+
+**Blocked / not claimed.** The FX-with-gameplay spawner does not exist (Dev A's
+W4-A4, and `World/Entities` has only the enemy and projectile spawners today),
+and neither does combat-core's real `Projectile`, so `EffectSpawner` is not yet
+wired into `world.tscn` and the game drops effect spawns with a warning —
+**blocked on Dev A (W4-A4)** in the seam's doc comment and `tasks/todo.md`. The
+swap-in is a wiring change on the world, not a change to any helper: a
+`ProjectileSpawner` reference and a container node are all the seam needs.
+Nothing here is replicated yet — the seam's results reach clients when the real
+spawners do — so the two-instance smoke was run as insurance, not as proof of a
+sync path. The per-frame 64-spawn cap is G18 and lands inside this seam.
+
 ---
 
 ## Decisions made without a human
@@ -2858,6 +2932,59 @@ already recorded in a spec or a comment, the location is given.
       flow). Nothing in the game calls it yet — there is no relic content until
       W4-B5/B6 — and there is no client path, because clients hold no `Effect`
       instances. The proc caps and Mimic Crown are W4-B3.
+
+44. **The spawn seam is a handed-over reference on `EffectHost`, the client gate
+    lives only there, and a spawned node carries the depth its trigger produced
+    (2026-10-20, W4-B2 / G15).** `spawn` and `fire_projectile` had to reach the
+    world's spawners without an effect naming a node path, and without adding a
+    second place that decides whether this peer may spawn at all.
+    - **The seam is `EffectSpawner` (a new `Node` under `scripts/effects/`),
+      handed to `EffectHost.spawner` rather than looked up by path.** SPEC-project
+      forbids cross-module tree-path reach-through, and SPEC-networking puts the
+      spawners under `World/Entities`, which is not `effect-system`'s subtree. An
+      exported `spawner_path` is resolved once on `_ready()` for a world that
+      would rather wire a path; an explicitly assigned `spawner` always wins, so
+      a test or a later world can hand one over. Nothing on the "Ask first" list
+      changed: `EffectSpawner` is a new script, `EffectHost.spawner` /
+      `spawner_path` / `spawn_proc()` / `fire_proc_projectile()` / `can_spawn()`
+      are additions, and `Effect.host` / `spawn()` / `fire_projectile()` are
+      additions to a class this lane owns. `world.tscn` is **not** edited (it is
+      foundation, both lanes) — the seam's wiring is the Dev A W4-A4 swap-in.
+    - **One client gate, on `EffectHost`.** The spawner classes in this repo each
+      carry their own `_can_spawn()`, and copying that onto `EffectSpawner` as
+      well was rejected: two checks in series means a spawner reached another way
+      is silently *covered* rather than reported, and the criterion "refused on a
+      client" then has two possible authors. `EffectHost.can_spawn()` is over
+      `_can_spawn()` (default `multiplayer.is_server()`), so the client half is
+      testable in one process by the same subclass override
+      `test_entity_spawners.gd` uses.
+    - **`proc_depth` on a spawned node is the trigger's depth + 1.** SPEC-
+      effect-system, "Proc chain limits" — "`deal_damage`, `spawn`, and
+      `fire_projectile` from an effect create results with `proc_depth =
+      trigger.proc_depth + 1`" — and G16 restates the same rule for all three.
+      `.goals/PLAN.md`'s G15 line phrases it as "the trigger depth"; it is read
+      here as *the depth the trigger produced* (the trigger's own depth plus
+      one), because the spec and G16 both say `+ 1` and because `deal_damage`
+      already ships that rule and is asserted side by side with
+      `fire_projectile` so they cannot drift. Reading it the other way would make
+      G16 change this behaviour and break this goal's test.
+    - **Provenance is stamped as a property where the scene declares one and as
+      metadata otherwise.** The repo's spawners use `set()` on a name the scene is
+      required to keep (`ProjectileSpawner`'s `synced_position`), but the nodes
+      `spawn` produces are FX scenes whose ownership is `art-audio`'s, and a
+      silent no-op `set()` would drop the one value the debug overlay (W4-B11)
+      needs. `EffectSpawner.read_stamp(node, key)` is the single reader for both
+      branches, so no consumer has to know which one a scene took.
+    - **`setup` runs before `add_child()`, and it is host-local.** The criterion
+      requires it, and it is the only way a caller can still shape a node before
+      its `_ready()` could run; a `Callable` cannot be replicated, so anything
+      that must reach clients travels in the seam's payload, not in `setup`.
+    - **Absence is a warning, never an error.** The FX-with-gameplay spawner and
+      combat-core's `Projectile` are unlanded (Dev A W4-A4), so with nothing
+      wired the game drops spawns and logs; the suite stays engine-error free, and
+      the swap-in is a wiring change, not a code change. Recorded as
+      **blocked on Dev A (W4-A4)** in `scripts/effects/effect_spawner.gd` and
+      `tasks/todo.md`.
 
 ---
 

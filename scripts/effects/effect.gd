@@ -59,6 +59,12 @@ var player: Player = null
 ## `id` is the effect's id: the `StatBlock` modifier source, and (from W4-B3)
 ## the tag that stops the effect reacting to its own hits.
 var source: ContentData = null
+## The `EffectHost` this effect was attached through, set by `EffectHost.add()`.
+## It is how `spawn()` and `fire_projectile()` reach the world's spawner without
+## an effect ever naming a node path (SPEC-project forbids cross-module
+## tree-path reach-through). Null for an effect attached by hand, which then
+## spawns nothing.
+var host: EffectHost = null
 ## Duplicates (a relic picked twice), rank (skill node) or upgrade rank
 ## (ability). Every helper that scales reads this.
 var stacks: int = 1
@@ -319,6 +325,62 @@ func deal_damage(target: Node, hit: HitData) -> void:
 			source_id(), target.name])
 		return
 	sink.call(DAMAGE_SINK_METHOD, hit)
+
+
+## Spawns `scene` at `pos` through the world's spawner seam, one link deeper
+## than the event this effect is handling (`proc_depth = trigger.proc_depth + 1`,
+## SPEC-effect-system "Proc chain limits", the same rule `deal_damage` applies
+## to a hit). The instance is stamped with this effect's source id and that
+## depth, `setup` — optional — runs on it before it enters the tree, and it is
+## parented where the spawner puts it.
+##
+## This is the "my dodge spawns lightning clones" half of the effect system: an
+## effect never instantiates a node itself, and never reaches for
+## `World/Entities` by path. The request goes through the effect's `EffectHost`,
+## which is the one boundary that knows whether this peer may spawn at all, and
+## on to `EffectSpawner`. Refused with a warning — never an error — when there
+## is no scene, no host, or no spawner wired (the FX spawner is Dev A's W4-A4).
+func spawn(scene: PackedScene, pos: Vector2, setup: Callable = Callable()) -> Node:
+	if scene == null:
+		push_warning("[effect] %s: spawn() needs a scene" % source_id())
+		return null
+	var owner_host: EffectHost = _resolve_host()
+	if owner_host == null:
+		push_warning("[effect] %s: no EffectHost to spawn through, spawn dropped" % source_id())
+		return null
+	return owner_host.spawn_proc(scene, pos, setup, source_id(), trigger_depth + 1)
+
+
+## Fires `data` from `from` along `dir` through the world's spawner seam,
+## incrementing proc depth exactly as `deal_damage` does: the projectile is a
+## result of this trigger, so it carries `trigger_depth + 1` and the effect's
+## source id, and whatever hit it lands goes one link deeper again.
+##
+## The spec travels whole, so the speed, damage, element, pierce and bounce it
+## describes reach the projectile spawner unchanged. Refused with a warning —
+## never an error — when there is no spec, no host, or no projectile spawner
+## wired (combat-core's Projectile is Dev A's W4-A4).
+func fire_projectile(data: ProjectileSpec, from: Vector2, dir: Vector2) -> Node:
+	if data == null:
+		push_warning("[effect] %s: fire_projectile() needs a spec" % source_id())
+		return null
+	var owner_host: EffectHost = _resolve_host()
+	if owner_host == null:
+		push_warning("[effect] %s: no EffectHost to fire through, shot dropped" % source_id())
+		return null
+	return owner_host.fire_proc_projectile(data, from, dir, source_id(), trigger_depth + 1)
+
+
+## The `EffectHost` this effect spawns through: the one it was attached through,
+## or — for an effect parented under a host by hand — its parent. Null when
+## neither, which every spawning helper treats as a warned no-op.
+func _resolve_host() -> EffectHost:
+	if host != null and is_instance_valid(host):
+		return host
+	var parent: Node = get_parent()
+	if parent is EffectHost:
+		return parent as EffectHost
+	return null
 
 
 ## The `StatusEffects` component on `target`, or null when it carries none. A
