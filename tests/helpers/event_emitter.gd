@@ -294,11 +294,11 @@ func emit_pickup_collected() -> void:
 
 
 func emit_relic_picked() -> void:
-	Events.relic_picked.emit(_player(FAKE_PEER_ID), _resource(&"relic"))
+	Events.relic_picked.emit(_player(FAKE_PEER_ID), _relic())
 
 
 func emit_relic_removed() -> void:
-	Events.relic_removed.emit(_player(FAKE_PEER_ID), _resource(&"relic"))
+	Events.relic_removed.emit(_player(FAKE_PEER_ID), _relic())
 
 
 func emit_synergy_activated() -> void:
@@ -356,14 +356,26 @@ func _node(kind: StringName) -> Node:
 	return stub
 
 
-## A plain Resource carrying a name, standing in for the RelicData /
-## SynergyData / AbilityData / WeaponData / MutationData / AscensionData
-## Resources their owning modules define later. A preset (not generated) change
-## of `resource_name` keeps this a pure test double.
+## A plain Resource carrying a name, standing in for the SynergyData /
+## AbilityData / WeaponData / MutationData / AscensionData Resources their
+## owning modules define later. A preset (not generated) change of
+## `resource_name` keeps this a pure test double.
 func _resource(kind: StringName) -> Resource:
 	var res: Resource = Resource.new()
 	res.resource_name = String(kind)
 	return res
+
+
+## A real `RelicData` — `relic_picked` and `relic_removed` carry the class, not
+## a `Resource`, so this is the smallest relic the signals accept. Never added
+## to `data/relics/`: it is a double, and the content batch owns that folder.
+func _relic() -> RelicData:
+	var relic: RelicData = RelicData.new()
+	relic.id = &"emitter_relic"
+	relic.display_name = "Emitter Relic"
+	relic.description = "A test double standing in for a relic."
+	relic.tags = [Tags.DODGE] as Array[StringName]
+	return relic
 
 
 func _hit() -> HitData:
