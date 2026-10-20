@@ -441,7 +441,7 @@ Every week carries `[art-audio]` tasks: Claude Code generates or sources every a
 - [ ] W3-A7 `[art-audio]` Player `downed` and `death` placeholder frames on the placeholder body; rope, door lock/unlock, room clear, footstep (stone x2) SFX. Accept: review approved.
 
 ### Dev B
-- [ ] W3-B1 `[run-economy]` `GameState` real: `RunState`, `RunPlayerState`, `start_run`, `next_floor`, `end_run`, `RunResult`, `run_started`/`floor_changed`/`run_ended` signals; floor advance threshold states.
+- [x] W3-B1 `[run-economy]` `GameState` real: `RunState`, `RunPlayerState`, `start_run`, `next_floor`, `end_run`, `RunResult`, `run_started`/`floor_changed`/`run_ended` signals; floor advance threshold states. Accept: `tests/unit/test_run_state.gd` + `tests/unit/test_game_state_run.gd` green (28 tests in the latter, incl. host-only `Events.room_cleared` -> `rooms_cleared`, `exit_open` at the threshold, `can_advance_floor()`, and `next_floor()` refused with a recorded reason while shut). The Exit rule's concrete determinant — all `COMBAT`/`ELITE_COMBAT` rooms on a Start–Exit path — is **blocked on Dev A (W3-A2)**; until it lands the generated floor writes `required_rooms_cleared` and the default `0` means "nothing required".
 - [ ] W3-B2 `[run-economy]` ROPE populator + `Rope` interactable (solo immediate extract), run end on all players downed/dead (`DEFEAT`), placeholder death/extract summary print.
 - [ ] W3-B3 `[networking]` `floor_ready(seed, floor_index, biome_id, modifiers)` broadcast, client local generation, hash assertion with host-layout fallback, `--seed` arg plumbed.
 - [ ] W3-B4 `[networking]` Downed/revive sync: `request_revive`, `player_downed`/`player_revived` broadcast, StateSync of downed flag.

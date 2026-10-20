@@ -567,6 +567,49 @@ already recorded in a spec or a comment, the location is given.
       one belongs to floor-generation (SPEC-floor-generation), and dual-emitting
       it from `next_floor` would make the HUD update twice for one event.
 
+25. **Floor advance threshold states (W3-B1c).** The seam BRIEF Assumption 6
+    describes is now wired end to end, host-side, with no Dev A code in it.
+    - `GameState` subscribes to `Events.room_cleared(room: Node)` in
+      `start_run()` through the named handler `_on_room_cleared()` — a lambda
+      would never fire under GUT (LESSONS) and cannot be disconnected, and the
+      named handler matches the signal's exact arity (LESSONS: arity mismatches
+      error at runtime). `end_run()` disconnects it, so a finished run stops
+      counting rooms; `_subscribe_room_cleared()` guards with `is_connected`,
+      so a second `start_run()` replacing a live run cannot double-count.
+    - The handler **guards on `NetworkManager.is_host` and on `run != null`
+      rather than only being subscribed conditionally.** `Events` is a global
+      bus that a client's own `Room` nodes will also drive once Dev A lands
+      them (SPEC-floor-generation emits `room_cleared` per peer's local room),
+      so a client must be unable to move the counters even if something wires
+      the signal for it. The counter is host-authoritative state.
+    - The handler counts **every** `room_cleared`, not just combat rooms. Per
+      `SPEC-floor-generation.md` only locking rooms (COMBAT / ELITE_COMBAT)
+      emit it — Treasure and Shrine never lock and never clear — so filtering
+      here would duplicate a rule that already lives in the emitter.
+    - `required_rooms_cleared` keeps its default of `0`, which means
+      "this floor has not declared a requirement yet" and leaves `exit_open`
+      true. That is deliberate: Dev A's Exit rule (all COMBAT/ELITE_COMBAT
+      rooms on at least one Start–Exit path, `SPEC-floor-generation.md` §55)
+      has not landed — **blocked on Dev A (W3-A2)** — and until it does, the
+      floor generator writes the count into this field and `0` must not wedge
+      the run. It also keeps the W3-B1b `next_floor` tests honest, since a
+      floor with no requirement is genuinely advanceable.
+    - **New public API, recorded as a judgment call:** `GameState.can_advance_floor() -> bool`
+      (`run != null and run.exit_open`) and `GameState.last_advance_refusal`
+      with its `ADVANCE_REFUSAL_*` constants. `can_advance_floor()` comes from
+      BRIEF Assumption 6 verbatim. `last_advance_refusal` is mine: the goal
+      asks `next_floor()` to refuse "with a recorded reason", and a
+      `push_warning` alone is not readable back. `RunState.can_advance()` stays
+      as the underlying predicate, so the field is a diagnostic on top of the
+      existing gate, not a second source of truth.
+    - `next_floor()` now distinguishes its four refusals
+      (`not_host` / `no_run` / `exit_shut` / `last_floor`) instead of one
+      combined warning, and clears `last_advance_refusal` on every call so a
+      stale reason is never read as the current one. The `exit_shut` message
+      carries the live `rooms_cleared of required_rooms_cleared` ratio.
+    - Nothing on this path touches a base stat or a time scale: it reads one
+      `Events` signal and increments one integer.
+
 ---
 
 ## Running the game

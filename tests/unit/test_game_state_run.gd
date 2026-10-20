@@ -1,20 +1,26 @@
 extends GutTest
-## Tests for the real GameState run lifecycle (SPEC-run-economy, W3-B1b):
-## start_run / next_floor / end_run and the run_started / floor_changed /
-## run_ended signals, the host-only refusals, the --seed (forced_seed) and
-## host-roll plumbing, and the RunResult handed to run_ended.
+## Tests for the real GameState run lifecycle (SPEC-run-economy, W3-B1b) and
+## the floor-advance threshold wiring (W3-B1c): start_run / next_floor /
+## end_run and the run_started / floor_changed / run_ended signals, the
+## host-only refusals, the --seed (forced_seed) and host-roll plumbing, the
+## RunResult handed to run_ended, and the Events.room_cleared -> rooms_cleared
+## counter behind can_advance_floor().
 ## Owned by run-economy.
 ##
 ## Signal values are captured with named method callbacks, never lambdas
 ## (LESSONS: `.connect(lambda)` never fires under GUT). after_each clears
 ## GameState.run, GameState.forced_seed and the NetworkManager session so no
 ## autoload state leaks into the next test file (LESSONS: autoload state
-## bleeds across GUT files).
+## bleeds across GUT files). The room_cleared subscription is left connected on
+## purpose where a test does not end its run: the handler is a no-op without a
+## live run, and start_run's connect is idempotent, so it cannot double-count.
 
 const FORCED_SEED: int = 4242
 ## Floor 6 is the first floor of biome 2, so an advance to it proves the biome
 ## is recomputed rather than reused.
 const BIOME_2_FLOOR: int = 6
+## Rooms a test floor demands before its exit opens.
+const ROOMS_REQUIRED: int = 3
 
 var _started_seeds: Array[int] = []
 ## (floor_index, biome_id) pairs from floor_changed.
@@ -25,6 +31,7 @@ var _ended_results: Array[RunResult] = []
 func before_each() -> void:
 	GameState.run = null
 	GameState.forced_seed = 0
+	GameState.last_advance_refusal = GameState.ADVANCE_REFUSAL_NONE
 	_started_seeds.clear()
 	_floor_events.clear()
 	_ended_results.clear()
@@ -42,6 +49,7 @@ func after_each() -> void:
 		GameState.run_ended.disconnect(_record_run_ended)
 	GameState.run = null
 	GameState.forced_seed = 0
+	GameState.last_advance_refusal = GameState.ADVANCE_REFUSAL_NONE
 	NetworkManager.disconnect_all()
 
 
@@ -72,6 +80,19 @@ func _party(peer_ids: Array[int]) -> Array[PlayerSpawnInfo]:
 	for peer_id: int in peer_ids:
 		party.append(PlayerSpawnInfo.new(peer_id))
 	return party
+
+
+## Stands in for Dev A's Room node announcing a cleared room
+## (Events.room_cleared(room: Node), SPEC-floor-generation). The room node
+## itself is not read by run-economy, so the payload is irrelevant here.
+func _clear_rooms(count: int) -> void:
+	for _i: int in count:
+		Events.room_cleared.emit(null)
+
+
+func _start_host_run() -> void:
+	_become_host()
+	GameState.start_run(5, 1, _party([1]))
 
 
 func test_start_run_is_refused_on_a_client() -> void:
@@ -242,3 +263,101 @@ func test_request_extract_vote_stays_a_week_5_placeholder() -> void:
 func test_request_extract_vote_is_refused_on_a_client() -> void:
 	GameState.request_extract_vote(1, true)
 	assert_null(GameState.run, "votes are applied on the host, never locally")
+
+
+# --- W3-B1c: floor advance threshold states -------------------------------
+
+
+func test_room_cleared_on_the_host_increments_the_counter() -> void:
+	_start_host_run()
+	GameState.run.required_rooms_cleared = ROOMS_REQUIRED
+	assert_eq(GameState.run.rooms_cleared, 0, "a fresh floor has nothing cleared")
+	_clear_rooms(2)
+	assert_eq(GameState.run.rooms_cleared, 2, "each host room_cleared counts once")
+	assert_false(GameState.run.exit_open, "two of three rooms is not enough")
+
+
+func test_exit_opens_exactly_at_the_required_room_count() -> void:
+	_start_host_run()
+	GameState.run.required_rooms_cleared = ROOMS_REQUIRED
+	_clear_rooms(ROOMS_REQUIRED - 1)
+	assert_false(GameState.run.exit_open, "one room short is still shut")
+	assert_false(GameState.can_advance_floor(), "a shut exit never advances")
+	_clear_rooms(1)
+	assert_true(GameState.run.exit_open, "the required room opens the exit")
+	assert_true(GameState.can_advance_floor(), "an open exit advances")
+
+
+func test_can_advance_floor_is_false_without_a_live_run() -> void:
+	_become_host()
+	assert_null(GameState.run)
+	assert_false(GameState.can_advance_floor(), "no run, no advance")
+
+
+func test_next_floor_is_refused_while_the_exit_is_shut() -> void:
+	_start_host_run()
+	GameState.run.required_rooms_cleared = ROOMS_REQUIRED
+	_clear_rooms(1)
+	GameState.next_floor()
+	assert_eq(GameState.run.floor_index, 1, "a shut exit holds the floor")
+	assert_true(_floor_events.is_empty(), "a refused advance emits no floor_changed")
+	assert_eq(GameState.last_advance_refusal, GameState.ADVANCE_REFUSAL_EXIT_SHUT,
+		"the refusal records why")
+
+
+func test_next_floor_advances_once_the_exit_is_open_and_clears_the_refusal() -> void:
+	_start_host_run()
+	GameState.run.required_rooms_cleared = ROOMS_REQUIRED
+	_clear_rooms(ROOMS_REQUIRED)
+	GameState.next_floor()
+	assert_eq(GameState.run.floor_index, 2, "an open exit advances")
+	assert_eq(_floor_events, [Vector2i(2, 1)] as Array[Vector2i])
+	assert_eq(GameState.last_advance_refusal, GameState.ADVANCE_REFUSAL_NONE,
+		"a successful advance leaves no refusal behind")
+
+
+func test_room_progress_belongs_to_the_floor_left_behind() -> void:
+	_start_host_run()
+	GameState.run.required_rooms_cleared = 1
+	_clear_rooms(1)
+	GameState.next_floor()
+	assert_eq(GameState.run.rooms_cleared, 0, "the new floor starts with nothing cleared")
+	assert_false(GameState.run.exit_open, "the new floor's exit needs its own clear")
+	assert_false(GameState.can_advance_floor())
+
+
+func test_room_cleared_on_a_client_never_moves_the_counters() -> void:
+	_start_host_run()
+	GameState.run.required_rooms_cleared = ROOMS_REQUIRED
+	NetworkManager.is_host = false
+	_clear_rooms(ROOMS_REQUIRED)
+	assert_eq(GameState.run.rooms_cleared, 0, "clients never count rooms")
+	assert_false(GameState.run.exit_open, "a client's clear never opens the exit")
+	assert_false(GameState.can_advance_floor())
+
+
+func test_room_cleared_without_a_live_run_is_a_no_op() -> void:
+	_become_host()
+	assert_null(GameState.run)
+	_clear_rooms(ROOMS_REQUIRED)
+	pass_test("a room_cleared with no run live is ignored")
+
+
+func test_end_run_stops_counting_rooms() -> void:
+	_start_host_run()
+	GameState.run.required_rooms_cleared = ROOMS_REQUIRED
+	_clear_rooms(1)
+	var finished: RunState = GameState.run
+	GameState.end_run(RunEndReason.Reason.DEFEAT)
+	_clear_rooms(1)
+	assert_eq(finished.rooms_cleared, 1, "an ended run stops counting rooms")
+	assert_eq(_ended_results.size(), 1)
+
+
+func test_two_start_runs_do_not_double_count_rooms() -> void:
+	_become_host()
+	GameState.start_run(5, 1, _party([1]))
+	GameState.start_run(6, 1, _party([1]))
+	GameState.run.required_rooms_cleared = ROOMS_REQUIRED
+	_clear_rooms(1)
+	assert_eq(GameState.run.rooms_cleared, 1, "one subscription, one count")

@@ -18,6 +18,15 @@ signal run_ended(result: RefCounted)
 const MIN_RUN_SEED: int = 1
 const MAX_RUN_SEED: int = 2147483646
 
+## Why the most recent next_floor() call was refused. Recorded so a refusal is
+## a readable reason rather than only a log line: the debug console (W3-B5)
+## and the exit-door UI both want to say why the door will not open.
+const ADVANCE_REFUSAL_NONE: StringName = &""
+const ADVANCE_REFUSAL_NOT_HOST: StringName = &"not_host"
+const ADVANCE_REFUSAL_NO_RUN: StringName = &"no_run"
+const ADVANCE_REFUSAL_EXIT_SHUT: StringName = &"exit_shut"
+const ADVANCE_REFUSAL_LAST_FLOOR: StringName = &"last_floor"
+
 ## The live World scene. Modules reach World/Players etc. through this,
 ## never by absolute path.
 var world: World = null
@@ -27,6 +36,9 @@ var run: RunState = null
 var profile: RefCounted = null
 ## Seed forced from the command line (--seed=<int>); 0 means roll one.
 var forced_seed: int = 0
+## Why the last next_floor() call was refused; ADVANCE_REFUSAL_NONE when it
+## advanced (or when next_floor() has not run). Reset by every call.
+var last_advance_refusal: StringName = ADVANCE_REFUSAL_NONE
 
 
 ## Host only. Starts a run: resolves the seed, builds the RunState at
@@ -47,6 +59,7 @@ func start_run(run_seed: int, start_floor: int, party: Array) -> void:
 			push_warning("[run] party entry is not a PlayerSpawnInfo; skipped")
 			continue
 		run.add_player(_slice_from(info))
+	_subscribe_room_cleared()
 	run_started.emit(resolved_seed)
 	Events.run_started.emit(resolved_seed)
 	print("[run] started seed %d at floor %d with %d player(s)" % [resolved_seed, run.floor_index, run.players.size()])
@@ -54,20 +67,55 @@ func start_run(run_seed: int, start_floor: int, party: Array) -> void:
 
 ## Host only. Moves to the next floor, recomputes the biome and emits
 ## floor_changed. Refused past floor 30 (the floor-30 boss is the ending, from
-## story-dialogue in week 10) and while the current floor's exit is still shut
-## (RunState.can_advance(), fed by the W3-B1c room-clear counters).
+## story-dialogue in week 10) and while the current floor's exit is still shut.
+## Every refusal records why in `last_advance_refusal`.
 func next_floor() -> void:
+	last_advance_refusal = ADVANCE_REFUSAL_NONE
 	if not NetworkManager.is_host:
-		push_warning("[run] next_floor refused: the host owns floor state")
+		_refuse_advance(ADVANCE_REFUSAL_NOT_HOST, "the host owns floor state")
 		return
 	if run == null:
-		push_warning("[run] next_floor refused: no run is live")
+		_refuse_advance(ADVANCE_REFUSAL_NO_RUN, "no run is live")
+		return
+	if not can_advance_floor():
+		_refuse_advance(ADVANCE_REFUSAL_EXIT_SHUT, "floor %d's exit is still shut (%d of %d room(s) cleared)" % [
+			run.floor_index, run.rooms_cleared, run.required_rooms_cleared])
 		return
 	if not run.advance_floor():
-		push_warning("[run] next_floor refused: floor %d is the last floor or its exit is still shut" % run.floor_index)
+		_refuse_advance(ADVANCE_REFUSAL_LAST_FLOOR, "floor %d is the last floor" % run.floor_index)
 		return
 	floor_changed.emit(run.floor_index, _biome_for(run))
 	print("[run] floor %d (biome %d)" % [run.floor_index, run.biome_index])
+
+
+## True when the live run's current floor may be left: a run exists and its
+## exit is open. The room-clear counters behind this are written by the host
+## (`_on_room_cleared`), and `required_rooms_cleared` is the seam Dev A's Exit
+## rule writes into — blocked on Dev A (W3-A2) for the concrete determinant
+## (all COMBAT/ELITE_COMBAT rooms on a Start-Exit path), so until it lands the
+## field is whatever the generated floor sets and 0 means "nothing required".
+## Reading it on a client is safe; only the host's next_floor() acts on it.
+func can_advance_floor() -> bool:
+	return run != null and run.exit_open
+
+
+## Records why an advance was refused and logs it once. Called from every
+## refusal branch of next_floor(), so `last_advance_refusal` is never stale.
+func _refuse_advance(reason: StringName, detail: String) -> void:
+	last_advance_refusal = reason
+	push_warning("[run] next_floor refused: %s" % detail)
+
+
+## Host only. Counts one cleared room towards the current floor's exit
+## requirement. Connected in start_run and disconnected in end_run, so an ended
+## run never keeps counting. Guarded rather than subscribed conditionally,
+## because Events is a global bus a client's own Room nodes might also drive.
+func _on_room_cleared(_room: Node) -> void:
+	if not NetworkManager.is_host:
+		return
+	if run == null:
+		return
+	run.rooms_cleared += 1
 
 
 ## Host only. A client's rope vote (SPEC-run-economy). Week 3 ships the
@@ -99,9 +147,23 @@ func end_run(reason: RunEndReason.Reason) -> void:
 	for peer_id: int in finished.players:
 		result.set_player_tables(peer_id, RunResult.empty_table(), RunResult.empty_table())
 	run = null
+	_unsubscribe_room_cleared()
 	run_ended.emit(result)
 	Events.run_ended.emit(result)
 	print("[run] ended (%s) after %d floor(s), seed %d" % [RunEndReason.Reason.keys()[reason], finished.floors_cleared, finished.seed])
+
+
+## Host only. Starts counting cleared rooms for the live run. Idempotent, so a
+## second start_run replacing a live run never double-counts a room.
+func _subscribe_room_cleared() -> void:
+	if not Events.room_cleared.is_connected(_on_room_cleared):
+		Events.room_cleared.connect(_on_room_cleared)
+
+
+## Stops counting rooms. Safe to call when nothing is connected.
+func _unsubscribe_room_cleared() -> void:
+	if Events.room_cleared.is_connected(_on_room_cleared):
+		Events.room_cleared.disconnect(_on_room_cleared)
 
 
 ## Host only. The seed a run starts with: --seed (GameState.forced_seed) wins,
