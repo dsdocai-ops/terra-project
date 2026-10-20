@@ -39,11 +39,13 @@ const TYPE_MAP: Dictionary[String, String] = {
 	# different resource of the same module and keeps its placeholder until the
 	# synergy goals land.
 	"RelicData": "RelicData",
+	# `Pickup` is a real class too: run-economy declared it (W4-B8, G12) and
+	# `pickup_collected` carries it, so its TODO line is gone.
+	"Pickup": "Pickup",
 	# placeholders until their owner lands (see the TODO lines in events.gd)
 	"Projectile": "Node",
 	"Enemy": "Node",
 	"Room": "Node",
-	"Pickup": "Node",
 	"SynergyData": "Resource",
 	"WeaponData": "Resource",
 	"MutationData": "Resource",
@@ -362,7 +364,6 @@ func test_the_placeholder_pins_are_specific_about_who_unblocks_them() -> void:
 		"Projectile": "combat-core",
 		"Enemy": "enemies-ai",
 		"Room": "floor-generation",
-		"Pickup": "run-economy",
 		"SynergyData": "relics",
 		"WeaponData": "weapons",
 		"MutationData": "weapons",

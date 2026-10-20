@@ -290,7 +290,7 @@ func emit_currency_gained() -> void:
 
 
 func emit_pickup_collected() -> void:
-	Events.pickup_collected.emit(_player(FAKE_PEER_ID), _node(&"pickup"))
+	Events.pickup_collected.emit(_player(FAKE_PEER_ID), _pickup())
 
 
 func emit_relic_picked() -> void:
@@ -354,6 +354,16 @@ func _node(kind: StringName) -> Node:
 	stub.name = String(kind)
 	_nodes.append(stub)
 	return stub
+
+
+## A real `Pickup` — `pickup_collected` carries the class, not a `Node` — never
+## added to the tree, so its `_ready` never runs and nothing spawns a coin.
+func _pickup() -> Pickup:
+	var pickup: Pickup = Pickup.new()
+	pickup.kind = Pickup.KIND_GOLD
+	pickup.amount = FAKE_CURRENCY_AMOUNT
+	_nodes.append(pickup)
+	return pickup
 
 
 ## A plain Resource carrying a name, standing in for the SynergyData /
