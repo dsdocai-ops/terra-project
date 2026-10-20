@@ -2316,7 +2316,9 @@ add to the cap, the duration is refreshed, never accumulated — which is the
 spec's own wording for BURN ("refresh duration, stacks add DPS") read across
 every row; the rows' individual behaviour (CHILL→FREEZE, MARK's consumption,
 SHOCK's chaining, TOXIN's healing penalty, UNRAVEL's taken-damage rule) is G21
-and G22, and this file pins the core they extend. (3) A tick is handed to
+and G22 — **G21 landed the first two on 2026-10-20, see its section below; G22
+still owns the last three** — and this file pins the core they extend. (3) A tick
+is handed to
 `Health` as a **finished `HitData`**, through `apply_damage()` and never by
 writing HP, which is SPEC-combat-core's one entry point; it deliberately bypasses
 `Hurtbox`, because damage over time is not a connecting attack — it takes no
@@ -2342,13 +2344,130 @@ either, because enemy composition is Dev A's. The `Health` a tick hands its
 (W2-A1, combat-core `Health`)** — and the swap-in is a type rename, since
 SPEC-combat-core's `HitInfo` and the week-2 `HitData` already agree on the
 damage-relevant field names. CHILL's slow, FREEZE's immobility, SHOCK's chain,
-TOXIN's healing penalty, MARK's consumption and UNRAVEL's taken-damage bonus are
-**not** implemented: this goal ships the core and its tables, and G21/G22 add the
-rows' own behaviour on top. The week-12 balance pass (SPEC-stats-status, "Open
-questions") owns CHILL, SHOCK, BLEED and UNRAVEL's durations and TOXIN's and
-BLEED's rates; they are starting values here, named so the pass has one place to
-edit. No status is yet applied by any content — no relic, weapon or hazard calls
-`Effect.apply_status()` in a build.
+TOXIN's healing penalty, MARK's consumption and UNRAVEL's taken-damage bonus were
+**not** implemented at this goal's commit: G20 shipped the core and its tables,
+and G21/G22 add the rows' own behaviour on top. **CHILL, FREEZE and MARK landed
+in G21 on 2026-10-20** — the `#### G21` section immediately below; SHOCK, TOXIN,
+BLEED and UNRAVEL are still open, and are G22. The week-12 balance pass
+(SPEC-stats-status, "Open questions") owns CHILL, SHOCK, BLEED and UNRAVEL's
+durations and TOXIN's and BLEED's rates; they are starting values here, named so
+the pass has one place to edit. No status is yet applied by any content — no
+relic, weapon or hazard calls `Effect.apply_status()` in a build.
+
+---
+
+#### G21 — BURN, CHILL → FREEZE, and MARK (2026-10-20)
+
+The second goal of W4-B4, and the four rows of SPEC-stats-status's status table
+the Week 4 relics actually drive: "Ember Boots burns, Storm Sandals shocks,
+Frostwalkers chills", and Assassin's Mark in week 8. G20 shipped the component
+core and the tables every row is looked up in; this goal gives these four rows
+the behaviour their own line of that table specifies, including the two clauses
+that are easiest to get subtly wrong — Chill's conversion at five stacks and
+Freeze's one-shot double.
+
+**What changed.** One production file and one test file, and nothing else:
+
+- `scripts/components/status_effects.gd` (+153) — the deliverable.
+- `tests/unit/test_status_effects.gd` (+175 / −2) — 14 new cases (26 → 40),
+  written and run red first. The two removed lines are the fixture's `block.base`
+  literal (MAX_HP only), which now also sets `BASE_MOVE_SPEED` and
+  `BASE_ATTACK_SPEED` because a zero base reads 0 with or without a penalty and
+  these rows are stated as reads "through `StatBlock` values", plus the file's
+  missing trailing newline. No assertion was deleted, weakened or `pending`-ed.
+
+**BURN** — the core's tick, now pinned by cases of its own rather than the one
+proportionality case G20 wrote. `damage_per_second(BURN, 1)` is 4 % of the
+`StatBlock` max HP and five stacks are five times that; the stacks stop at
+`BURN_MAX_STACKS` (5); a re-apply **refreshes** the 4 s clock rather than adding
+a second one; and the status expires on 4 s of **scaled** time, which is G20's
+`_physics_process` multiplying its delta by `TimeManager.scale_for(entity())`.
+
+**CHILL** — the spec's "-12% move and attack speed per stack" as `StatBlock`
+**percent** modifiers on `MOVE_SPEED` and `ATTACK_SPEED`, `CHILL_SLOW_PER_STACK`
+= 0.12, under the new per-status source `CHILL_SOURCE` (`status:chill`).
+`_sync_speed_modifiers()` removes the source and re-adds it on every stack
+change, so four stacks read `base * (1 - 0.48)` rather than four stacked copies
+of the penalty, and a clear lifts it; `base` is never written. The fifth stack is
+**never held as Chill**: `apply_status()` routes it to `_freeze_from_chill()`,
+which clears the Chill and its slow first and applies FREEZE at one stack for
+`FREEZE_DURATION`, announced like any other application. A **player** caps at
+five Chill and never converts, because the same table's last line forbids FREEZE
+to players — the gate is re-used from G20's `PLAYER_FORBIDDEN`, not
+re-implemented.
+
+**FREEZE** — move speed pinned to 0 by `FREEZE_IMMOBILE_PERCENT` (-1.0) under
+`FREEZE_SOURCE` ("can't act" is the separate read `can_act()`, false only while
+frozen, because `StatBlock` clamps attack speed at 0.2 and a zero there would be
+unreachable and wrong); a one-shot double armed when the freeze lands and spent
+by `consume_freeze_double()`, which also clears all Chill — the row's last
+clause, and the only reason that clause is reachable at all is that an entity can
+be chilled *again* while frozen. `_release_modifiers()` drops the freeze's
+modifier and an unspent double however the status leaves — expiry, `clear`,
+`clear_all` or a conversion. Permafrost's "always" is documented here as the
+attacker-side `status_mult` term G23 owns, not a second flag in this component.
+
+**MARK** — a single stack, re-application neither stacks nor re-arms, read by
+`mark_forces_crit()` and spent by `consume_mark()`, so G23's `Damage.compute`
+can force the crit without this component computing damage.
+
+**Accept.** `-gtest=res://tests/unit/test_status_effects.gd` exit 0, **40/40,
+249 asserts** (`g21/test-status.log`, up from 26/192 at `1216c11`). Full suite
+**47 scripts / 782 tests / 782 passing / 56 126 asserts, exit 0**
+(`g21/gut-full.log`, up from 47 / 768 / 768 / 56 069 — the delta is exactly this
+file's 14 tests and 57 asserts). `--headless --path . --import` exit 0 with zero
+error lines (`g21/import.log`). `GODOT=… OUT=… PORT=28921 bash tools/smoke_two.sh`
+exit 0 with **35 `ok` / 0 FAIL** (`g21/smoke-run.log`, raw pair logs in
+`g21/smoke/`) — run as insurance, though the commit adds no RPC, replication or
+spawner wiring. `--headless --path . -- --host --debug-tools --smoke=6` exit 0
+with zero error lines (`g21/host-smoke.log`), and `grep -rn "Engine.time_scale"
+scripts/ scenes/` finds only the doc comment that forbids it.
+
+Red first: the 14 cases were written before the constants existed and the run is
+"Could not find member `CHILL_SLOW_PER_STACK` in base `StatusEffects`"
+(`g21/red-test-status.log`). Two failing paths were then forced, kept, reverted
+and the suite re-greened:
+
+- The Chill-to-Freeze branch replaced by `if false:` → **exactly** the two
+  conversion cases fail
+  (`test_the_fifth_chill_converts_the_entity_to_freeze_instead` and
+  `test_five_chill_applied_at_once_converts_the_same_way`; 38/40,
+  `g21/negative-control.log`), and no slow, burn, freeze or mark case moves.
+- The Chill percent zeroed → **exactly** the two slow cases fail
+  (`test_chill_slows_move_and_attack_speed_by_twelve_percent_per_stack` and
+  `test_chill_slow_follows_the_stack_count_and_lifts_with_the_status`; 38/40,
+  245/249 asserts, `g21/negative-control-2.log`), with the freeze's own -100 %
+  untouched by that change.
+
+**Judgment calls (HANDOFF decision 51).** (1) The conversion **clears** the Chill
+rather than keeping five hidden stacks, because the row reads "At 5 converts to
+`FREEZE`" and the FREEZE row's "then clears all Chill" is only meaningful if
+Chill can exist beside a freeze — which it can, and does, when an entity is
+chilled again while frozen. (2) A **player is exempt from the conversion**, since
+the same table forbids FREEZE to players and leaving it ungated would have made
+`apply_status()` the one place that contradiction was reachable. (3) The freeze
+double is a **flag on this component**, spent through `consume_freeze_double()`,
+not a `Damage` behaviour: this goal owns the rule and G23 owns the formula that
+reads it. (4) "Cannot act" is the `can_act()` read rather than a zero attack
+speed, because `StatBlock` clamps ATTACK_SPEED at 0.2, so a zero there is
+unreachable and would have been the wrong instrument. (5) Each status's penalty
+lives under its **own modifier source** (`status:chill`, `status:freeze`), so
+`remove_source()` releases exactly one status's modifiers — which is what makes a
+conversion, an expiry, a consumption and a `clear_all()` the same code path
+rather than four. (6) The fixture's `StatBlock` gained MOVE_SPEED and
+ATTACK_SPEED bases, for the reason given under "What changed".
+
+**Not claimed.** Nothing calls any of this yet: no relic, weapon, hazard or enemy
+applies a status in a running build (the 20 relics are W4-B6), and the component
+is still not composed onto the player scene — **blocked on Dev A (W2-A1,
+player.tscn)** — so these rows are proven by the component's own tests and not by
+a live run. SHOCK's chain, TOXIN's healing penalty and per-stack tick, BLEED's
+move-gated tick and UNRAVEL's taken-damage bonus are **still not implemented**;
+they are G22, on this same file. G23 (`Damage.compute`'s `status_mult` terms,
+MARK's forced crit, `status_resistance`) and G24-G26 (the six combos, the two
+multiplier hooks, `Scaling`) are unlanded too, so `mark_forces_crit()` and
+`consume_freeze_double()` have no production caller yet and "next hit double
+damage" is armed and spendable but read by nothing.
 
 ---
 
@@ -3920,6 +4039,55 @@ already recorded in a spec or a comment, the location is given.
       allow it, but no Week 4 goal needs a typed bus read and the change would
       touch the bus and its emitter tests for no behavioural gain. Whoever first
       needs it can do it with A4 in hand.
+51. **The Chill-to-Freeze conversion clears its own Chill, a player is exempt,
+    and every status's speed penalty owns a modifier source (2026-10-20, W4-B4 /
+    G21).** SPEC-stats-status fixes the four rows' numbers but not how a status
+    leaves, who may hold it, or where its penalty lives; those are choices, so
+    they are recorded here. `StatusEffects` gains `CHILL_SLOW_PER_STACK`,
+    `FREEZE_IMMOBILE_PERCENT`, `CHILL_SOURCE`, `FREEZE_SOURCE`,
+    `_freeze_from_chill()`, `_sync_speed_modifiers()`, `_release_modifiers()`,
+    `can_act()`, `freeze_double_ready()`, `consume_freeze_double()`,
+    `mark_forces_crit()` and `consume_mark()` — all new surface on the module's
+    own component, so nothing on the project's Ask-first list moved: no `Events`
+    signal changed, no autoload's public API, no `scripts/data/` Resource and no
+    `.tscn`.
+    - **The conversion clears the Chill it converts.** The CHILL row reads "At 5
+      converts to `FREEZE`" and the FREEZE row's last clause is "then clears all
+      Chill"; clearing on conversion is what gives that clause something to do,
+      because Chill can and does exist beside a freeze when an already-frozen
+      entity is chilled again. Keeping five hidden Chill stacks under the freeze
+      would make the clause dead text and would re-apply the slow the freeze had
+      just replaced.
+    - **A player never converts.** The same table's last line lists FREEZE among
+      the statuses players may not receive, so a player simply sits at five
+      Chill. The conversion is gated on `allows(Status.FREEZE)`, re-using G20's
+      `PLAYER_FORBIDDEN` rather than testing for a player a second way.
+    - **Each status's penalty has its own `StatBlock` source.** `status:chill` and
+      `status:freeze` are separate `StringName`s, so `remove_source()` on a clear,
+      an expiry, a stack change or a conversion releases exactly the modifiers
+      that status added, and a second status cannot take the first one's penalty
+      away with it. `_sync_speed_modifiers()` is the only place a speed penalty
+      is computed — called from `apply_status()` and from the conversion — and
+      `_release_modifiers()` is its only counterpart, called from `clear()`, so
+      every exit from a status is one code path. Every write is a modifier and
+      `base` is never touched (SPEC-project, "Never edit base stats").
+    - **The freeze double is a flag on the component, not a `Damage` behaviour.**
+      `consume_freeze_double()` returns true once and false after, and clears all
+      Chill as it spends — which is how "next hit double damage once ... then
+      clears all Chill" is discharged. Permafrost's "makes it always" is instead
+      the attacker-side `status_mult` term SPEC-stats-status's formula names
+      ("+1.0 Permafrost on FREEZE, once"), which is G23's to implement; as a
+      second flag here it would put half of one rule in each of two modules.
+    - **"Can't act" is a read, not a stat.** `can_act()` is false only while
+      FREEZE is active. Attack speed is clamped at 0.2 by `StatBlock`, so a zero
+      there is unreachable and would have been the wrong instrument. The entity's
+      own controller asks before it moves or attacks, so a frozen enemy keeps its
+      AI and its cooldowns and simply produces nothing.
+    - **The test fixture's `StatBlock` gained MOVE_SPEED and ATTACK_SPEED
+      bases.** A zero base reads 0 with or without a penalty, and these rows are
+      stated as reads "through `StatBlock` values". Those two lines are the whole
+      of the test file's deletions; no assertion was removed, weakened or
+      `pending`-ed.
 
 ---
 
