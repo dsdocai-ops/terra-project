@@ -45,8 +45,12 @@ const TYPE_MAP: Dictionary[String, String] = {
 	"MutationData": "Resource",
 	"AbilityData": "Resource",
 	"AscensionData": "Resource",
+	# `StatusEffects.Status` is still a placeholder: the enum exists (G20) but the
+	# bus carries it as an `int` until a goal retypes the signal, and the TODO
+	# line in events.gd pins that. `Combo` is no longer one: G24 (2026-10-20)
+	# declared the real `Combo` class and `combo_triggered` carries it.
 	"StatusEffects.Status": "int",
-	"Combo": "int",
+	"Combo": "Combo",
 	# object base types the spec itself writes without naming a class
 	"Node": "Node",
 	"Resource": "Resource",
@@ -362,7 +366,6 @@ func test_the_placeholder_pins_are_specific_about_who_unblocks_them() -> void:
 		"AbilityData": "abilities",
 		"AscensionData": "classes-characters",
 		"StatusEffects.Status": "stats-status",
-		"Combo": "stats-status",
 	}
 	var owners: Dictionary[String, String] = {}
 	for raw: String in _read_lines(EVENTS_SCRIPT_PATH):
