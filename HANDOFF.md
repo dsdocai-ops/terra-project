@@ -3141,8 +3141,10 @@ wiring (BRIEF C17) — it is a data class, two signal type declarations and a te
 
 **Not claimed.** `data/relics/` holds only `.gdkeep`, so the real scan examines
 zero files today and every rule above is proven on fixtures rather than on
-content — the 20 `.tres` are G5–G8. `RelicRoller` does not exist, so
-`roll_weight()` and `WEEK_4_IDS` have no production reader yet (G4 and G8).
+content — the 20 `.tres` are G5–G8. `RelicRoller` did not exist when this was
+written; **it does as of 2026-10-20 (G4)**, and it is now `roll_weight()`'s and
+`WEEK_4_IDS`'s first production reader (see the G4 section below). `WEEK_4_IDS`
+still has no reader of its own until G8's completeness gate.
 Nothing in a running build touches `RelicData`: `relic_picked`/`relic_removed`
 have no production emitter (the Shrine flow and `request_pick_relic` are G10),
 and `SynergyData` is still a placeholder. `tasks/todo.md`'s **W4-B5 stays open** —
@@ -3233,6 +3235,105 @@ pre-existing) carry dated correction notes, as does the G24 line in
 `.goals/evidence/g24-combos/CORRECTION-2026-10-20-G3a.md` and
 `.goals/evidence/g25-g26/CORRECTION-2026-10-20-G3a.md`, which are the G24 and
 G25–G26 evidence logs' own correction entries.
+
+### G4 — `RelicRoller`: rarity weights, Luck, no cursed at a Shrine, `max_stacks` (`relics`)
+
+Raw goal **G28**. Shipped 2026-10-20 in the first half of **W4-B5**.
+
+**What shipped.** `scripts/relics/relic_roller.gd` (new module folder; decision
+58) — a static-only class implementing SPEC-relics' shared roll helper:
+`roll(player, count, allow_cursed)` is the shape "SPEC-relics — Shrine flow"
+names ("Merchant shops and Treasure chests use the same roll helper
+`RelicRoller.roll(player, count, allow_cursed)`"), and `roll_from_pool(pool,
+held, luck, count, allow_cursed, rng)` is the explicit form it delegates to.
+`tests/unit/test_relic_roller.gd` is the 25-case suite, written first and
+committed with the code (BRIEF C9).
+
+**Two stages, in the spec's order.** Stage 1 rolls the rarity tier on a 0..1
+draw over the four Shrine weights — common 60 / rare 28 / epic 10 / legendary 2,
+read from `RelicData.RARITY_ROLL_WEIGHTS` rather than retyped — shifted upward
+by `Stat.LUCK` through `shifted_roll()`, which is SPEC-run-economy's own term
+"`rarity_roll += LUCK * 0.01`" (`LUCK_SHIFT_PER_POINT`, and the test parses that
+number out of the spec file so the constant cannot drift from its sentence).
+Stage 2 is a second weighted pick **inside** the rolled tier on `RelicData.weight`,
+so `weight` decides *which* of a tier's relics comes up and never how often the
+tier itself does. The distribution gate reads the tiers, which is why it can
+pass on a deliberately lopsided pool: the fixture pool has two relics per tier
+at weights 3.0 and 1.0.
+
+**The gate, measured.** 10 000 rolls at seed `20261020` over that synthetic
+pool, `allow_cursed = false`, one relic per roll:
+`{COMMON: 5911, RARE: 2837, EPIC: 1056, LEGENDARY: 196}` → shares 0.5911 /
+0.2837 / 0.1056 / 0.0196 against 0.60 / 0.28 / 0.10 / 0.02, worst deviation
+**0.0089** against the spec's **0.02** tolerance (`.goals/evidence/g4/
+test-relic-roller.log`). Zero cursed relics came back in 10 000 rolls, and a
+second case rolls three per iteration (30 000 offered ids) for the same zero. The
+seed is fixed, so the figure is a property of the code and not of this machine —
+the case cannot flake, and it is reprinted identically in the after-revert log.
+
+**`max_stacks`.** The filter is `held >= max_stacks`, where the held count comes
+from the player's replicated `RunPlayerState.relics` (`held_counts()`, counting
+*occurrences*, because the slice is the list a duplicate pick appends to). Three
+edges are asserted rather than assumed: held 0 of 3 offers, held 2 of 3 still
+offers (the boundary is `>=`), held 3 of 3 does not; a `max_stacks = 1` relic is
+done the moment it is held once; and a caller asking for 3 from a pool of 2 gets
+2 distinct ids rather than a duplicate. `roll()` returns exactly `count`
+**distinct** ids whenever the pool allows.
+
+**The Shrine ban is two checks, not one.** `allow_cursed = false` removes the
+cursed tier from the weight table *and* filters cursed relics out of the
+candidate list, so a cursed relic cannot come up even if a caller's table were to
+give its tier a weight. A pool of nothing but a cursed relic returns `[]` at a
+Shrine and the same relic when the caller allows one — the pair is the case.
+
+**The fallback, which is a judgment call.** When the tier a roll lands in has
+nothing left to offer (every common held at max; no epic in the pool at all), the
+roll walks to the *nearest* tier that does — nearest by the `Rarity` enum's
+ascending order, which `test_relic_data.gd` pins, with the lower tier winning a
+tie. A Shrine that rolled an exhausted tier would otherwise show fewer than three
+choices with content still on the table. `nearest_tiers()` is public and asserted
+directly at all three positions (bottom, middle, top).
+
+**Where the roller reads the run, and why.** Both of the player's inputs are read
+from host-authoritative state: the held ids from `GameState.run.get_player(
+player.peer_id)` — the path `network_manager.gd:723` already uses — and Luck from
+the player's `StatBlock` child, reached by the same `Effect.STAT_BLOCK_NODE` path
+every effect uses. SPEC-relics sanctions both under "Interfaces consumed"
+("`run-economy`: `RunPlayerState.relics`, shop stock, Luck"). PLAN G4's sub-task
+asked for a callable seam so the roller never names run-economy; the seam is
+instead the `held` argument of `roll_from_pool()`, which is what the test drives,
+and the run reference is confined to the two-line `run_slice()`. That is a
+deviation from the plan's wording and is recorded here rather than hidden.
+
+**Verification.** One `--import`, exit 0, 0 error lines
+(`.goals/evidence/g4/import.log`); the full suite **51 scripts / 879 tests / 879
+passing / 57 038 asserts**, exit 0, 71 s (`gut-full.log`) — 1 script, 25 tests and
+301 asserts above the run's 50 / 854 / 56 737 baseline, which is this goal's own
+delta and nothing else. `test_relic_roller.gd` alone: **25/25, 303 asserts**, exit
+0, reprinted after the revert. The suite's three per-test `16 Orphans` reports
+are `tests/unit/test_player_spawner.gd`'s and are **pre-existing and unchanged**
+(three reports of `16 Orphans` in the G3a baseline logs too); this file's own run
+prints no orphan row. **No two-instance smoke run**: the commit adds no RPC,
+replication or spawner wiring — it is one new static class and one test file, with
+no `.tscn`, no autoload and no `scripts/data/` Resource touched.
+
+**Negative control.** `const LUCK_SHIFT_PER_POINT: float = 0.01` → `0.00`, a
+unique anchor inside `shifted_roll()`'s only input. Marker count 1 after the
+patch; the run fails **exactly the four Luck cases** and nothing else —
+`test_the_luck_shift_is_the_specs_own_term`, `test_luck_shifts_the_rarity_roll_
+upward_and_never_off_the_table`, `test_luck_promotes_the_tier_a_roll_lands_in`,
+`test_luck_raises_the_share_of_the_top_tiers_over_a_real_roll` — 21/21 pass
+elsewhere, including the distribution gate, exit 1
+(`.goals/evidence/g4/negative-control-luck-shift.log`). The non-Luck cases prove
+the shift is separable from the weights. Reverted **byte-exact** (`diff` prints
+nothing against the snapshot, marker back to 0) and re-green 25/25 / 303
+(`test-relic-roller-after-revert.log`, same tally).
+
+**Ask-first surfaces: two movements, both numbered above.** A new
+`scripts/relics/` folder (decision 58) and the cursed tier's weight when a caller
+allows one (decision 57). Nothing else on the list moved: no `project.godot`, no
+Input Map, no autoload API, no `scripts/data/` Resource edit (this goal adds no
+Resource field), no `Events` signal, no `.tscn`, no save schema, no CI, no addon.
 
 ---
 
@@ -5265,6 +5366,35 @@ already recorded in a spec or a comment, the location is given.
       evidence, which is exactly why the eleven fixture cases and the written
       fixture folder carry this goal. Pinning "zero files" would also have to be
       deleted by G5.
+
+57. **The cursed tier gets a weight of its own, used only when a caller allows a
+    cursed relic: `RelicRoller.CURSED_RARITY_WEIGHT = 6` (2026-10-20).** G4. The
+    spec supplies no number. Its weight table is the *Shrine's* — "common 60,
+    rare 28, epic 10, legendary 2" — and the very next sentence is "Cursed never
+    roll at Shrines", which is why `RelicData.roll_weight(CURSED)` is 0 and
+    `test_relic_data.gd` pins it there. But SPEC-relics' Shrine-flow paragraph
+    also names `RelicRoller.roll(player, count, allow_cursed)` as the interface
+    chests and shops reuse, so `allow_cursed = true` has to *mean* something: a
+    cursed relic must be reachable for a caller that asks for one, and how often
+    is not written down anywhere. 6 out of the resulting 106 is a judgment call
+    chosen for the shape (about one roll in eighteen — genuinely reachable,
+    never crowding the four Shrine tiers), not a balance number. Sanctioned by
+    SPEC-relics "RelicData" (the table and the Shrine sentence) and "Shrine flow"
+    (the `allow_cursed` parameter). One constant, in one file; the human sets the
+    real number when the Cursed Altars land in week 11.
+
+58. **Relics gets a module folder of its own: `scripts/relics/` (2026-10-20).**
+    G4, and every later relic goal lands there. SPEC-project's tree names a home
+    for components (`scripts/components/`), Resource classes (`scripts/data/`),
+    effect scripts (`scripts/effects/`), generation and debug, and content
+    (`data/relics/`) — but not for a module's own logic scripts, while
+    SPEC-relics "Interfaces provided" names `RelicData`, `SynergyData`,
+    `RelicRoller`, `Shrine`, `CursedAltar`, `SynergyTracker` and
+    `ActiveRelicController` as exactly that. The precedent is already in the
+    repo: `scripts/run/` holds run-economy's `Rope` and `RunPlayerState`,
+    `scripts/network/` holds networking's spawners, and neither is in the tree
+    either. `scripts/relics/` follows that shape, and `tests/unit/` mirrors it
+    per SPEC-project's own rule. Nothing about the tree's other rows moves.
 
 ---
 
