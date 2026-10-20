@@ -21,12 +21,30 @@ extends Node
 ##
 ## It is also the one boundary an effect reaches to spawn: `spawn_proc()` and
 ## `fire_proc_projectile()` forward to the `spawner` seam after checking
-## `can_spawn()`, so no effect instantiates a node itself, no effect names a
-## node path (SPEC-project forbids cross-module tree-path reach-through), and
-## there is exactly one place a client's spawn request is refused.
+## `can_spawn()` and the per-frame spawn cap, so no effect instantiates a node
+## itself, no effect names a node path (SPEC-project forbids cross-module
+## tree-path reach-through), and there is exactly one place a client's spawn
+## request is refused and one place a runaway build's is capped.
 
 ## Node name the host is looked up by under the player (`player.EffectHost`).
 const NODE_NAME: StringName = &"EffectHost"
+
+## The per-frame spawn cap, from SPEC-effect-system, "Proc chain limits", rule 3:
+## "Per-frame cap: at most 64 effect-spawned nodes per player per frame; the rest
+## are dropped and counted in a debug stat."
+##
+## The budget is per *host* (one player) and per *physics frame*, and it is one
+## shared budget for both kinds of effect-spawned result: `spawn_proc()` and
+## `fire_proc_projectile()` each spend it, so a relic cannot buy a second 64 by
+## firing projectiles instead of spawning clones. The spec's "effect-spawned
+## nodes" is the unit, not "spawns of one helper".
+##
+## It is enforced here, on the one boundary every effect reaches, and never in an
+## effect script — which is what makes it unbypassable. It is the reason the
+## Week 4 checkpoint's pathological proc build allocates a bounded number of
+## nodes per frame (SPEC-effect-system, "Testing": "a deliberately pathological
+## build ... cannot drop the host below 60 FPS or allocate unbounded nodes").
+const MAX_SPAWNS_PER_FRAME: int = 64
 
 ## The player this host belongs to, resolved from the parent on `_ready()`.
 ## Attaching is refused while it is null, because an effect with no player has
@@ -51,6 +69,40 @@ var spawner: EffectSpawner = null
 ## {source id: Effect}, in attach order. One effect per id: a duplicate pick
 ## raises `stacks` on the existing effect, it does not add a second one.
 var _effects: Dictionary[StringName, Effect] = {}
+
+## How many effect-spawned nodes this player's effects have been allowed in the
+## current physics frame — a public counter, the "debug stat" rule 3 says the
+## drops are counted in, and what the debug overlay (W4-B11) reads. Computed from
+## `_stats_frame` rather than reset in a process callback, so it reads 0 on the
+## first read of a new frame whether or not this node has been processed yet: the
+## frame the counter belongs to is `Engine.get_physics_frames()`, and nothing can
+## observe a stale value from the frame before.
+var spawns_this_frame: int:
+	get:
+		return _spawns_this_frame if _stats_frame == Engine.get_physics_frames() else 0
+
+## How many effect-spawned nodes were refused by the cap in the current physics
+## frame. The counterpart of `spawns_this_frame`, with the same frame-keyed
+## reset, and the number rule 3 requires to be counted rather than discarded
+## silently.
+var spawns_dropped: int:
+	get:
+		return _spawns_dropped if _stats_frame == Engine.get_physics_frames() else 0
+
+## How many *lines* have been written about those drops this frame: at most one,
+## because the first drop of a frame announces the cap and the rest only add to
+## `spawns_dropped`. Rule 3's "the rest are dropped and counted" is what keeps a
+## 1 000-spawn frame from writing 936 warnings.
+var drop_reports: int:
+	get:
+		return _drop_reports if _stats_frame == Engine.get_physics_frames() else 0
+
+## The physics frame `_spawns_this_frame`, `_spawns_dropped` and `_drop_reports`
+## belong to. Anything else means they are last frame's and read as 0.
+var _stats_frame: int = -1
+var _spawns_this_frame: int = 0
+var _spawns_dropped: int = 0
+var _drop_reports: int = 0
 
 
 func _ready() -> void:
@@ -180,8 +232,9 @@ func _can_spawn() -> bool:
 
 ## Spawns one FX-with-gameplay root for `source_id` at `depth` through the
 ## spawner seam. Returns the node, or null with a warning when this peer may
-## not spawn (SPEC-effect-system: "Sync: host only") or no seam is wired —
-## never an error, because the FX spawner is Dev A's W4-A4.
+## not spawn (SPEC-effect-system: "Sync: host only"), no seam is wired — never
+## an error, because the FX spawner is Dev A's W4-A4 — or this frame's
+## `MAX_SPAWNS_PER_FRAME` budget is already spent.
 func spawn_proc(
 	scene: PackedScene,
 	pos: Vector2,
@@ -195,12 +248,14 @@ func spawn_proc(
 	if spawner == null or not is_instance_valid(spawner):
 		push_warning("[effect-host] no spawner wired, %s's spawn dropped (blocked on Dev A W4-A4)" % source_id)
 		return null
+	if not _spend_spawn_budget(source_id):
+		return null
 	return spawner.spawn_node(scene, pos, setup, source_id, depth)
 
 
 ## Fires one projectile for `source_id` at `depth` through the spawner seam.
 ## Same refusals as `spawn_proc()`, with the projectile spawner named in the
-## warning instead.
+## warning instead — and the same per-frame budget, which both helpers spend.
 func fire_proc_projectile(
 	spec: ProjectileSpec,
 	from: Vector2,
@@ -214,7 +269,42 @@ func fire_proc_projectile(
 	if spawner == null or not is_instance_valid(spawner):
 		push_warning("[effect-host] no spawner wired, %s's shot dropped (blocked on Dev A W4-A4)" % source_id)
 		return null
+	if not _spend_spawn_budget(source_id):
+		return null
 	return spawner.spawn_projectile(spec, from, dir, source_id, depth)
+
+
+## Spends one unit of this host's per-frame budget, and answers whether the
+## request may proceed. Called by both spawn paths and by nothing else, so the
+## cap cannot be spent twice for one result or forgotten on a new path.
+##
+## The frame is `Engine.get_physics_frames()`: the counters belong to that frame
+## and a call in any other frame starts the budget and the counts fresh. Resetting
+## lazily here rather than in `_physics_process()` means a host that is not being
+## processed (paused, outside the tree for a tick) still cannot read or spend
+## last frame's budget.
+##
+## The first drop of a frame writes one warning naming the cap; the rest are
+## counted in `spawns_dropped` only. The refusal is a warning and not an error:
+## capping is a designed outcome (a pathological proc build is expected to reach
+## it), not a fault.
+func _spend_spawn_budget(source_id: StringName) -> bool:
+	var frame: int = Engine.get_physics_frames()
+	if frame != _stats_frame:
+		_stats_frame = frame
+		_spawns_this_frame = 0
+		_spawns_dropped = 0
+		_drop_reports = 0
+	if _spawns_this_frame >= MAX_SPAWNS_PER_FRAME:
+		_spawns_dropped += 1
+		if _drop_reports == 0:
+			_drop_reports = 1
+			push_warning(
+				"[effect-host] %s: per-frame spawn cap of %d reached, further effect spawns this frame are dropped (SPEC-effect-system, \"Proc chain limits\", rule 3)" % [source_id, MAX_SPAWNS_PER_FRAME]
+			)
+		return false
+	_spawns_this_frame += 1
+	return true
 
 
 ## The player this host drives: its parent when that is a Player, otherwise

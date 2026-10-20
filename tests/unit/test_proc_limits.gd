@@ -36,8 +36,10 @@ extends GutTest
 ## runs on a client), so there is no client half to drive in one process.
 
 const EFFECT_PATH: String = "res://scripts/effects/effect.gd"
+const EFFECT_HOST_PATH: String = "res://scripts/effects/effect_host.gd"
 const SPEC_PATH: String = "res://specs/SPEC-effect-system.md"
 const PLAYER_SCENE: String = "res://scenes/player/player.tscn"
+const PLACEHOLDER_PROJECTILE: String = "res://scenes/network/placeholder_projectile.tscn"
 const STAT_BLOCK_SCRIPT_PATH: String = "res://scripts/components/stat_block.gd"
 const PROC_HURTBOX_SCRIPT_PATH: String = "res://tests/helpers/proc_hurtbox_stub.gd"
 const PROC_CHAIN_PROBE_SCRIPT_PATH: String = "res://tests/helpers/proc_chain_probe.gd"
@@ -80,6 +82,22 @@ const MUTUAL_REACTIONS: int = 6
 ## the self-tag rule the cause of the bounded number above.
 const UNTAGGED_MUTUAL_REACTIONS: int = 14
 
+## The per-frame spawn cap, read from the class under test rather than written
+## here twice. SPEC-effect-system, "Proc chain limits", rule 3: "Per-frame cap:
+## at most 64 effect-spawned nodes per player per frame; the rest are dropped and
+## counted in a debug stat."
+const SPAWN_CAP: int = 64
+## How many spawns the cap case asks one player for in a single frame: more than
+## three times the cap, so a cap that is missing, late or off by any margin a
+## test could hide behind cannot pass this case by luck.
+const OVER_CAP_SPAWNS: int = 200
+## What those 200 requests leave behind and what they drop.
+const OVER_CAP_DROPPED: int = OVER_CAP_SPAWNS - SPAWN_CAP
+## The projectile fired by the shared-budget case. Its numbers do not matter —
+## only that it is a real `ProjectileSpec` the host can forward.
+const PROJECTILE_SPEED: float = 240.0
+const PROJECTILE_DAMAGE: float = 18.0
+
 var _player: Player
 var _host: EffectHost
 var _dummy: Node2D
@@ -92,6 +110,11 @@ var _spy: EffectSpawnerSpy
 ## emitted" is asserted on the emission itself.
 var _announced: Array[int] = []
 var _sources: Array[ContentData] = []
+## The second player and its own host/seam/container, built only by the case
+## that needs two independent spawn budgets to compare.
+var _other_host: EffectHost = null
+var _other_spy: EffectSpawnerSpy = null
+var _other_container: Node2D = null
 
 
 func before_each() -> void:
@@ -196,6 +219,55 @@ func _forget() -> void:
 	_log.clear()
 	_announced.clear()
 	_hurtbox.received.clear()
+
+
+## Asks `host` for `count` spawns in the current frame, the way an effect's
+## `spawn()` does — through the host's own public spawn path, so the cap is
+## exercised where a relic would meet it. Returns how many requests came back
+## with a node.
+func _spawn_n(host: EffectHost, count: int) -> int:
+	var scene: PackedScene = _plain_scene()
+	var made: int = 0
+	for i: int in count:
+		if host.spawn_proc(scene, SPAWN_POSITION, Callable(), SELF_ID, 1) != null:
+			made += 1
+	return made
+
+
+## A second player with its own `EffectHost`, its own seam and its own container,
+## so "each player has their own 64 budget" is asserted against two real hosts
+## rather than against one host read twice.
+func _install_second_player() -> EffectHost:
+	_other_container = Node2D.new()
+	add_child_autofree(_other_container)
+	var player: Player = _make_player()
+	_other_host = EffectHostPlayer.install(player)
+	_other_spy = EffectSpawnerSpy.new()
+	_other_spy.container = _other_container
+	add_child_autofree(_other_spy)
+	_other_host.spawner = _other_spy
+	return _other_host
+
+
+## A real `ProjectileSpec`, so the shared-budget case fires the same kind of
+## request a projectile relic would. The seam under it has no projectile spawner
+## wired (combat-core's is Dev A's W4-A4), so what the case asserts is whether
+## the *host* let the request through to the seam — which is what the cap
+## governs — and not what the seam did with it.
+func _projectile_spec() -> ProjectileSpec:
+	return ProjectileSpec.new(
+		load(PLACEHOLDER_PROJECTILE) as PackedScene,
+		PROJECTILE_SPEED,
+		PROJECTILE_DAMAGE,
+		HitData.Element.FIRE,
+		1,
+		0,
+	)
+
+
+## Fires one proc projectile through the real host path.
+func _fire(host: EffectHost) -> Node:
+	return host.fire_proc_projectile(_projectile_spec(), Vector2.ZERO, Vector2.RIGHT, SELF_ID, 1)
 
 
 ## Emits one of the bus's hit-carrying signals with `hit` at its own depth.
@@ -585,6 +657,123 @@ func test_the_same_pair_tags_freely_when_nothing_carries_an_id() -> void:
 	assert_eq(_log.depths_for_source(&"link_a", &"hit_landed").size(), 7, "A sees 1 + 2 + 4 hits")
 	assert_eq(_log.depths_for_source(&"link_b", &"hit_landed").size(), 7, "and so does B")
 	assert_eq(_dealt_depths().size(), 15, "and every hit at depths 0, 1, 2 and 3 is dealt")
+
+
+# --- the per-frame spawn cap (rule 3) ---------------------------------------
+
+## The rule itself, read off the class under test and the spec, so the number
+## cannot drift away from the sentence that mandates it.
+func test_the_per_frame_cap_is_the_specs_and_is_documented() -> void:
+	var source: String = FileAccess.get_file_as_string(EFFECT_HOST_PATH)
+	assert_true(source.contains("MAX_SPAWNS_PER_FRAME"), "EffectHost declares the cap")
+	assert_true(_const_documented(source, "MAX_SPAWNS_PER_FRAME"), "the cap carries a doc comment")
+	assert_eq(EffectHost.MAX_SPAWNS_PER_FRAME, SPAWN_CAP, "the cap is the spec's 64")
+	var spec: String = FileAccess.get_file_as_string(SPEC_PATH)
+	assert_true(
+		spec.contains("at most 64 effect-spawned nodes per player per frame"),
+		"the spec states the rule the constant implements"
+	)
+
+
+## The headline case: 200 requests in one frame, 64 nodes, 136 counted drops.
+func test_two_hundred_spawns_in_one_frame_leave_sixty_four_nodes() -> void:
+	var made: int = _spawn_n(_host, OVER_CAP_SPAWNS)
+	assert_eq(made, SPAWN_CAP, "exactly the cap's 64 requests were allowed")
+	assert_eq(_container.get_child_count(), SPAWN_CAP, "and exactly 64 exist as children")
+	assert_eq(_spy.spawns.size(), SPAWN_CAP, "the seam was asked exactly 64 times")
+	assert_eq(_host.spawns_this_frame, SPAWN_CAP, "the readable counter reads 64 allowed")
+	assert_eq(_host.spawns_dropped, OVER_CAP_DROPPED, "and 136 counted as dropped")
+
+
+## The boundary: the 64th request passes and the 65th is the first drop, so the
+## cap is neither off by one nor "at most 63".
+func test_the_boundary_passes_sixty_four_and_drops_the_sixty_fifth() -> void:
+	_spawn_n(_host, SPAWN_CAP)
+	assert_eq(_host.spawns_this_frame, SPAWN_CAP, "sixty-four requests are all allowed")
+	assert_eq(_host.spawns_dropped, 0, "and nothing is dropped")
+	assert_eq(_container.get_child_count(), SPAWN_CAP, "so sixty-four nodes exist")
+	var extra: Node = _host.spawn_proc(_plain_scene(), SPAWN_POSITION, Callable(), SELF_ID, 1)
+	assert_null(extra, "the sixty-fifth request is refused")
+	assert_eq(_host.spawns_this_frame, SPAWN_CAP, "the allowed count does not move")
+	assert_eq(_host.spawns_dropped, 1, "and exactly one is counted as dropped")
+	assert_eq(_container.get_child_count(), SPAWN_CAP, "no sixty-fifth child appears")
+	assert_eq(_spy.spawns.size(), SPAWN_CAP, "the seam was never asked for the dropped request")
+
+
+## The counters are per frame, not per lifetime: the next physics frame starts
+## with an empty budget and an empty count, so a build that caps out one frame is
+## not silently disabled for the rest of the run.
+func test_the_counter_resets_on_the_next_physics_frame() -> void:
+	_spawn_n(_host, OVER_CAP_SPAWNS)
+	assert_eq(_host.spawns_dropped, OVER_CAP_DROPPED, "this frame's excess is counted")
+	await wait_physics_frames(1)
+	assert_eq(_host.spawns_this_frame, 0, "the allowed count resets with the frame")
+	assert_eq(_host.spawns_dropped, 0, "and so does the dropped count")
+	assert_eq(_host.drop_reports, 0, "and the announcement flag with them")
+	assert_eq(_spawn_n(_host, 5), 5, "the next frame has its own budget")
+	assert_eq(_host.spawns_this_frame, 5, "five of it spent")
+	assert_eq(_host.spawns_dropped, 0, "and nothing dropped")
+
+
+## The budget is per player: one player capping out must not silence a
+## teammate's relics.
+func test_a_second_player_has_its_own_budget() -> void:
+	_spawn_n(_host, OVER_CAP_SPAWNS)
+	var other: EffectHost = _install_second_player()
+	assert_eq(_spawn_n(other, OVER_CAP_SPAWNS), SPAWN_CAP, "the second player's own 64 budget is intact")
+	assert_eq(_other_container.get_child_count(), SPAWN_CAP, "with its own 64 nodes")
+	assert_eq(other.spawns_dropped, OVER_CAP_DROPPED, "and its own 136 counted drops")
+	assert_eq(other.spawns_this_frame, SPAWN_CAP, "its own allowed count")
+	assert_eq(_host.spawns_dropped, OVER_CAP_DROPPED, "while the first player's count is unchanged")
+	assert_eq(_container.get_child_count(), SPAWN_CAP, "and the first player's nodes are untouched")
+	assert_eq(_other_spy.spawns.size(), SPAWN_CAP, "each seam saw only its own player's spawns")
+
+
+## 136 drops produce one line, not 136: the excess is counted in a stat, and the
+## log stays readable. The announcement is per frame, so a build that caps out
+## every frame still says so every frame.
+func test_the_drop_is_announced_once_per_frame() -> void:
+	_spawn_n(_host, OVER_CAP_SPAWNS)
+	assert_eq(_host.spawns_dropped, OVER_CAP_DROPPED, "136 spawns were dropped in this frame")
+	assert_eq(_host.drop_reports, 1, "and announced once, not 136 times")
+	await wait_physics_frames(1)
+	_spawn_n(_host, OVER_CAP_SPAWNS)
+	assert_eq(_host.spawns_dropped, OVER_CAP_DROPPED, "the next frame drops the same excess")
+	assert_eq(_host.drop_reports, 1, "and announces it once again, rather than not at all")
+
+
+## Rule 3 caps "effect-spawned nodes", not "spawns of one kind": a relic that
+## fires projectiles spends the same per-player budget a relic that spawns
+## clones does. Without this, half the cap would be bypassable by choosing the
+## other helper.
+func test_projectiles_spend_the_same_budget_as_spawns() -> void:
+	_spawn_n(_host, SPAWN_CAP - 4)
+	assert_eq(_host.spawns_this_frame, SPAWN_CAP - 4, "sixty spawns spent")
+	for i: int in 4:
+		_fire(_host)
+	assert_eq(_host.spawns_this_frame, SPAWN_CAP, "four projectiles spend the rest of the budget")
+	assert_eq(_spy.projectiles.size(), 4, "and all four reached the seam")
+	assert_null(_fire(_host), "the next request — of either kind — is refused")
+	assert_eq(_spy.projectiles.size(), 4, "and never reaches the seam")
+	assert_eq(_host.spawns_dropped, 1, "the refused request is counted as dropped")
+	assert_eq(_container.get_child_count(), SPAWN_CAP - 4, "and no node appeared for it")
+
+
+## No effect script can bypass the cap: `Effect.spawn()` reaches the world
+## through the host, so a relic that spawns in a loop is capped exactly like a
+## direct caller is. This is the property rule 3's "enforced in the helpers, not
+## in each effect" clause is written for.
+func test_an_effect_cannot_bypass_the_cap() -> void:
+	var probe: ProcChainProbe = _probe(SELF_ID)
+	var scene: PackedScene = _plain_scene()
+	var made: int = 0
+	for i: int in OVER_CAP_SPAWNS:
+		if probe.spawn(scene, SPAWN_POSITION) != null:
+			made += 1
+	assert_eq(made, SPAWN_CAP, "an effect's own spawn() is capped at 64")
+	assert_eq(_container.get_child_count(), SPAWN_CAP, "with 64 nodes to show for it")
+	assert_eq(_host.spawns_dropped, OVER_CAP_DROPPED, "and the excess counted")
+	assert_eq(probe.source_id(), SELF_ID, "the spawns name the effect that made them")
 
 
 ## A scene built in memory, so the spawn case is independent of any `.tscn`.

@@ -1934,7 +1934,69 @@ log that the probe's filter could also have left empty.
 
 **Not claimed.** The 64-spawns-per-frame cap (G18), the trigger harness + Mimic
 Crown duplication rule (G19). Still **blocked on Dev A (W2-A2)** for the real
-`Hurtbox` the chain advances through.
+`Hurtbox` the chain advances through. *(Scope of this section, as of G17; the cap
+landed at G18 — see below.)*
+
+#### G18 — the 64-spawns-per-player-per-frame cap (2026-10-20)
+
+SPEC-effect-system, "Proc chain limits", rule 3: "Per-frame cap: at most 64
+effect-spawned nodes per player per frame; the rest are dropped and counted in a
+debug stat." The cap is enforced on `EffectHost` — the one boundary every effect
+reaches to spawn — and not in an effect script, which is what makes it
+unbypassable by a new relic.
+
+**What changed.** `scripts/effects/effect_host.gd` only (plus the tests):
+
+- `MAX_SPAWNS_PER_FRAME: int = 64`, doc-commented with rule 3 quoted verbatim.
+- `_spend_spawn_budget(source_id)` is called by both `spawn_proc()` and
+  `fire_proc_projectile()` and by nothing else, in one shared per-host budget —
+  the spec's unit is "effect-spawned nodes", so a relic cannot buy a second 64
+  by firing projectiles instead of spawning clones.
+- Three public, frame-keyed counters: `spawns_this_frame` (allowed),
+  `spawns_dropped` (refused) and `drop_reports` (lines written about them, at
+  most one per frame). These are the "debug stat" rule 3 requires and what the
+  debug overlay (W4-B11, G55) will read.
+- The frame is `Engine.get_physics_frames()`. The counters are *computed* from
+  the frame they belong to rather than reset in a process callback, so a read in
+  a new frame is 0 whether or not this node has been processed yet, and a host
+  that is paused or out of the tree for a tick cannot spend or read last frame's
+  budget. The budget is refreshed lazily in `_spend_spawn_budget()`.
+
+**Accept.** `-gtest=res://tests/unit/test_proc_limits.gd` exit 0, **26/26, 158
+asserts** (18 cases / 111 asserts at G17 — 8 new cases, all written and run red
+first, failing with `Cannot find member "MAX_SPAWNS_PER_FRAME" in base
+"EffectHost"`, `.goals/evidence/g18/red-test-proc-limits.log`); full suite **44
+scripts / 721 tests / 721 passing / 55 719 asserts** exit 0 (`g18/gut-full.log`,
+up from 713 / 55 672 at `67d9bbe`); `--headless --path . --import` exit 0 with
+zero error and zero warning lines (`.goals/evidence/g18/import.log`); the five
+other effect test files run individually and unchanged (`test_effect_base`
+25/25, `test_effect_host` 17/17, `test_effect_helpers` 22/22,
+`test_effect_spawn` 25/25, `test_effect_timers` 16/16 — the same counts as G17,
+so no depth, self-tag or cleanup case moved, `g18/effect-files.log`). The failing
+path was forced once and kept: with `MAX_SPAWNS_PER_FRAME` set to 5, **exactly
+the eight cap cases fail** (18 passing / 8 failing) and no depth or self-tag case
+in the file moves (`g18/negative-control.log`), then reverted and `grep`-confirmed
+back to 64. The single announcement per frame is also observable in the real
+output, not only through `drop_reports`: `grep -c` on the run log finds the
+warning **9 times for 9 host-frames that capped out** — one per host per frame,
+never one per dropped node (`g18/test-proc-limits.log`).
+
+**Judgment calls (HANDOFF decision 47).** (1) One shared budget for both spawn
+helpers rather than one each — see above; the case spends 60 on nodes and 4 on
+projectiles to prove it. (2) The counters are computed from the frame key, so
+"resets on the next physics frame" holds by construction and there is no
+`_physics_process` on `EffectHost` at all. (3) The refusal is a `push_warning`,
+not an error: reaching the cap is a designed outcome for a pathological build,
+not a fault, and the suite must stay engine-error free. (4) The cap is checked
+*after* the client gate and the seam-wiring check, so only requests that would
+otherwise have spawned are counted as capped-drops, and an unwired seam (Dev A
+W4-A4) still shows up as its own refusal rather than as cap pressure.
+
+**Not claimed.** The trigger-test harness `tests/helpers/effect_harness.gd` and
+the Mimic Crown duplication rule (G19a/G19b) are not implemented; `data/relics/`
+still holds only `.gdkeep`. The chain still advances through `ProcHurtboxStub`,
+**blocked on Dev A (W2-A2)** for combat-core's real `Hurtbox`, and the FX spawner
+the cap guards is **blocked on Dev A (W4-A4)**.
 
 ---
 
@@ -3281,6 +3343,45 @@ already recorded in a spec or a comment, the location is given.
       rule 4 (Mimic Crown's id suffix, G19) are not implemented. The chain still
       advances through `ProcHurtboxStub`, **blocked on Dev A (W2-A2)** for
       combat-core's real `Hurtbox`.
+
+47. **The per-frame spawn cap is one shared per-player budget on `EffectHost`,
+    refreshed lazily off the physics frame key (2026-10-20, W4-B3 / G18).**
+    SPEC-effect-system "Proc chain limits", rule 3: "Per-frame cap: at most 64
+    effect-spawned nodes per player per frame; the rest are dropped and counted
+    in a debug stat." `EffectHost` gains `MAX_SPAWNS_PER_FRAME`, the
+    `_spend_spawn_budget()` gate both spawn paths call, and the three public
+    frame-keyed counters `spawns_this_frame`, `spawns_dropped` and
+    `drop_reports`. This adds public API to a module's own class (not an
+    autoload), so nothing on the Ask-first list moved; it is recorded here
+    because the counter is the interface the debug overlay (W4-B11, G55) reads
+    and because the budget's shape is a choice, not a spec number.
+    - **The spec says "effect-spawned nodes", so `spawn_proc()` and
+      `fire_proc_projectile()` spend one budget.** Two budgets would leave the
+      cap half-bypassable by choosing the other helper, and there is no reading
+      of "64 effect-spawned nodes per player per frame" under which a projectile
+      is free. The case spends 60 on nodes and 4 on projectiles, then asserts the
+      65th request of either kind is refused.
+    - **The counters are computed from `Engine.get_physics_frames()`, not reset
+      in a process callback.** The stored counts carry the frame they belong to
+      and a getter returns 0 when that frame is not the current one, so "the
+      counter resets on the next physics frame" is a property of the read rather
+      than of a callback having run first. This is why `EffectHost` has no
+      `_physics_process` at all: a host that is paused, out of the tree for a
+      tick, or read before its own processing in a frame can neither spend nor
+      observe last frame's budget. The budget is refreshed lazily in
+      `_spend_spawn_budget()`.
+    - **The first drop of a frame warns; the rest only count.** Rule 3 says the
+      excess is "dropped and counted", and a build that caps out can drop
+      hundreds per frame — 936 lines of log in one frame is not a debug stat. The
+      announcement is a `push_warning` and never an error, because capping is a
+      designed outcome for the pathological build the Week 4 checkpoint names,
+      not a fault. `drop_reports` is the readable proof it happened once, and the
+      run log is grepped for the same line in the evidence.
+    - **The cap is checked after the client gate and the seam check.** A request
+      refused because this peer is not the host, or because no spawner is wired
+      (Dev A's W4-A4), is not a capped-drop and must not inflate
+      `spawns_dropped` — otherwise the debug stat would report cap pressure that
+      the cap did not cause.
 
 ---
 
