@@ -3489,7 +3489,24 @@ preserved in `.goals/evidence/g5/snapshots/`.
 `scripts/effects/relics/` subfolder (decision 59). Nothing else on the list moved:
 no `project.godot`, no Input Map, no autoload, no `scripts/data/` Resource
 definition (this goal adds no field), no `Events` signal, no `.tscn`, no save
-schema, no CI, no addon.
+schema, no CI, no addon. `tasks/todo.md`'s W4-B6 box stayed **open**, because
+six of the twenty relics it names is a partial delivery and PLAN.md completes
+that task at G8 — see the dated correction below.
+
+**Bookkeeping correction, 2026-10-20 (post-review).** The commit that shipped
+this goal (`fee376e`) also ticked `tasks/todo.md`'s **W4-B6** box `[x]`, while
+that same line's own text said On Hit 7–14 and On Kill 15–20 were "not started".
+An independent review of this goal caught it: W4-B6 names **20** relics and
+PLAN.md's goal→task mapping completes it at **G8**, not here, so the tick was a
+false "done" marker in the project's own record of truth. The box is reverted to
+`[ ]` and annotated `PARTIAL — 6 of the 20 landed`, the same shape `W4-B5`
+already carries for its own half. Nothing about the shipped content changed:
+this correction is `tasks/todo.md` and this paragraph. Re-verified in the same
+commit — `--import` exit 0 with 0 error lines, `test_relic_triggers` 10/10 / 181
+asserts, `test_relic_data` 10/10 / 122, `test_relic_roller` 25/25 / 318, full
+suite **52 scripts / 889 tests / 889 passing / 57 276 asserts** exit 0 (all four
+byte-equal to this goal's own archived counts), `grep -rn "Engine.time_scale"
+scripts/ scenes/` empty (`.goals/evidence/g5-reverify/`).
 
 ---
 
