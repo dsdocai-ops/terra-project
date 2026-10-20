@@ -3,6 +3,10 @@ extends RefCounted
 ## Parses the user launch args after `--` (SPEC-foundation):
 ##   --host            host a game and skip the menu
 ##   --join=<ip[:port]> join a host and skip the menu
+##   --port=<int>      the port a host binds, and the port a --join without its
+##                     own port connects to (1..65535). An explicit port inside
+##                     --join wins. Lets a second smoke run on a free port
+##                     (tools/smoke_two.sh)
 ##   --seed=<int>      force the run seed
 ##   --debug-tools     force the debug console on even in a build where
 ##                     OS.is_debug_build() is false (SPEC-debug-tools)
@@ -30,6 +34,12 @@ var mode: Mode = Mode.MENU
 var host: bool = false
 var join_ip: String = ""
 var port: int = NetworkManager.DEFAULT_PORT
+## The --port value, or 0 when it was not given. Resolved into `port` after the
+## whole argv is read, so an explicit --join=ip:port wins over --port whichever
+## order the two appear in.
+var port_arg: int = 0
+## True once --join=ip:port has carried its own port; --port then defers to it.
+var _join_port_given: bool = false
 var run_seed: int = 0
 ## True when --debug-tools was passed: force the debug console on.
 var debug_tools: bool = false
@@ -74,10 +84,14 @@ static func parse(args: PackedStringArray) -> LaunchArgs:
 				opts.errors.append("--smoke-floor needs a positive number of seconds, got '%s'" % value_floor)
 		elif arg.begins_with("--join="):
 			opts._parse_join(arg.trim_prefix("--join="))
+		elif arg.begins_with("--port="):
+			opts._parse_port(arg.trim_prefix("--port="))
 		elif arg.begins_with("--seed="):
 			opts._parse_seed(arg.trim_prefix("--seed="))
 		elif arg == "--debug-tools":
 			opts.debug_tools = true
+	if opts.port_arg > 0 and not opts._join_port_given:
+		opts.port = opts.port_arg
 	if opts.host and not opts.join_ip.is_empty():
 		opts.errors.append("--host and --join given together; hosting")
 		opts.join_ip = ""
@@ -98,8 +112,16 @@ func _parse_join(value: String) -> void:
 	if parts.size() == 2 and parts[1].is_valid_int():
 		join_ip = parts[0]
 		port = int(parts[1])
+		_join_port_given = true
 	else:
 		join_ip = value
+
+
+func _parse_port(value: String) -> void:
+	if value.is_valid_int() and int(value) >= 1 and int(value) <= 65535:
+		port_arg = int(value)
+	else:
+		errors.append("--port must be an integer between 1 and 65535, got '%s'" % value)
 
 
 func _parse_seed(value: String) -> void:

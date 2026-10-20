@@ -35,6 +35,44 @@ func test_default_port_matches_network_manager() -> void:
 	assert_eq(opts.port, NetworkManager.DEFAULT_PORT)
 
 
+func test_port_arg_sets_the_host_port() -> void:
+	var opts := LaunchArgs.parse(PackedStringArray(["--host", "--port=7800"]))
+	assert_eq(opts.mode, LaunchArgs.Mode.HOST)
+	assert_eq(opts.port, 7800, "the host binds the port from --port")
+
+
+func test_port_alone_does_not_change_the_mode() -> void:
+	var opts := LaunchArgs.parse(PackedStringArray(["--port=7800"]))
+	assert_eq(opts.mode, LaunchArgs.Mode.MENU, "port does not change the mode")
+	assert_eq(opts.port, 7800)
+
+
+func test_port_arg_applies_to_a_join_that_carries_no_port() -> void:
+	var opts := LaunchArgs.parse(PackedStringArray(["--join=10.0.0.5", "--port=7800"]))
+	assert_eq(opts.mode, LaunchArgs.Mode.JOIN)
+	assert_eq(opts.join_ip, "10.0.0.5")
+	assert_eq(opts.port, 7800, "the join takes the --port")
+
+
+func test_an_explicit_join_port_wins_over_the_port_arg_whatever_the_order() -> void:
+	var join_first := LaunchArgs.parse(PackedStringArray(["--join=10.0.0.5:7900", "--port=7800"]))
+	assert_eq(join_first.port, 7900, "the more specific --join port wins")
+	var port_first := LaunchArgs.parse(PackedStringArray(["--port=7800", "--join=10.0.0.5:7900"]))
+	assert_eq(port_first.port, 7900, "argument order does not decide it")
+
+
+func test_bad_port_values_are_errors_and_leave_the_default() -> void:
+	for bad: String in ["--port=abc", "--port=", "--port=0", "--port=-1", "--port=65536", "--port=70000"]:
+		var opts := LaunchArgs.parse(PackedStringArray(["--host", bad]))
+		assert_eq(opts.port, NetworkManager.DEFAULT_PORT, "%s leaves the default port" % bad)
+		assert_eq(opts.errors.size(), 1, "%s is reported once" % bad)
+
+
+func test_port_bounds_are_inclusive() -> void:
+	assert_eq(LaunchArgs.parse(PackedStringArray(["--port=1"])).port, 1)
+	assert_eq(LaunchArgs.parse(PackedStringArray(["--port=65535"])).port, 65535)
+
+
 func test_seed_is_parsed_as_int() -> void:
 	var opts := LaunchArgs.parse(PackedStringArray(["--seed=42"]))
 	assert_eq(opts.run_seed, 42)

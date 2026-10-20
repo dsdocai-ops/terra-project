@@ -525,6 +525,60 @@ silently desyncing floors.
   change (the `skip` console command is still a stub until W3-B5) and is on the
   manual-check list rather than claimed here.
 
+### W3-B3a-3 — smoke tooling: `$OUT` is created, and one `PORT` reaches both peers (`debug-tools`)
+
+The smoke is the verifier's tool as much as mine, and it had two defects that
+were recorded at W3-B3a-2 but owned by nobody: every log is a plain
+`> "$OUT/…"` redirect with no `mkdir`, and `PORT` reached only the client's
+`--join` while the host kept binding `NetworkManager.DEFAULT_PORT` (7777). Both
+made a *different* invocation of the script silently meaningless, which is
+worse than failing. This task closes both.
+
+- **`$OUT` is created by the script.** One `mkdir -p "$OUT"` next to
+  `OUT="${OUT:-$(mktemp -d)}"` — no behaviour change when the directory already
+  exists, and the DoD's "step output is copied to `.goals/evidence/…`" no longer
+  depends on somebody else having made the directory.
+- **`PORT` has a real home: `LaunchArgs --port=<n>`.** `main.gd` already passed
+  `options.port` to `NetworkManager.host()` and `NetworkManager.join()`; the only
+  gap was that nothing parsed a port for the host (`LaunchArgs.port` defaulted to
+  `NetworkManager.DEFAULT_PORT`, and only `--join=ip:port` could move it). New
+  arg, parsed like `--seed`/`--smoke3`:
+  - `--port=<n>` must be an integer in `1..65535`; anything else is an error line
+    and the default port stays (validated, like every other arg).
+  - an explicit port inside `--join=ip:port` **wins over** `--port`, whichever
+    order the two appear in (`port_arg` is resolved into `port` after the whole
+    argv is read, and `_join_port_given` records the more specific form). The
+    join's own port is the more specific statement of intent.
+  - `--port` alone does not change the mode (still `MENU`), matching `--seed`.
+  - `tools/smoke_two.sh` now passes `--port=$PORT` to **both** peers of all three
+    pairs (steps 1+2, step 3, and both floor pairs) and keeps the client's
+    `--join=127.0.0.1:$PORT`, so the host binds exactly what the client joins.
+- **Both paths proven, plus the pre-fix failure as a negative control**
+  (`.goals/evidence/g7c-smoke/`):
+
+  | run | before the fix | after the fix |
+  |---|---|---|
+  | `OUT=<tmp>/nested` (dir absent) | `exit 1` — `nested/host.log: No such file or directory`, `FAIL client never connected` (`negative-control-prefix-out.log`) | `exit 0`, all checks `ok`, logs land in the nested dir (`run-default-port-nested-out.log`) |
+  | `PORT=7901` | `exit 1` — host logged `hosting on port 7777`, client logged `joining 127.0.0.1:7901`, `FAIL client never connected` (`negative-control-prefix-port.log`) | `exit 0`, 33 checks, a real two-peer pair per phase (`run-port-7901-nested-out.log`) |
+
+  The pre-fix logs are committed because a check whose failing path was never
+  observed is an assumption (W3-B3a-2's rule): they show that a wrong port
+  produced a *one-player host that still ran to completion*, which is exactly the
+  silent degradation this task removes.
+- **Tests / import**: `tests/unit/test_launch_args.gd` gained 6 tests (port sets
+  the host port, port alone keeps `MENU`, port applies to a join without one,
+  `--join` port wins in either order, six bad values reported once each with the
+  default kept, inclusive `1`/`65535` bounds), written first and confirmed red
+  (5 failures) before the parser change. Full GUT 33 scripts / 465 tests /
+  12697 asserts exit 0 (`g7c-gut.log`); headless `--import` exit 0 with 0 error
+  lines (`g7c-import.log`). No Dev A file touched; no `.tscn` touched; no
+  `project.godot` / Input Map / autoload-signature / `Events` / save-schema / CI
+  / addons change.
+- **Not claimed**: the smoke still runs its pairs sequentially on one port, so a
+  parallel smoke is untested; the default port remains 7777 and nothing else in
+  the project reads `--port`. `net_lag` and the rest of W3-B5's console work are
+  untouched here — this task owns only the two tooling findings.
+
 ---
 
 ## Decisions made without a human
@@ -1035,6 +1089,42 @@ already recorded in a spec or a comment, the location is given.
       the seam produced — so the same command re-runs the proof against the real
       generator once it lands.
 
+31. **Smoke tooling: `--port` on both peers, and an explicit `--join` port wins
+    (W3-B3a-3/G7c).** The two findings W3-B3a-2 recorded and left unowned, fixed
+    as one task because each one makes a *different* invocation of the smoke
+    silently meaningless.
+    - *`mkdir -p "$OUT"` in the script, not a rule for the caller.* The DoD asks
+      for the smoke's output to be copied to `.goals/evidence/…`, and a copied
+      run is exactly the case where `OUT` points somewhere new; making the
+      caller responsible for a directory the script then writes into is the
+      defect, not the convention. One line, no change when `OUT` already exists.
+    - *`--port=<n>` added to `LaunchArgs` rather than refusing a non-default
+      `PORT`.* The asymmetry was never intentional: `main.gd` already hands
+      `options.port` to both `NetworkManager.host()` and `…join()`, so the only
+      missing piece was a way for a *host* to state its port. Adding the arg is
+      smaller than deleting `PORT` from the script and leaves the smoke able to
+      run on a free port alongside anything else (two-instance runs, CI
+      machines, a second smoke). It is parsed like `--seed` / `--smoke3`, with
+      the range validated (`1..65535`) because `is_valid_int()` alone accepts
+      `0` and negatives.
+    - *An explicit `--join=ip:port` beats `--port`, order-independently.* The
+      join's own port is the more specific statement about *that* connection, and
+      order-dependent parsing would make `--port=7800 --join=127.0.0.1:7900`
+      mean two different things depending on which came first. Resolution
+      therefore happens after the whole argv is read.
+    - *Both peers get `--port` in the smoke, the client keeps its explicit join
+      port.* Belt and braces on purpose: the pair is now symmetric
+      (`--host --port=$PORT` / `--join=127.0.0.1:$PORT --port=$PORT`) so a reader
+      sees one port value, and the client's connect target cannot silently
+      diverge from the host's bind.
+    - *The pre-fix failures are committed as negative controls.*
+      `.goals/evidence/g7c-smoke/negative-control-prefix-{out,port}.log` show the
+      old script exiting 1 for a missing `OUT` and for `PORT=7901` — in the port
+      case the host printed `hosting on port 7777` and ran a **one-player** run
+      to completion, which is the silent degradation the fix removes. A check
+      whose failing path was never observed is an assumption (decision 30), and
+      the same rule applies to a tooling claim.
+
 ---
 
 ## Running the game
@@ -1087,6 +1177,13 @@ The floor-sync phase launches two extra host/client pairs on `--seed=20261020`
 and `--seed=987654321` and compares each pair's `layout_hash` for equality; the
 seeds and the pair durations are overridable with `FLOOR_SEED_A`, `FLOOR_SEED_B`,
 `FLOOR_HOST_SECONDS` and `FLOOR_CLIENT_SECONDS`.
+
+The script creates `OUT` if it does not exist, so
+`OUT="$(mktemp -d)/nested" bash tools/smoke_two.sh` works and every log lands
+there. `PORT` (default 7777) is passed to **both** peers — `--port=$PORT` on the
+host and on the client, plus the client's `--join=127.0.0.1:$PORT` — so
+`PORT=7901 bash tools/smoke_two.sh` is a real two-peer session on 7901 rather
+than a one-player host on 7777 that nobody can join.
 
 ### Tests and import (what CI runs)
 

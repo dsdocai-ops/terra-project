@@ -11,12 +11,22 @@
 #    with the same --seed must generate the same floor — the two layout_hash
 #    values are compared for equality, not merely grepped for presence — and a
 #    third pair on a different --seed must land on a different hash.
-# Logs land in $OUT (default: a temp dir). Exit 0 when every check passes.
+# Logs land in $OUT (default: a temp dir; created if missing). Every pair runs on
+# $PORT, which both peers honour (--port on the host, --join=…:$PORT on the
+# client), so a non-default PORT is a real two-peer session. Exit 0 when every
+# check passes.
 #   GODOT=/path/to/godot tools/smoke_two.sh
 set -u
 GODOT="${GODOT:-godot}"
 PROJECT="$(cd "$(dirname "$0")/.." && pwd)"
 OUT="${OUT:-$(mktemp -d)}"
+# The caller may point OUT at a path that does not exist yet (including a nested
+# one); every log below is a plain `> "$OUT/…"` redirect, so make it first.
+mkdir -p "$OUT"
+# PORT reaches *both* peers: the host binds it via --port and the client joins
+# it via --join=…:PORT. Without --port the host kept binding
+# NetworkManager.DEFAULT_PORT (7777), so any other PORT produced a host nobody
+# could join and a silent one-player run.
 PORT="${PORT:-7777}"
 HOST_SECONDS="${HOST_SECONDS:-10}"
 CLIENT_SECONDS="${CLIENT_SECONDS:-5}"
@@ -29,10 +39,10 @@ check() {  # check <file> <grep -E pattern> <description>
 }
 
 # --- steps 1+2 ---
-"$GODOT" --headless --path "$PROJECT" -- --host "--smoke=$HOST_SECONDS" > "$OUT/host.log" 2>&1 &
+"$GODOT" --headless --path "$PROJECT" -- --host "--port=$PORT" "--smoke=$HOST_SECONDS" > "$OUT/host.log" 2>&1 &
 HOST_PID=$!
 sleep 2
-"$GODOT" --headless --path "$PROJECT" -- "--join=127.0.0.1:$PORT" "--smoke=$CLIENT_SECONDS" > "$OUT/client.log" 2>&1 &
+"$GODOT" --headless --path "$PROJECT" -- "--port=$PORT" "--join=127.0.0.1:$PORT" "--smoke=$CLIENT_SECONDS" > "$OUT/client.log" 2>&1 &
 CLIENT_PID=$!
 wait $HOST_PID $CLIENT_PID
 
@@ -69,10 +79,10 @@ if moved "$OUT/client.log" "Player$CLIENT_ID"; then echo "ok   client's own play
 # Give the first pair's sockets a beat to release before rebinding $PORT.
 # --debug-tools ensures the host's DebugConsole executes request_debug lines.
 sleep 1
-"$GODOT" --headless --path "$PROJECT" -- --host --debug-tools "--smoke3=$HOST3_SECONDS" > "$OUT/host3.log" 2>&1 &
+"$GODOT" --headless --path "$PROJECT" -- --host "--port=$PORT" --debug-tools "--smoke3=$HOST3_SECONDS" > "$OUT/host3.log" 2>&1 &
 HOST3_PID=$!
 sleep 2
-"$GODOT" --headless --path "$PROJECT" -- "--join=127.0.0.1:$PORT" --debug-tools "--smoke3=$CLIENT3_SECONDS" > "$OUT/client3.log" 2>&1 &
+"$GODOT" --headless --path "$PROJECT" -- "--port=$PORT" "--join=127.0.0.1:$PORT" --debug-tools "--smoke3=$CLIENT3_SECONDS" > "$OUT/client3.log" 2>&1 &
 CLIENT3_PID=$!
 wait $HOST3_PID $CLIENT3_PID
 
@@ -113,10 +123,10 @@ floor_hash() {  # floor_hash <file> <seed>
 # One host/client pair on a shared --seed; logs land in $OUT/*_floor_<tag>.log.
 run_floor_pair() {  # run_floor_pair <tag> <seed>
   sleep 1  # let the previous pair's sockets release before rebinding $PORT
-  "$GODOT" --headless --path "$PROJECT" -- --host "--seed=$2" "--smoke-floor=$FLOOR_HOST_SECONDS" > "$OUT/host_floor_$1.log" 2>&1 &
+  "$GODOT" --headless --path "$PROJECT" -- --host "--port=$PORT" "--seed=$2" "--smoke-floor=$FLOOR_HOST_SECONDS" > "$OUT/host_floor_$1.log" 2>&1 &
   local host_pid=$!
   sleep 2
-  "$GODOT" --headless --path "$PROJECT" -- "--join=127.0.0.1:$PORT" "--seed=$2" "--smoke-floor=$FLOOR_CLIENT_SECONDS" > "$OUT/client_floor_$1.log" 2>&1 &
+  "$GODOT" --headless --path "$PROJECT" -- "--port=$PORT" "--join=127.0.0.1:$PORT" "--seed=$2" "--smoke-floor=$FLOOR_CLIENT_SECONDS" > "$OUT/client_floor_$1.log" 2>&1 &
   local client_pid=$!
   wait $host_pid $client_pid
 }
