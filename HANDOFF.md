@@ -1342,6 +1342,113 @@ two-process transmission. No file on the "Ask first" list was touched — both n
 scripts are additions under `scripts/effects/`, and `ContentData` is unchanged —
 so no new numbered decision is required.
 
+#### G10 — the `Effect` skeleton: attach, detach and total cleanup (2026-10-20)
+
+The base every relic, mutation, synergy, class passive, Ascension and skill node
+is written as, and the class whose whole purpose is `detach()`: a relic dropped
+at a Shrine, or an effect torn down on room exit, must leave no modifier, no
+timer and no connection behind, or it keeps changing the game after it is gone.
+
+**`scripts/effects/effect.gd`** — `class_name Effect extends Node`, opening with
+the ownership line (`## Sync: host only.`) and the "clients hold no `Effect`
+instances" note. The spec's members are declared with the spec's names and types:
+`player: Player`, `source: ContentData`, `stacks: int = 1`, `_handles:
+Array[int]`, `_timers: Array[Timer]`. `attach(player, source, stacks)` keeps the
+spec's parameter names (no shadowing warning is raised for a parameter that
+shares a member's name — checked in the import log, which stays at zero warnings)
+and floors `stacks` at 1, so a rank of 0 cannot make a scaling helper divide by
+zero. It refuses a second attach without an intervening detach with a warning:
+an effect belongs to exactly one player at a time, and a second `_on_attach()`
+would double every modifier it added.
+
+`detach()` is one ordered teardown — `_release_handles()` → `_free_timers()` →
+`_disconnect_all()` → `_attached = false` → `_on_detach()` — and is a safe no-op
+on an unattached effect (the early return is what keeps `_on_detach()` from
+running for a cycle that never started). The base cleanup runs *before*
+`_on_detach()` so a subclass tears its own state down against a state that
+already holds no handles, timers or connections; the doc comment says so
+explicitly, because the one thing a subclass can still get wrong is registering
+something new inside `_on_detach()`.
+
+Modifiers are removed **by handle**, never by `remove_source()`: two effects on
+one player must not be able to take each other's modifiers down, even if they
+were built from the same content id. `modify(stat, flat, percent)` appends
+`stat_block.add_modifier(stat, flat, percent, source_id())` to `_handles`, and
+`source_id()` is `source.id` — the id that W4-B3 will also use as the tag that
+blocks self-retriggering, so the two rules cannot drift apart. Timers are
+`queue_free()`d rather than freed outright, so a `detach()` from inside a signal
+handler is safe. `_connections` is the `{signal, callable}` pair list
+`PLAN.md` G10 asked for: a connection made through a wrapper cannot be found
+again by name, and a lambda can never be disconnected at all, so `listen()`
+records the exact `Callable` it connected and `_disconnect_all()` disconnects
+that same one.
+
+**`tests/unit/test_effect_base.gd`** (14 tests / 64 asserts) covers the spec
+surface (the script declares `class_name Effect extends Node`, every spec member
+and method, and each method carries a `##` doc line — a method that loses its doc
+comment fails rather than passing on its name), `attach` carrying
+player/source/stacks, `_on_attach`/`_on_detach` each running exactly once per
+cycle, a second attach being refused, the full cleanup (modifier values back to
+base, `_handles` empty, timer freed and out of the tree, listener disconnected
+and the pair list empty), an unattached `detach()` being a no-op, and the
+`source_id()`-as-modifier-source link. Two negative-control-shaped cases are
+permanent: a second effect's modifier survives the first one's detach, and an
+effect on a player with no `StatBlock` component warns and records no handle
+instead of crashing. The player double is the real player scene with the
+`StatBlock` component hung on its bare `StatBlock` node, the same shape
+`test_hud_model.gd` uses for Dev A's missing `Health`.
+
+**Verified:** `-gtest=res://tests/unit/test_effect_base.gd` 14/14 green /
+64 asserts (`.goals/evidence/g10/test-effect-base.log`); written red first — GUT
+refused the file with a parse error because `Effect` did not exist
+(`g10/red-test-effect-base.log`) — and the failing path of the cleanup assertion
+was forced and kept: with `_release_handles()`'s removal loop stubbed out,
+exactly the two modifier-cleanup tests fail and nothing else, exit 1
+(`g10/negative-control-release-handles.log`), then reverted. Full suite
+**39 scripts / 603 tests / 603 passing / 55 180 asserts** exit 0
+(`g10/gut-full.log`, up from the 589 / 55 116 baseline); `--headless --path .
+--import` exit 0 with **0** error or warning lines and `Effect` registered as a
+global class (`g10/import.log`); headless `-- --host --debug-tools --smoke=6`
+exit 0 with 0 script/parse errors (`g10/launch-host.log`); two-instance smoke
+`GODOT=… OUT=… bash tools/smoke_two.sh` exit 0 with **35 `ok` / 0 FAIL**
+(`g10/smoke-run.log`, per-peer logs in `g10/smoke/`) with the standing layout
+hashes `3600649381522393848` and `536024383148136417` unchanged;
+`grep -rn "Engine.time_scale" scripts/ scenes/`, the `.base[` grep under
+`scripts/effects/` and the global-RNG grep all print nothing.
+
+**Judgment calls (HANDOFF decision 39).** (1) The `StatBlock` is resolved from
+the player by node name and **cast-checked** (`player.get_node_or_null(^
+"StatBlock") is StatBlock`), not written into the player scene: the player
+scene's component nodes (`StatBlock`, `Health`, `Hurtbox`, `StatusEffects`) are
+still bare `Node`s — `player.gd:159` carries the `TODO(stats-status)` that
+retypes them — so this goal supplies the component the way every other Week 2–4
+test does (a component hung on the node by the double) and leaves the scene
+alone. A player without the component gets one warning per dropped modifier
+rather than a crash or a silent no-op. (2) `_on_detach()` runs last (above).
+(3) Handles, not `remove_source()` (above). (4) `queue_free()` for timers
+(above). (5) `_start_timer()` is plain engine time and is documented as such:
+`every_seconds()` (G13) is the `TimeManager`-scaled loop, and the split is
+deliberate — a 30 s "invisible for 2 s" is not a time-stop-affected clock, a
+relic's "every 10 s" is.
+
+**New public surface beyond the declared spec signatures** (recorded per the
+BRIEF's rule; additions only, nothing renamed or removed): `stat_block`,
+`is_attached()`, `source_id()`, `_start_timer()`, `_resolve_stat_block()`,
+`_release_handles()`, `_free_timers()`, `_disconnect_all()`, `_connections`,
+`_attached`, `STAT_BLOCK_NODE`. `Effect` is a brand-new script, so no existing
+signature changed and nothing on the "Ask first" list was touched.
+
+**Blocked / not claimed.** This goal ships the skeleton and the cleanup only.
+`listen`'s player filter and `once_per_room` are G11, `chance`/`apply_status`/
+`deal_damage` are G12, `every_seconds` is G13, `EffectHost` is G14,
+`spawn`/`fire_projectile` are G15, and the proc limits are W4-B3 — so nothing
+here says anything about dispatch, depth or the per-frame cap. There is no
+client path because there is nothing for a client to do: clients hold no
+`Effect` instances, and this class reads no input and writes no replicated
+field, so no two-process behaviour is claimed. Nothing yet *attaches* an effect
+in the game (no relic content exists until W4-B5/B6); what is proved is that the
+attach/detach cycle is complete when they do.
+
 ---
 
 ## Decisions made without a human
@@ -2250,6 +2357,53 @@ already recorded in a spec or a comment, the location is given.
     - Nothing else on the Ask-first list was touched: no `project.godot`, no Input
       Map, no autoload public API beyond these signal arguments, no
       `scripts/data/` Resource, no save schema, no CI, no `addons/`.
+
+39. **`Effect`'s stat block is resolved from the player by name and cast-checked,
+    its modifiers are removed by handle, and its `_on_detach` runs last
+    (2026-10-20).** W4-B2's `Effect` base is the class every content item changes
+    the game through, and `detach()` is its whole point. Sanctioned by
+    `SPEC-effect-system.md` "Effect base class" (which declares `player`,
+    `source`, `stacks`, `_handles: Array[int]`, `_timers: Array[Timer]`,
+    `attach`, `detach`, `_on_attach`, `_on_detach`) and its "Proc chain limits"
+    rule 2, which reuses the effect's id as the self-retrigger tag. `Effect` is a
+    new script, so no existing signature changed and nothing on the Ask-first
+    list was touched; the decision is recorded for the additions and the two
+    choices a reader would otherwise have to reverse-engineer.
+
+    - **The `StatBlock` comes from `player.get_node_or_null(^"StatBlock")`,
+      cast-checked, with a settable `stat_block` override.** The player scene's
+      component nodes (`StatBlock`, `Health`, `Hurtbox`, `StatusEffects`) are
+      still bare `Node`s — `player.gd:159` carries the `TODO(stats-status)` that
+      retypes them — so writing the component into `player.tscn` would be a
+      cross-lane scene edit this goal does not need, and reading it untyped would
+      crash every relic the moment one attached. A player with no component gets
+      one warning per dropped modifier and an inert effect. The tests supply the
+      component on the node, the same shape `test_hud_model.gd` uses for Dev A's
+      missing `Health`; when stats-status retypes the node the swap is mechanical
+      and the tests keep passing.
+    - **Modifiers are removed by handle, never by `remove_source()`.** Two
+      effects on one player must not be able to take each other's modifiers down,
+      even if they were built from the same content id (Mimic Crown's copy will
+      carry a suffixed id, but a bug elsewhere should not be able to make one
+      relic's teardown erase another's buff). `modify()` records the handle
+      `add_modifier` returns; `detach()` removes exactly those.
+    - **`_on_detach()` runs after the base cleanup** (handles, timers,
+      connections), so a subclass tears its own state down against a state that
+      already holds nothing. The alternative order would let a subclass see
+      handles it is about to lose, at the cost of a base cleanup that never runs
+      if `_on_detach()` errors; the doc comment states the order and the one
+      thing a subclass can still get wrong (registering something inside
+      `_on_detach`).
+    - **Timers are `queue_free()`d, not freed outright**, so a `detach()` from
+      inside a signal handler is safe; they leave the tree at the end of the
+      frame, which is what the cleanup test awaits. `_start_timer()` is plain
+      engine time and is documented as such — `every_seconds()` (G13) is the
+      `TimeManager`-scaled loop, and the split is deliberate.
+    - **New public surface beyond the declared signatures** (additions only,
+      nothing renamed or removed): `stat_block`, `is_attached()`, `source_id()`,
+      `_start_timer()`, `_resolve_stat_block()`, `_release_handles()`,
+      `_free_timers()`, `_disconnect_all()`, `_connections`, `_attached`,
+      `STAT_BLOCK_NODE`.
 
 ---
 
