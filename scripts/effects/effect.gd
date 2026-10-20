@@ -268,6 +268,37 @@ func once_per_room(key: StringName) -> bool:
 	return true
 
 
+## Fires this effect for one use of an **active** relic's slot (SPEC-relics,
+## "Active relics": "Active relics are `Effect`s with `activate()`"). Returns
+## true when the activation applied, false when this relic has nothing to
+## activate right now — an empty charge, a target out of range, a locked affix.
+##
+## The base answers false with a warning: a passive effect is not an active relic
+## and a slot bound to one must refuse rather than look like it fired. The
+## controller (`ActiveRelicController`, W4-B7) is the only caller, and it spends
+## the charge and starts the cooldown only after this answers true — so a relic
+## that refuses costs the player nothing.
+##
+## The actives themselves are a week-8 content batch; this is the seam they land
+## on, and it is deliberately the same shape as `_on_self_hit`-style hooks: the
+## relic's own script decides, the system never guesses.
+func activate() -> bool:
+	push_warning("[effect] %s is not an active relic, activate() refused" % source_id())
+	return false
+
+
+## True when an active relic's charges refill when its player enters a room —
+## SPEC-relics, "Active relics": "charges refill per room where stated". The
+## relic's own script states it, so the rule is a property of the relic and not
+## of every active: a Bomb Bag that refills says so, one that does not keeps its
+## spent charges across a room change.
+##
+## The base answers false, which is the conservative reading: a relic that never
+## mentions a refill gets one refill only if it asks for it.
+func refills_charges_per_room() -> bool:
+	return false
+
+
 ## Runs `callable` every `interval` seconds of *this effect's own player's*
 ## scaled time — the spec's pinned clock for a periodic relic (Clockwork Heart's
 ## "every 10 s"), and the reason `every_seconds` exists at all rather than a

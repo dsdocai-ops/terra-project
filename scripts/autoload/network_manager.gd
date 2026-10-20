@@ -36,6 +36,16 @@ signal relic_pick_requested(index: int)
 ## offered `ids` at a shrine. The choice popup (ui-hud) listens; the host itself
 ## hears the Shrine's own node signal, so this is the client's copy of it.
 signal relic_offer_received(peer_id: int, ids: Array[StringName])
+## A client asked the host to use the active relic in `slot` (SPEC-relics
+## "Active relics"; W4-B7, G11). Emitted on the asking peer before the request
+## travels, the same shape as relic_pick_requested, so the client half is
+## observable where a single process cannot reach a real host.
+signal relic_activate_requested(slot: int)
+## A host's `relic_activated` broadcast landed on this peer: `peer_id` used the
+## active relic `relic_id` in `slot`. The HUD's cooldown sweep (G19) listens; the
+## host's own screen hears the controller's node signal as well, so this is the
+## other peers' copy.
+signal relic_activated_received(peer_id: int, slot: int, relic_id: StringName)
 
 const DEFAULT_PORT: int = 7777
 const MAX_PLAYERS: int = 4
@@ -352,6 +362,89 @@ func apply_relic_pick_broadcast(peer_id: int, relic_id: StringName) -> bool:
 	var player: Player = get_player(peer_id)
 	Events.relic_picked.emit(player, data)
 	print("[net] peer %d picked %s" % [peer_id, relic_id])
+	return true
+
+
+# --- the active relic use (W4-B7, G11) --------------------------------------
+
+
+## Client -> host: use the active relic in `slot` (SPEC-relics "Active relics":
+## "slot 1 on `relic_active_1`", "`request_activate_relic(slot)`"). The slot is
+## the only value a client contributes, and the host validates it against **that
+## peer's own controller** — it must hold an active in the slot, have a charge and
+## not be on cooldown — so a client can neither name a relic it does not hold nor
+## spend a teammate's charge (SPEC-networking: "Never trust client values beyond
+## ids and indices"). The body reads `multiplayer.get_remote_sender_id()` first,
+## as every `request_*` does.
+## Sync: host-authoritative. `ActiveRelicController.apply_activate_request()` is
+## the whole rule.
+@rpc("any_peer", "call_remote", "reliable")
+func request_activate_relic(slot: int) -> void:
+	var sender: int = multiplayer.get_remote_sender_id()
+	if not ActiveRelicController.apply_activate_request(sender, slot):
+		push_warning("[net] request_activate_relic refused (%s): sender %d slot %d" % [
+			ActiveRelicController.last_refusal, sender, slot])
+
+
+## Host -> every peer: `peer_id` used the active relic `relic_id` in `slot`. The
+## host's own screen already heard the controller's `slot_activated`; this is the
+## other peers' copy, so the HUD's cooldown sweep (G19) shows the use on every
+## screen (SPEC-relics "Testing": "active relic use visible to both"). It
+## announces a use that already happened, so it carries no charge or cooldown
+## state — the host is the only peer that keeps those.
+## Sync: host-authoritative, validated like every other host broadcast.
+@rpc("authority", "call_local", "reliable")
+func relic_activated(peer_id: int, slot: int, relic_id: StringName) -> void:
+	var sender: int = multiplayer.get_remote_sender_id()
+	if not can_accept_host_broadcast(sender):
+		push_warning("[net] relic_activated refused: sender %d may not announce a use here" % sender)
+		return
+	apply_relic_activation(peer_id, slot, relic_id)
+
+
+## The client-side entry point a press goes through: ask the host to use the
+## active relic in `slot`. On the host the same call applies directly, because
+## solo and a hosting peer are the same code path (SPEC-networking "Solo play is
+## a host with one peer"). A session with no remote host records the request and
+## says so rather than faking one, exactly like `send_pick_relic_request`.
+## Sync: the host applies; a client's own call never spends a charge.
+func send_activate_request(slot: int) -> bool:
+	relic_activate_requested.emit(slot)
+	if is_host:
+		return ActiveRelicController.apply_local_activation(slot)
+	if not can_send_request():
+		push_warning("[net] relic activation %d not sent: this session has no remote host to ask" % slot)
+		return false
+	print("[net] asked the host to use the relic in slot %d" % slot)
+	request_activate_relic.rpc_id(HOST_PEER_ID, slot)
+	return true
+
+
+## Host only. Announces a use to every remote peer, the same one rpc_id per peer
+## shape `route_relic_picked` uses. The host's own screen already heard the
+## controller's node signal, so this never loops back to the host.
+func route_relic_activated(player: Player, slot: int, relic_id: StringName) -> bool:
+	if not _announces_player_state() or player == null or relic_id == &"":
+		return false
+	var targets: Array[int] = remote_peer_ids()
+	if targets.is_empty():
+		return false
+	for peer_id: int in targets:
+		relic_activated.rpc_id(peer_id, player.peer_id, slot, relic_id)
+	return true
+
+
+## The receiving half of an activation: puts it on `relic_activated_received` for
+## this peer's presentation layer. The slot and the id are the host's word, so no
+## relic data is resolved here — a peer may not hold that relic's data at all, and
+## the HUD needs the slot it fired from, not the relic's stats. Returns false for
+## a payload that is not an activation (an empty id or a slot no controller has).
+func apply_relic_activation(peer_id: int, slot: int, relic_id: StringName) -> bool:
+	if relic_id == &"" or slot < 1:
+		push_warning("[net] relic_activated for slot %d id %s, ignored" % [slot, relic_id])
+		return false
+	relic_activated_received.emit(peer_id, slot, relic_id)
+	print("[net] peer %d used %s in slot %d" % [peer_id, relic_id, slot])
 	return true
 
 
