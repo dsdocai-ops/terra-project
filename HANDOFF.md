@@ -1439,15 +1439,90 @@ BRIEF's rule; additions only, nothing renamed or removed): `stat_block`,
 signature changed and nothing on the "Ask first" list was touched.
 
 **Blocked / not claimed.** This goal ships the skeleton and the cleanup only.
-`listen`'s player filter and `once_per_room` are G11, `chance`/`apply_status`/
-`deal_damage` are G12, `every_seconds` is G13, `EffectHost` is G14,
-`spawn`/`fire_projectile` are G15, and the proc limits are W4-B3 — so nothing
-here says anything about dispatch, depth or the per-frame cap. There is no
-client path because there is nothing for a client to do: clients hold no
-`Effect` instances, and this class reads no input and writes no replicated
-field, so no two-process behaviour is claimed. Nothing yet *attaches* an effect
-in the game (no relic content exists until W4-B5/B6); what is proved is that the
-attach/detach cycle is complete when they do.
+`chance`/`apply_status`/`deal_damage` are G12, `every_seconds` is G13,
+`EffectHost` is G14, `spawn`/`fire_projectile` are G15, and the proc limits are
+W4-B3 — so nothing here says anything about dispatch, depth or the per-frame
+cap. There is no client path because there is nothing for a client to do:
+clients hold no `Effect` instances, and this class reads no input and writes no
+replicated field, so no two-process behaviour is claimed. Nothing yet *attaches*
+an effect in the game (no relic content exists until W4-B5/B6); what is proved
+is that the attach/detach cycle is complete when they do. (G11 then added
+`listen`'s player filter and `once_per_room`; this paragraph is as G10 left it.)
+
+#### G11 — `listen`, the player filter, and `once_per_room` (2026-10-20)
+
+The two helpers the whole relic batch is written against: `listen` is how every
+one of the 20 Week 4 relics subscribes to the bus, and `once_per_room` is the
+base of every "once per room" relic (Second Wind, Cracked Shell, Panic Button).
+
+**`listen(sig, callable)`** (`scripts/effects/effect.gd`) now filters where the
+signal gives it something to filter on. Where `sig` declares a `Player`
+argument, the connection goes through a bound forwarder instead of the raw
+callable, and `_forward()` calls the handler only when the event's `Player`
+argument **is** this effect's own `player` — so an effect on player 1 never
+reacts to player 2's dodge, hit, pickup or room entry. Where the signal has no
+`Player` argument (`enemy_killed`, `hit_landed`, `floor_entered`, …) the named
+method itself is connected, untouched: `hit_landed` carries the attacker inside
+`HitData`, and filtering every effect on every hit is the effects' own job, not
+the base class's. The `Player` argument is located from the signal's
+**declaration**, read off the `Events` autoload's own script
+(`get_script_signal_list()`, the `test_events_bus.gd` precedent), not sniffed
+off a call: `player_dodged` carries it at index 0 and `room_entered(room,
+player)` at index 1, and both are covered.
+
+`Callable.bind()` appends its arguments *after* the signal's own — verified
+against the engine before this was written (`two.connect(Callable(self,
+"_dispatch").bind("CTX1", "CTX2"))` reaches `_dispatch(SIGA, SIGB, CTX1,
+CTX2)`) — so a single forwarder cannot receive a variable number of event
+arguments ahead of its bound pair. `DISPATCH_METHODS` therefore holds one tiny
+forwarder per signal arity (`_dispatch0` … `_dispatch4`), which is the widest
+signal on the bus (`status_applied`), and the arity is taken from the same
+declaration the player index came from. A signal wider than that is connected
+unfiltered with a warning rather than dropped. Every connect in the class now
+goes through `_connect_tracked()`, which records the pair for `detach()`, so a
+filtered connection is disconnected exactly like an unfiltered one — asserted,
+including that `Events.player_dodged.is_connected(effect._on_player_dodged)` is
+false after `detach()`.
+
+**`once_per_room(key)`** returns true the first time a key is asked for in a
+room and false on every later ask, and every key is granted again when
+`room_entered` fires. The base subscribes to `room_entered` itself in
+`attach()` — **directly, not through `listen()`**, because the reset is the
+room's rather than the entering player's (decision 40) — and clears the key set
+in `detach()` as well, so a re-attach cycle never inherits the previous one's
+budget. Keys are per-effect and per-name: two effects, and two things on one
+effect, never share a budget by accident.
+
+**Verified:** `-gtest=res://tests/unit/test_effect_base.gd` 24/24 green /
+98 asserts (`.goals/evidence/g11/test-effect-base.log`); written red first — 10
+failing tests, every failure for the right reason (`Nonexistent function
+'once_per_room'`, `Invalid access to property '_on_room_entered'`, and the
+three way short `_connections` count, `g11/red-test-effect-base.log`). Both
+failing paths were forced and kept: with the player filter removed from
+`_forward()`, exactly the two filter cases fail (`[1] expected to equal [0]:
+player 2's dodge never reaches player 1's effect`, and the same for the
+index-1 `room_entered` case) and nothing else —
+`g11/negative-control-player-filter.log`; with the `room_entered` subscription
+stubbed out, exactly four tests fail (the round-up of recorded connections, the
+two reset cases and the detach/disconnect case) and nothing else —
+`g11/negative-control-room-reset.log`; both reverted before the green run. Full
+suite **39 scripts / 613 tests / 613 passing / 55 214 asserts** exit 0
+(`g11/gut-full.log`, up from the 603 / 55 180 baseline); `--headless --path .
+--import` exit 0 with **0** error or warning lines (`g11/import.log`);
+two-instance smoke `GODOT=… OUT=… PORT=… bash tools/smoke_two.sh` exit 0 with
+**35 `ok` / 0 FAIL** (`g11/smoke-run.log`, per-peer logs in `g11/smoke/`), run
+even though this commit adds no RPC, as the standing two-process proof. No
+`Engine.time_scale`, no global RNG, no base-stat write, no Dev A file, no
+`.tscn`, and nothing on the "Ask first" list touched.
+
+**Blocked / not claimed.** `listen` proves the bus delivers a filtered event to
+a named method; it says nothing about proc depth, self-retriggering or the
+per-frame spawn cap, which are W4-B3 (G16–G18) and land in this same wrapper.
+Nothing in the game attaches an effect yet (no relic content until W4-B5/B6), so
+the filter is exercised against the test doubles only; and `once_per_room`'s
+"room" is whatever the room-populator emits `room_entered` for — Dev A's
+`floor-generation` (W3-A2) is still unlanded, so the reset is tested by
+emitting the bus directly.
 
 ---
 
@@ -2404,6 +2479,52 @@ already recorded in a spec or a comment, the location is given.
       `_start_timer()`, `_resolve_stat_block()`, `_release_handles()`,
       `_free_timers()`, `_disconnect_all()`, `_connections`, `_attached`,
       `STAT_BLOCK_NODE`.
+
+40. **`listen` filters by the `Player` argument the signal declares, and
+    `once_per_room` resets on any player's room entry (2026-10-20).** W4-B2's
+    `listen`/`once_per_room` are the helpers all 20 Week 4 relics are written
+    against. Sanctioned by `SPEC-effect-system.md` "Effect base class"
+    (`listen … auto-disconnect on detach, filters to this player where the
+    signal has one`; `once_per_room(key) # returns true the first time per
+    room`) and its unit-test line (`listen` filters by player; `once_per_room`
+    resets on `room_entered`). `Effect` is a script this run created, so no
+    existing signature changed and nothing on the Ask-first list was touched;
+    the decision is recorded for the additions and the three choices a reader
+    would otherwise have to reverse-engineer.
+
+    - **The filter is driven by the signal's declaration, not by sniffing a
+      call.** `_signal_arguments()` reads the `Events` autoload's own
+      `get_script_signal_list()` and `_player_argument_index()` takes the first
+      argument declared `Player`, so `player_dodged(player, perfect)` filters on
+      index 0 and `room_entered(room, player)` on index 1, and every emit of the
+      same signal is treated the same way. Reading the values instead would make
+      the filter depend on whether a given emit carried a player, which is how a
+      null-argument event slips past a filter meant to stop it. A signal the bus
+      does not declare is connected unfiltered, which is the safe direction for a
+      signal nobody has classified yet.
+    - **One forwarder per signal arity.** `Callable.bind()` appends its
+      arguments after the signal's, so the bound `(player_argument_index,
+      callable)` pair always lands last and a single method cannot receive a
+      variable number of event arguments ahead of it. `DISPATCH_METHODS` holds
+      `_dispatch0` … `_dispatch4` (the widest bus signal, `status_applied`,
+      carries four). A hypothetical wider signal is connected unfiltered with a
+      warning rather than silently dropped — a new bus signal must be handled,
+      not ignored.
+    - **`once_per_room`'s reset is subscribed directly, never through
+      `listen()`.** `room_entered` fires once per player who walks in, so the
+      player filter would make a teammate's entry miss the reset and leave a
+      class passive spent from the previous room; the spec's own wording is
+      "resets on `room_entered`", with no qualifier. The cost, stated plainly: a
+      teammate entering first resets this effect's budget slightly early. Keys
+      are cleared by `attach()` and `detach()` as well, so no cycle inherits
+      another's budget.
+    - **New surface beyond the declared signatures** (additions only, nothing
+      renamed or removed): `once_per_room()`'s backing `_room_keys`,
+      `DISPATCH_METHODS`/`PLAYER_CLASS`/`NO_PLAYER_ARGUMENT`,
+      `_connect_tracked()`, `_on_room_entered()`, `_signal_arguments()`,
+      `_player_argument_index()`, `_forward()` and `_dispatch0`–`_dispatch4`.
+      Every connect in the class now goes through `_connect_tracked()` so no
+      subscription can escape `detach()`.
 
 ---
 

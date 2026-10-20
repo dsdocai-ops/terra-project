@@ -20,6 +20,21 @@ extends Node
 ## Child node the `StatBlock` component lives on (the player scene's layout).
 const STAT_BLOCK_NODE: NodePath = ^"StatBlock"
 
+## The class name a signal's argument must carry to be the event's player
+## (SPEC-effect-system, "Events bus").
+const PLAYER_CLASS: String = "Player"
+## Returned by `_player_argument_index()` for a signal with no `Player`
+## argument: nothing to filter on.
+const NO_PLAYER_ARGUMENT: int = -1
+## One forwarder per signal arity, indexed by it. `Callable.bind()` appends its
+## arguments *after* the signal's own, so a single method cannot receive a
+## variable number of event arguments ahead of the bound pair; one method per
+## arity receives them positionally instead. Five covers every signal on the
+## bus (the widest, `status_applied`, carries four).
+const DISPATCH_METHODS: Array[StringName] = [
+	&"_dispatch0", &"_dispatch1", &"_dispatch2", &"_dispatch3", &"_dispatch4",
+]
+
 ## The player this effect belongs to. Set by `attach()`.
 var player: Player = null
 ## The content this effect came from (`RelicData`, `MutationData`, ...). Its
@@ -44,6 +59,10 @@ var _timers: Array[Timer] = []
 ## an explicit list because a connection cannot be found again by name alone
 ## once a wrapper is involved, and a lambda can never be disconnected.
 var _connections: Array[Dictionary] = []
+## Keys `once_per_room()` has already granted this room. Cleared on every
+## `room_entered`, and by `attach()`/`detach()` so a cycle never inherits the
+## previous one's budget.
+var _room_keys: Dictionary[StringName, bool] = {}
 var _attached: bool = false
 
 
@@ -61,6 +80,8 @@ func attach(player: Player, source: ContentData, stacks: int = 1) -> void:
 	self.stacks = maxi(stacks, 1)
 	stat_block = _resolve_stat_block()
 	_attached = true
+	_room_keys.clear()
+	_connect_tracked(Events.room_entered, _on_room_entered)
 	_on_attach()
 
 
@@ -75,6 +96,7 @@ func detach() -> void:
 	_release_handles()
 	_free_timers()
 	_disconnect_all()
+	_room_keys.clear()
 	_attached = false
 	_on_detach()
 
@@ -109,14 +131,39 @@ func _on_detach() -> void:
 ## Connects `callable` to `sig` and records the connection, so `detach()`
 ## disconnects it. `callable` must be a named method on this effect: a lambda
 ## cannot be disconnected and never fires under the test harness.
+##
+## Where the signal declares a `Player` argument, the connection is filtered
+## through `_forward()` and the handler runs only for events belonging to this
+## effect's own player — an effect on player 1 never reacts to player 2's dodge,
+## hit, pickup or room entry. A signal with no `Player` argument is connected
+## untouched, so the handler is the named method itself (`hit_landed` carries
+## the attacker inside `HitData` and is deliberately unfiltered).
 func listen(sig: Signal, callable: Callable) -> void:
 	if not callable.is_valid():
 		push_warning("[effect] %s: listen() needs a callable" % source_id())
 		return
-	if sig.is_connected(callable):
+	var args: Array[Dictionary] = _signal_arguments(sig)
+	var index: int = _player_argument_index(args)
+	if index == NO_PLAYER_ARGUMENT:
+		_connect_tracked(sig, callable)
 		return
-	sig.connect(callable)
-	_connections.append({"signal": sig, "callable": callable})
+	if args.size() >= DISPATCH_METHODS.size():
+		push_warning("[effect] %s: %s carries more arguments than the filter forwards, connected unfiltered" % [source_id(), sig.get_name()])
+		_connect_tracked(sig, callable)
+		return
+	_connect_tracked(sig, Callable(self, DISPATCH_METHODS[args.size()]).bind(index, callable))
+
+
+## True the first time `key` is asked for in this room and false on every later
+## ask; every key is granted again when `room_entered` fires. The base of every
+## "once per room" relic (Second Wind, Cracked Shell, Panic Button): `key` is
+## the caller's own name for the thing it is spending, so two effects — and two
+## abilities on one effect — never share a budget by accident.
+func once_per_room(key: StringName) -> bool:
+	if _room_keys.has(key):
+		return false
+	_room_keys[key] = true
+	return true
 
 
 ## Adds a stat modifier carrying this effect's id as its source, and records
@@ -192,3 +239,85 @@ func _disconnect_all() -> void:
 		if sig.is_connected(callable):
 			sig.disconnect(callable)
 	_connections.clear()
+
+
+## Connects `callable` and records the pair for `detach()`. The only place this
+## class connects anything, so no subscription can escape the teardown.
+func _connect_tracked(sig: Signal, callable: Callable) -> void:
+	if sig.is_connected(callable):
+		return
+	sig.connect(callable)
+	_connections.append({"signal": sig, "callable": callable})
+
+
+## Clears every `once_per_room()` key. Subscribed directly, never through
+## `listen()`: the reset is the room's, not the entering player's, and a
+## teammate walking in must not leave this effect's relic spent from the room
+## before (SPEC-effect-system, "returns true the first time per room").
+func _on_room_entered(_room: Node, _player: Player) -> void:
+	_room_keys.clear()
+
+
+## The arguments `sig` is declared with on the `Events` bus, or an empty array
+## when it is not one of the bus's signals. Read from the autoload's own script
+## (the `test_events_bus.gd` precedent) so a new or retyped signal is filtered
+## without a second list here to keep in step.
+func _signal_arguments(sig: Signal) -> Array[Dictionary]:
+	var found: Array[Dictionary] = []
+	var script: Script = Events.get_script()
+	if script == null:
+		return found
+	for entry: Dictionary in script.get_script_signal_list():
+		if StringName(entry.get("name", &"")) != sig.get_name():
+			continue
+		var declared: Array = entry.get("args", [])
+		for argument: Variant in declared:
+			if argument is Dictionary:
+				found.append(argument)
+		return found
+	return found
+
+
+## The position of `sig`'s `Player` argument, or `NO_PLAYER_ARGUMENT` when it
+## has none. Taken from the declaration rather than sniffed off a call, so the
+## same signal is filtered the same way for every emit.
+func _player_argument_index(args: Array[Dictionary]) -> int:
+	for i: int in args.size():
+		var argument: Dictionary = args[i]
+		if int(argument.get("type", TYPE_NIL)) != TYPE_OBJECT:
+			continue
+		if String(argument.get("class_name", "")) == PLAYER_CLASS:
+			return i
+	return NO_PLAYER_ARGUMENT
+
+
+## Calls `callable` with the event's own `values`, unless the event's `Player`
+## argument says the event belongs to someone else. The negative control for
+## the filter: a foreign event returns without calling anything at all.
+func _forward(values: Array, argument_index: int, callable: Callable) -> void:
+	if argument_index >= 0 and argument_index < values.size():
+		if values[argument_index] != player:
+			return
+	callable.callv(values)
+
+
+## One forwarder per signal arity: the event's arguments arrive first and the
+## bound `(argument_index, callable)` pair last. See `DISPATCH_METHODS`.
+func _dispatch0(argument_index: int, callable: Callable) -> void:
+	_forward([], argument_index, callable)
+
+
+func _dispatch1(a: Variant, argument_index: int, callable: Callable) -> void:
+	_forward([a], argument_index, callable)
+
+
+func _dispatch2(a: Variant, b: Variant, argument_index: int, callable: Callable) -> void:
+	_forward([a, b], argument_index, callable)
+
+
+func _dispatch3(a: Variant, b: Variant, c: Variant, argument_index: int, callable: Callable) -> void:
+	_forward([a, b, c], argument_index, callable)
+
+
+func _dispatch4(a: Variant, b: Variant, c: Variant, d: Variant, argument_index: int, callable: Callable) -> void:
+	_forward([a, b, c, d], argument_index, callable)

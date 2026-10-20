@@ -28,17 +28,24 @@ const EPSILON: float = 0.0001
 ## The spec's public surface for the base class (SPEC-effect-system, "Effect
 ## base class"), minus the helpers the later W4-B2 goals fill in.
 const SPEC_MEMBERS: Array[String] = ["player", "source", "stacks", "stat_block", "_handles", "_timers"]
-const SPEC_METHODS: Array[String] = ["attach", "detach", "_on_attach", "_on_detach", "listen", "modify"]
+const SPEC_METHODS: Array[String] = ["attach", "detach", "_on_attach", "_on_detach", "listen", "once_per_room", "modify"]
+
+## The listeners `TrackedEffect` makes in `_on_attach()`, in order: one signal
+## with no `Player` argument (`enemy_killed`, connected untouched), two whose
+## `Player` argument is filtered (index 0 on `player_dodged`, index 1 on
+## `room_entered`), plus the base class's own `room_entered` reset subscription.
+const LISTENERS_PER_EFFECT: int = 4
 
 var _player: Player
+var _other_player: Player
 var _block: StatBlock
 var _source: ContentData
 ## Every effect this test attached, so no listener is left on the global bus.
 var _effects: Array[Effect] = []
 
 
-## The effect under test: adds two modifiers, opens one timer and makes one
-## listener, counting every lifecycle call so the test can pin them.
+## The effect under test: adds two modifiers, opens one timer and makes its
+## listeners, counting every lifecycle call so the test can pin them.
 class TrackedEffect:
 	extends Effect
 
@@ -48,6 +55,14 @@ class TrackedEffect:
 	var detach_calls: int = 0
 	var timer_calls: int = 0
 	var kills_seen: int = 0
+	## Dodges seen at all, and dodges that belonged to someone else. The second
+	## only moves if a foreign event is forwarded, so it is the filter's
+	## negative control rather than a second way to say the same thing.
+	var dodge_calls: int = 0
+	var foreign_dodges: int = 0
+	var last_dodge_player: Player = null
+	var last_perfect: bool = false
+	var rooms_seen: int = 0
 
 	func _on_attach() -> void:
 		attach_calls += 1
@@ -55,6 +70,8 @@ class TrackedEffect:
 		modify(StatBlock.Stat.MOVE_SPEED, 0.0, 0.25)
 		_start_timer(TIMER_SECONDS, _on_timer)
 		listen(Events.enemy_killed, _on_enemy_killed)
+		listen(Events.player_dodged, _on_player_dodged)
+		listen(Events.room_entered, _on_room_seen)
 
 	func _on_detach() -> void:
 		detach_calls += 1
@@ -65,9 +82,22 @@ class TrackedEffect:
 	func _on_enemy_killed(_enemy: Node, _hit: HitData) -> void:
 		kills_seen += 1
 
+	func _on_player_dodged(event_player: Player, perfect: bool) -> void:
+		dodge_calls += 1
+		if event_player != player:
+			foreign_dodges += 1
+		last_dodge_player = event_player
+		last_perfect = perfect
+
+	func _on_room_seen(_room: Node, event_player: Player) -> void:
+		rooms_seen += 1
+		if event_player != player:
+			foreign_dodges += 1
+
 
 func before_each() -> void:
 	_player = _make_player(true)
+	_other_player = _make_player(true)
 	_block = _player.get_node(STAT_BLOCK_NODE) as StatBlock
 	_source = ContentData.new()
 	_source.id = &"test_relic"
@@ -218,9 +248,109 @@ func test_detach_frees_every_timer_and_takes_it_out_of_the_tree() -> void:
 
 func test_listen_records_a_named_method_and_fires_it() -> void:
 	var effect: TrackedEffect = _attach(TrackedEffect.new()) as TrackedEffect
-	assert_eq(effect._connections.size(), 1, "one connection recorded")
+	assert_eq(effect._connections.size(), LISTENERS_PER_EFFECT, "every listener is recorded for detach")
 	Events.enemy_killed.emit(_player, null)
 	assert_eq(effect.kills_seen, 1, "the named method fires while attached")
+
+
+## A signal with no `Player` argument is connected untouched, and the named
+## method itself is the connection — the filter must not wrap what it has no
+## reason to look at.
+func test_listen_leaves_a_signal_without_a_player_argument_unfiltered() -> void:
+	var effect: TrackedEffect = _attach(TrackedEffect.new()) as TrackedEffect
+	assert_true(Events.enemy_killed.is_connected(effect._on_enemy_killed), "connected directly")
+	Events.enemy_killed.emit(_other_player, null)
+	assert_eq(effect.kills_seen, 1, "an argument that is not a Player does not gate it")
+
+
+## The filter: an effect attached to player 1 reacts to player 1's dodge and
+## never to player 2's. The negative control is `dodge_calls` staying at zero —
+## the handler did not run at all — rather than a counter merely being lower.
+func test_listen_filters_an_event_that_belongs_to_another_player() -> void:
+	var effect: TrackedEffect = _attach(TrackedEffect.new()) as TrackedEffect
+	Events.player_dodged.emit(_other_player, true)
+	assert_eq(effect.dodge_calls, 0, "player 2's dodge never reaches player 1's effect")
+	assert_eq(effect.foreign_dodges, 0, "and nothing was forwarded to be counted")
+	Events.player_dodged.emit(_player, true)
+	assert_eq(effect.dodge_calls, 1, "player 1's own dodge does")
+	assert_eq(effect.last_dodge_player, _player, "and the handler saw the real arguments")
+	assert_true(effect.last_perfect, "including everything after the player argument")
+
+
+## The `Player` argument is found where the signal declares it, not assumed to
+## be first: `room_entered(room, player)` carries it at index 1.
+func test_listen_finds_the_player_argument_where_the_signal_declares_it() -> void:
+	var effect: TrackedEffect = _attach(TrackedEffect.new()) as TrackedEffect
+	var room: Node = add_child_autofree(Node.new())
+	Events.room_entered.emit(room, _other_player)
+	assert_eq(effect.rooms_seen, 0, "a teammate's entry does not reach this effect's handler")
+	Events.room_entered.emit(room, _player)
+	assert_eq(effect.rooms_seen, 1, "its own player's entry does")
+
+
+func test_detach_disconnects_a_filtered_listener() -> void:
+	var effect: TrackedEffect = _attach(TrackedEffect.new()) as TrackedEffect
+	Events.player_dodged.emit(_player, false)
+	assert_eq(effect.dodge_calls, 1)
+	effect.detach()
+	assert_false(Events.player_dodged.is_connected(effect._on_player_dodged), "the wrapper is gone")
+	Events.player_dodged.emit(_player, false)
+	assert_eq(effect.dodge_calls, 1, "no event reaches a detached effect")
+
+
+func test_once_per_room_is_true_once_and_false_after() -> void:
+	var effect: TrackedEffect = _attach(TrackedEffect.new()) as TrackedEffect
+	assert_true(effect.once_per_room(&"second_wind"), "the first ask in a room is granted")
+	assert_false(effect.once_per_room(&"second_wind"), "and every later ask is refused")
+	assert_false(effect.once_per_room(&"second_wind"))
+
+
+func test_once_per_room_keys_are_independent() -> void:
+	var effect: TrackedEffect = _attach(TrackedEffect.new()) as TrackedEffect
+	assert_true(effect.once_per_room(&"second_wind"))
+	assert_true(effect.once_per_room(&"panic_button"), "another key is its own budget")
+	assert_false(effect.once_per_room(&"second_wind"))
+	assert_false(effect.once_per_room(&"panic_button"))
+
+
+func test_once_per_room_resets_when_a_room_is_entered() -> void:
+	var effect: TrackedEffect = _attach(TrackedEffect.new()) as TrackedEffect
+	var room: Node = add_child_autofree(Node.new())
+	assert_true(effect.once_per_room(&"cracked_shell"))
+	assert_false(effect.once_per_room(&"cracked_shell"))
+	Events.room_entered.emit(room, _player)
+	assert_true(effect.once_per_room(&"cracked_shell"), "a new room grants it again")
+
+
+## The reset is the room's, not the entering player's: `room_entered` fires once
+## per player who walks in, and a teammate's entry must not leave a class
+## passive spent from the previous room (the base subscribes directly, never
+## through the player filter).
+func test_once_per_room_resets_on_any_players_room_entry() -> void:
+	var effect: TrackedEffect = _attach(TrackedEffect.new()) as TrackedEffect
+	var room: Node = add_child_autofree(Node.new())
+	assert_true(effect.once_per_room(&"cracked_shell"))
+	Events.room_entered.emit(room, _other_player)
+	assert_true(effect.once_per_room(&"cracked_shell"))
+
+
+func test_once_per_room_is_its_own_budget_on_each_effect() -> void:
+	var first: TrackedEffect = _attach(TrackedEffect.new()) as TrackedEffect
+	var second: TrackedEffect = _attach(TrackedEffect.new()) as TrackedEffect
+	assert_true(first.once_per_room(&"second_wind"))
+	assert_false(first.once_per_room(&"second_wind"))
+	assert_true(second.once_per_room(&"second_wind"), "one effect's spend is not another's")
+
+
+func test_detach_disconnects_the_room_listener_and_clears_the_keys() -> void:
+	var effect: TrackedEffect = _attach(TrackedEffect.new()) as TrackedEffect
+	assert_true(Events.room_entered.is_connected(effect._on_room_entered), "the base subscribed")
+	assert_true(effect.once_per_room(&"second_wind"))
+	effect.detach()
+	assert_false(Events.room_entered.is_connected(effect._on_room_entered), "the reset listener is gone")
+	assert_true(effect._room_keys.is_empty(), "and no spent key survives the detach")
+	effect.attach(_player, _source, 1)
+	assert_true(effect.once_per_room(&"second_wind"), "a fresh cycle starts with a fresh budget")
 
 
 func test_detach_disconnects_every_listener() -> void:
