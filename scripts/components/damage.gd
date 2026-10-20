@@ -7,8 +7,10 @@ extends RefCounted
 ##   raw         = hit.base_damage * (attacker.ATTACK / 100.0) * hit.ability_power_scale(attacker.ABILITY_POWER)
 ##   crit        = roll(attacker.CRIT_CHANCE + hit.bonus_crit_chance), forced true when the target has MARK
 ##   crit_mult   = 1.5 + attacker.CRIT_DAMAGE if crit else 1.0
-##   status_mult = 1.0 (+0.25 Kindling on BURN, +1.0 Permafrost on FREEZE once,
-##                      +UNRAVEL stacks * 0.1 -- land with StatusEffects, week 4)
+##   status_mult = 1.0 (+UNRAVEL stacks * 0.1, read off the target's
+##                      StatusEffects -- landed in G22; Kindling's +0.25 on BURN
+##                      and Permafrost's +1.0 on FREEZE are the attacker-side
+##                      terms G23 adds beside it)
 ##   defense     = max(target.DEFENSE, 0)
 ##   mitigation  = 100.0 / (100.0 + defense)
 ##   final       = round(raw * crit_mult * status_mult * hit.multiplier * mitigation), min 1 on a connecting hit
@@ -51,15 +53,25 @@ static func _crit_rng(rng: RandomNumberGenerator) -> RandomNumberGenerator:
 ## HitInfo; the fields the formula reads match by name. `rng` is the host's
 ## seeded generator for the run; null uses Damage's fallback generator. A forced
 ## crit (MARK) short-circuits, so it consumes no draw.
+##
+## `target_statuses` is the target's `StatusEffects` component, and it is where
+## the formula's `status_mult` term comes from: UNRAVEL's "+10 % all damage taken
+## per stack" (G22). It is a trailing optional argument so every week-2 caller
+## and the golden table keep their exact behaviour — a null component leaves
+## `status_mult` at 1.0 — and so the attacker-side terms (Kindling's BURN bonus,
+## Permafrost's FREEZE bonus) can be added beside it by G23 without a second
+## signature change.
 static func compute(attacker: StatBlock, target: StatBlock, hit: HitData, \
-		rng: RandomNumberGenerator = null) -> int:
+		rng: RandomNumberGenerator = null, target_statuses: StatusEffects = null) -> int:
 	var crit_rng: RandomNumberGenerator = _crit_rng(rng)
 	var raw := hit.base_damage * (attacker.get_value(StatBlock.Stat.ATTACK) / ATTACK_REFERENCE) \
 		* hit.ability_power_scale(attacker.get_value(StatBlock.Stat.ABILITY_POWER))
 	var crit := hit.force_crit \
 		or crit_rng.randf_range(CRIT_ROLL_MIN, CRIT_ROLL_MAX) < (attacker.get_value(StatBlock.Stat.CRIT_CHANCE) + hit.bonus_crit_chance)
 	var crit_mult := (BASE_CRIT_MULTIPLIER + attacker.get_value(StatBlock.Stat.CRIT_DAMAGE)) if crit else 1.0
-	var status_mult := 1.0  # status terms land with StatusEffects (week 4)
+	var status_mult := 1.0
+	if target_statuses != null:
+		status_mult = target_statuses.damage_taken_multiplier()
 	var defense := maxf(target.get_value(StatBlock.Stat.DEFENSE), 0.0)
 	var mitigation := MITIGATION_BASE / (MITIGATION_BASE + defense)
 	var final := roundi(raw * crit_mult * status_mult * hit.multiplier * mitigation)

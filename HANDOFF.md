@@ -2316,8 +2316,8 @@ add to the cap, the duration is refreshed, never accumulated — which is the
 spec's own wording for BURN ("refresh duration, stacks add DPS") read across
 every row; the rows' individual behaviour (CHILL→FREEZE, MARK's consumption,
 SHOCK's chaining, TOXIN's healing penalty, UNRAVEL's taken-damage rule) is G21
-and G22 — **G21 landed the first two on 2026-10-20, see its section below; G22
-still owns the last three** — and this file pins the core they extend. (3) A tick
+and G22 — **both landed on 2026-10-20, see their sections below; every row of the
+table now has its behaviour, and this file pins the core they extend**. (3) A tick
 is handed to
 `Health` as a **finished `HitData`**, through `apply_damage()` and never by
 writing HP, which is SPEC-combat-core's one entry point; it deliberately bypasses
@@ -2347,8 +2347,9 @@ damage-relevant field names. CHILL's slow, FREEZE's immobility, SHOCK's chain,
 TOXIN's healing penalty, MARK's consumption and UNRAVEL's taken-damage bonus were
 **not** implemented at this goal's commit: G20 shipped the core and its tables,
 and G21/G22 add the rows' own behaviour on top. **CHILL, FREEZE and MARK landed
-in G21 on 2026-10-20** — the `#### G21` section immediately below; SHOCK, TOXIN,
-BLEED and UNRAVEL are still open, and are G22. The week-12 balance pass
+in G21 on 2026-10-20** — the `#### G21` section immediately below — **and SHOCK,
+TOXIN, BLEED and UNRAVEL landed in G22 the same day** (the `#### G22` section
+below it), so all eight rows of the table are implemented together with the core. The week-12 balance pass
 (SPEC-stats-status, "Open questions") owns CHILL, SHOCK, BLEED and UNRAVEL's
 durations and TOXIN's and BLEED's rates; they are starting values here, named so
 the pass has one place to edit. No status is yet applied by any content — no
@@ -2468,6 +2469,168 @@ MARK's forced crit, `status_resistance`) and G24-G26 (the six combos, the two
 multiplier hooks, `Scaling`) are unlanded too, so `mark_forces_crit()` and
 `consume_freeze_double()` have no production caller yet and "next hit double
 damage" is armed and spendable but read by nothing.
+
+---
+
+#### G22 — SHOCK, TOXIN, BLEED, and UNRAVEL (2026-10-20)
+
+The second half of W4-B4's status table, and the four rows the Week 4 relics in
+W4-B6 drive from the other side: Storm Sandals shocks, the three toxin relics
+apply TOXIN, the bleed relics open a wound, and UNRAVEL is the enemy-side row
+`Damage.compute` has to read. Together with G21 this closes the eight rows of
+SPEC-stats-status's table; G23 keeps the formula terms and the golden table.
+
+**What changed.** Four existing files and two new test doubles, and nothing else:
+
+- `scripts/components/status_effects.gd` (+228 / −11) — the deliverable.
+- `scripts/components/damage.gd` (+16 / −4) — one optional parameter and the
+  UNRAVEL term it feeds.
+- `tests/unit/test_status_effects.gd` (+282 / −1) — **14 new cases** (40 → 54),
+  written and run red first. The one removed line is the file's **missing trailing
+  newline** — the last `assert_true(_status.consume_mark(), …)` line, re-added
+  with one — the same tidy-up G21 recorded. No assertion was deleted, weakened or
+  `pending`-ed; the BLEED case was **edited**, not shortened (it measures its
+  moving window at the 10-stack cap it had just proved, rather than the 5-stack
+  figure it was written with).
+- `tests/helpers/relic_marker_effect.gd` (18, new) — a no-op `Effect` whose only
+  job is to exist under an id, so a test can hold Lightning Rod or Plague
+  Doctor's Mask **before W4-B6's `.tres` files exist**. The relics stay data:
+  `has_relic()` reads an id off an `EffectHost`, and the marker is what the test
+  attaches to it.
+- `tests/helpers/status_enemy_stub.gd` (44, new) — a `CharacterBody2D` in the
+  `enemy` group with a `Health` double, so the chain has something to find,
+  measure and damage.
+- `tests/helpers/status_health_stub.gd` (+28) — the `heal()` entry point that
+  routes through `healing_multiplier()`.
+
+**SHOCK.** The row is "on apply chains 30 % of trigger damage to up to 2 enemies
+within 96 px; Lightning Rod +2 chains", so the application needs the hit that
+caused it: `apply_status()` gained a trailing optional
+`trigger_damage: int = 0`, and a SHOCK application calls `_chain_shock(source,
+trigger_damage)`. An application carrying none — a bare `apply_status(SHOCK, 1)`
+— lands the status and chains **nothing**, because `chain_damage()` returns 0 and
+`_chain_shock()` returns before it looks for targets. `chain_targets()` reads the
+`ENEMY_TAG` group, keeps the `Node2D`s within `SHOCK_CHAIN_RADIUS` that are not
+the entity itself, sorts them nearest-first by squared distance and truncates to
+`chain_count()`, which is `SHOCK_CHAIN_TARGETS` (2) **plus**
+`LIGHTNING_ROD_CHAIN_BONUS` (2) when Lightning Rod is held — the relic adds to
+the count rather than replacing it, so a build without the relic chains exactly
+what the table says. The hit each chained enemy receives is the tick's shape (the
+status's element, the `status` tag, the status's name) plus `CHAIN_TAG`, so a
+listener or the W4-B11 overlay can tell a shock that travelled from a burn that
+did not; there is no proc depth and no crit, because a chain is a status result
+and not a link of effects. Re-applying SHOCK **refreshes** — G20's refresh path,
+which sets `remaining` back to the 4 s duration — and each application chains
+once: the row's chain is per application, so a second shock does not stack the
+first one's chain nor chain twice for one hit.
+
+**TOXIN.** Unlimited stacks, six seconds each and 1.5 % max HP/s/stack all fall
+out of G20's core: `UNLIMITED_STACKS` was already `-1` for this row and the tick
+was already proportional. New here is the healing penalty, exposed as
+`healing_multiplier()` — `TOXIN_HEALING_MULTIPLIER` (0.5) while TOXIN is held,
+1.0 otherwise — and applied **where the healing lands**, on the heal path, so a
+caller cannot forget it and the test asserts the HP that arrived rather than the
+number on the component. "Plague Doctor's Mask disables expiry" is read off the
+`EffectHost` governing the application: when TOXIN's clock runs out and
+`has_relic(PLAGUE_DOCTORS_MASK_ID, entry["source"])` is true, `_tick` **re-arms**
+the window instead of expiring, so the status persists, its stacks keep their
+meaning and the HUD's duration bar stays sane; drop the mask and the re-armed
+window runs out naturally. That is why `_entry()` now records `source` — the same
+effect that applied the status is the one a later tick asks.
+
+**BLEED.** Two clauses, both already carrying their numbers from G20: it stacks
+to `BLEED_MAX_STACKS` (10) and does not stack past it, and it ticks only while
+the target is moving — `is_moving()` gates the `_tick`, so 60 physics frames
+standing still deal exactly 0 damage and the same 60 frames moving deal
+`2 % × stacks` of max HP. At the cap on a 100 HP entity that is 20 damage a
+second, which is what the case asserts; the read `damage_per_second(BLEED, 10)`
+is asserted on its own so the arithmetic and the delivered tick are two claims.
+
+**UNRAVEL.** Stacks to 5 and reads `1.0 + 0.10 × stacks` through
+`damage_taken_multiplier()`. `Damage.compute` gained the trailing optional
+`target_statuses: StatusEffects = null` and folds that read into the formula's
+`status_mult` term — the parameter is optional so every week-2 caller and the
+golden table keep their exact behaviour, and so G23 can add Kindling's BURN term
+and Permafrost's FREEZE term beside it without a second signature change. This
+goal landed **only** the UNRAVEL term: the doc header now says which of the three
+terms are G23's, so the split is written down rather than inferred.
+
+**Relic lookup.** `has_relic(id, source)` consults both `EffectHost`s that
+govern an entity's statuses — the applier's first, the entity's own second — so
+lightning that a player applies to an enemy reads the **player's** Lightning Rod
+and a status an entity applies to itself reads that entity's own host, without
+either reading being hard-coded. The relic is never a number in this file; it is
+an id asked of a host, which is what keeps it an attachment instead of a code
+path. Both halves are covered by cases of their own: the applier's by
+`test_lightning_rod_adds_two_chains_read_off_the_effect_host`, and the **target's
+own** — the criterion's own wording, "read from the target's effect host" — by
+`test_the_targets_own_effect_host_is_read_for_the_lightning_rod`, which applies
+the shock with **no applier at all** (`source` null, so the entity's own host is
+the only place the rod can be found) and still expects four chained enemies.
+
+**Accept.** `-gtest=res://tests/unit/test_status_effects.gd` exit 0, **54/54,
+314 asserts** (`g22/test-status.log`, up from 40/249 at `247839f`). Full suite
+**47 scripts / 796 tests / 796 passing / 56 191 asserts, exit 0**
+(`g22/full-suite.log`, up from 47 / 782 / 782 / 56 126 — the delta is exactly
+this file's 14 tests and 65 asserts). `--headless --path . --import` exit 0 with
+zero error lines (`g22/import.log`). `test_damage.gd` re-run beside it at 15/15,
+45 asserts. The two-instance smoke test was **not** run: this commit adds no RPC,
+no replication and no spawner wiring, which is the condition SPEC-project's rule
+and the LESSONS evidence bound both state. A single-process
+`--headless --path . -- --host --debug-tools --smoke=6` boot was run instead —
+exit 0, zero error lines, one player spawned and moved (`g22/host-boot.log`) — to
+confirm the game still launches; it is not the two-instance test and is not
+offered as one.
+
+Red first: the cases were written before the constants existed and the run names
+exactly what was missing — the six new constants, `apply_status()` "expected at
+most 3 but received 4" and `compute()` "expected at most 4 but received 5"
+(`g22/red-test-status.log`). Thirteen of the fourteen cases were in that red run;
+the fourteenth — the target's-own-host reading, added once the implementation was
+in — had its failing path observed in the forced negative control below rather
+than in the red log, so it is not an assertion whose failure was never seen. One
+failing path was then forced, kept, reverted and the suite re-greened:
+`SHOCK_CHAIN_DAMAGE_FRACTION` zeroed → **exactly** the five cases that assert the
+chain's damage fail (49/54, 300/314 asserts, `g22/negative-control.log`), no
+toxin, bleed or unravel case moves. The revert is byte-exact — `sha1sum`
+`e31884b3…` before and after (`g22/negative-control-before.sha1`,
+`g22/negative-control-after.sha1`), and that is the same hash the 54/54 run above
+was made against.
+
+**Judgment calls (HANDOFF decision 52).** (1) The trigger damage arrives as a
+**trailing optional parameter** on `apply_status()`, so the signature the spec
+fixes (`apply_status(status, stacks, source: Node)`) is unchanged for every caller
+that does not need it, and a relic that applies a shock passes the hit's damage
+while one that applies a burn ignores it. (2) `has_relic()` reads **both** the
+applier's and the entity's own `EffectHost`, because a relic can govern an
+application from either side and neither reading is more "correct" than the
+other; the applier's is consulted first. (3) A mask-holding entity's TOXIN
+**re-arms its clock** rather than pinning a sentinel duration, so the status
+persists through the same expiry path every other status uses and the duration
+bar can still be read. (4) `Damage.compute` gains `target_statuses` as an
+optional fifth argument, rather than G22 reaching into `Damage` for the whole
+`status_mult` term or G23 being forced to re-open the signature. (5) The heal
+path this penalty is asserted through lives on the **`StatusHealthStub`** double,
+**blocked on Dev A (W2-A1, combat-core `Health`)**: SPEC-combat-core fixes
+`apply_damage(hit: HitInfo)` and the real `Health.heal()` is
+host-authoritative, so the double is the swap-in and the type rename is the
+migration. (6) `ENEMY_TAG`'s real registrant is **blocked on Dev A (W4-A1,
+enemies-ai)** — `scripts/generation/` is still empty and no enemy scene exists —
+so the group is whatever the world or a test double puts in it, and the swap-in
+is Dev A's `add_to_group` line. (7) A chain target that carries no `Health` is a
+**silent skip**, not a warning: a chain lands on whatever the group put in range,
+and the missing component is W2-A1's gap to report, not this one's.
+
+**Not claimed.** Nothing calls any of this yet: no relic, weapon, hazard or enemy
+applies a status in a running build (the 20 relics are W4-B6), and the component
+is still not composed onto the player scene — **blocked on Dev A (W2-A1,
+player.tscn)** — so all four rows are proven by the component's own tests and not
+by a live run. The chain looks for enemies in a group the real enemy base does not
+yet join, so in a running build it would find nobody. G23 (`Damage.compute`'s
+remaining `status_mult` terms, MARK's forced crit, `status_resistance`) and G24–G26
+(the six combos, the two multiplier hooks, `Scaling`) are unlanded, so
+`healing_multiplier()` and `damage_taken_multiplier()` have one production reader
+between them and no producer of a status at all.
 
 ---
 
@@ -4088,6 +4251,73 @@ already recorded in a spec or a comment, the location is given.
       stated as reads "through `StatBlock` values". Those two lines are the whole
       of the test file's deletions; no assertion was removed, weakened or
       `pending`-ed.
+52. **SHOCK's trigger damage is an optional trailing argument, a relic is asked of
+    both governing effect hosts, and Plague Doctor's Mask re-arms TOXIN's clock
+    (2026-10-20, W4-B4 / G22).** SPEC-stats-status fixes the four rows' numbers
+    but not how a chain is fed its trigger, who owns a relic that rescued a
+    status, or where a relic-driven exemption lives; those are choices, so they
+    are recorded here. `StatusEffects` gains `ENEMY_TAG`, `EFFECT_HOST_NODE`,
+    `CHAIN_TAG`, `SHOCK_CHAIN_DAMAGE_FRACTION`, `SHOCK_CHAIN_TARGETS`,
+    `SHOCK_CHAIN_RADIUS`, `LIGHTNING_ROD_ID`, `LIGHTNING_ROD_CHAIN_BONUS`,
+    `TOXIN_HEALING_MULTIPLIER`, `PLAGUE_DOCTORS_MASK_ID`,
+    `UNRAVEL_DAMAGE_TAKEN_PER_STACK`, `healing_multiplier()`,
+    `damage_taken_multiplier()`, `has_relic()`, `chain_count()`,
+    `chain_damage()`, `chain_targets()`, `chain_hit()`, `_chain_shock()`,
+    `health_of()`, `_deliver_to()`, `_effect_hosts()`, `_entity_position()` and
+    `_nearer_first()`, and one trailing optional parameter each on
+    `apply_status()` and `Damage.compute()` — all new surface on the two modules'
+    own scripts, so nothing on the project's Ask-first list moved: no `Events`
+    signal changed, no autoload's public API, no `scripts/data/` Resource and no
+    `.tscn`.
+    - **The trigger damage is a trailing optional parameter on
+      `apply_status()`.** SHOCK's row is stated in terms of "trigger damage",
+      which only the caller knows, so `apply_status(status, stacks, source,
+      trigger_damage)` carries it. Additive and defaulted: the signature the spec
+      fixes for every other status is unchanged, a relic that applies a burn
+      ignores the argument, and an application with no trigger damage chains
+      nothing rather than chaining a zero-damage hit.
+    - **`has_relic()` asks both effect hosts that govern an entity's statuses.**
+      A relic can govern an application from either side — a player's Lightning
+      Rod shocks an enemy, an enemy's own attachment could shock itself — so the
+      applier's `EffectHost` is consulted first and the entity's own second, and
+      each has a case: the applier's is the ordinary one, and the target's own is
+      asserted with **no applier at all**, so its host is the only place the rod
+      can be found. The relic is read as an **id off a host**, never as a number
+      or a branch in this file, which is what keeps Lightning Rod and Plague
+      Doctor's Mask content (W4-B6) rather than code.
+    - **Plague Doctor's Mask re-arms TOXIN's clock instead of pinning it.** When
+      TOXIN's `remaining` reaches zero and the source holds the mask, `_tick`
+      resets the window to the full duration rather than expiring. Pinning a
+      sentinel duration would have made the status unreadable to the HUD's
+      duration bar and would have hidden it from every code path that asks "is
+      this about to fall off"; re-arming keeps the status inside the same expiry
+      path every other status uses, and dropping the mask lets the re-armed window
+      run out naturally.
+    - **`Damage.compute` takes the target's `StatusEffects` as an optional fifth
+      argument.** The formula's `status_mult` term is the formula's to own, so
+      UNRAVEL's read lives on the component and the multiply lives in `Damage`.
+      Optional and defaulted to `null`, so every week-2 caller and the golden
+      table keep their exact behaviour and G23's attacker-side terms (Kindling's
+      BURN bonus, Permafrost's FREEZE bonus) can be added beside it without a
+      second signature change. Only the UNRAVEL term is landed here; the doc
+      header names the two G23 owns.
+    - **The heal path the TOXIN penalty is asserted through is the
+      `StatusHealthStub` double — blocked on Dev A (W2-A1, combat-core
+      `Health`).** The real `Health.heal()` is host-authoritative and emits
+      `Events.player_healed`, and does not exist yet; the row is therefore proven
+      by a strip-in double whose `heal()` multiplies the incoming amount by
+      `StatusEffects.healing_multiplier()`, so the assertion is on the HP that
+      landed and not on the multiplier alone. SPEC-combat-core's
+      `apply_damage(hit: HitInfo)` fixes the shape, so the swap-in is a type
+      rename.
+    - **`ENEMY_TAG` has no real registrant yet — blocked on Dev A (W4-A1,
+      enemies-ai).** `scripts/generation/` is still empty and no enemy scene
+      exists, so the group the chain reads is whatever the world or a test double
+      puts in it. The constant is named and documented so the swap-in is Dev A's
+      `add_to_group` line and nothing in this component changes. A chain target
+      that carries no `Health` is a **silent skip** rather than a warning: a chain
+      lands on whatever the group put in range, and a missing `Health` is W2-A1's
+      gap to report, not this component's.
 
 ---
 

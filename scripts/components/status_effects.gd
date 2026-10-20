@@ -53,6 +53,15 @@ const HEALTH_METHOD: StringName = &"apply_damage"
 ## no tag is treated as an enemy — the permissive default, so an enemy double or
 ## an untagged fixture behaves exactly as the spec's table says.
 const PLAYER_TAG: StringName = &"player"
+## The group the enemies a SHOCK application chains to are found in. The real
+## registrant is Dev A's `enemies-ai` enemy base — **blocked on Dev A (W4-A1)**
+## — so today the group is whatever the world (or a test double) puts in it; the
+## swap-in is Dev A's `add_to_group` line and nothing here changes.
+const ENEMY_TAG: StringName = &"enemy"
+## The `EffectHost` child a player carries (effect-system, W4-B2). Looked up by
+## name under an entity so the two relic-driven rows below can ask a host what it
+## holds without this component depending on the player scene.
+const EFFECT_HOST_NODE: NodePath = ^"EffectHost"
 ## Statuses a player can never receive. SPEC-stats-status, "Status effects",
 ## last line: "Players can receive BURN, CHILL, TOXIN, BLEED from enemies and
 ## hazards, never MARK/UNRAVEL/FREEZE."
@@ -63,6 +72,10 @@ const PLAYER_FORBIDDEN: Array[int] = [Status.MARK, Status.UNRAVEL, Status.FREEZE
 ## tag is the precedent for a hit tag outside the `Tags` vocabulary: this one
 ## describes the carrier, not the content.
 const STATUS_TAG: StringName = &"status"
+## Stamped on the hit a SHOCK chains to another enemy, on top of `STATUS_TAG` and
+## the status's name: a chain is a status result that travelled, and the debug
+## overlay (W4-B11) reads the two apart.
+const CHAIN_TAG: StringName = &"chain"
 
 ## Stack cap meaning "no cap" (TOXIN's "unlimited stacks").
 const UNLIMITED_STACKS: int = -1
@@ -109,6 +122,36 @@ const UNRAVEL_DURATION: float = 4.0
 const BURN_DAMAGE_PER_SECOND: float = 0.04
 const TOXIN_DAMAGE_PER_SECOND: float = 0.015
 const BLEED_DAMAGE_PER_SECOND: float = 0.02
+
+## SHOCK's chain, from SPEC-stats-status, SHOCK's row: "On apply, chains 30% of
+## trigger damage to up to 2 enemies within 96 px; Lightning Rod +2 chains". The
+## trigger damage is the hit that applied the shock, handed to `apply_status()`;
+## an application with no trigger damage (a bare `apply_status(SHOCK, 1)`) lands
+## the status and chains nothing.
+const SHOCK_CHAIN_DAMAGE_FRACTION: float = 0.30
+## How many enemies one application reaches before the Lightning Rod bonus.
+const SHOCK_CHAIN_TARGETS: int = 2
+## The radius the chain looks for its targets in, in pixels.
+const SHOCK_CHAIN_RADIUS: float = 96.0
+## The relic whose holder chains two enemies further, and what it adds. Read off
+## the `EffectHost` that governs the application through `has_relic()` — never
+## hard-coded into the chain count, so the relic stays data.
+const LIGHTNING_ROD_ID: StringName = &"lightning_rod"
+const LIGHTNING_ROD_CHAIN_BONUS: int = 2
+
+## TOXIN's healing penalty, from its row: "healing received -50%". Exposed as
+## `healing_multiplier()`, which the heal path multiplies the incoming amount by
+## — a readable property rather than a number the healer has to know about.
+const TOXIN_HEALING_MULTIPLIER: float = 0.5
+## The relic that stops TOXIN's clock, from its row: "Plague Doctor's Mask
+## disables expiry". Looked up by id on the governing `EffectHost`, the same way
+## Lightning Rod is.
+const PLAGUE_DOCTORS_MASK_ID: StringName = &"plague_doctors_mask"
+
+## UNRAVEL's taken-damage bonus, from its row: "+10% all damage taken per
+## stack". Read by `Damage.compute` through `damage_taken_multiplier()` and
+## folded into the formula's `status_mult` term.
+const UNRAVEL_DAMAGE_TAKEN_PER_STACK: float = 0.10
 
 ## CHILL's penalty per stack, as a `StatBlock` *percent* modifier on move and
 ## attack speed: SPEC-stats-status, "`-12% move and attack speed per stack`". A
@@ -216,7 +259,14 @@ var _freeze_double_ready: bool = false
 ## - a status in `PLAYER_FORBIDDEN` when the entity carries `PLAYER_TAG` (the
 ##   spec's last line, routinely reached and therefore silent);
 ## - every application on a peer that does not resolve statuses.
-func apply_status(status: Status, stacks: int = 1, source: Node = null) -> bool:
+##
+## `trigger_damage` is the damage of the hit that caused the application and is
+## only read by SHOCK, whose row is "chains 30% of trigger damage to up to 2
+## enemies within 96 px". It is a trailing optional argument, so the signature
+## the spec fixes (`apply_status(status, stacks, source: Node)`) is unchanged for
+## every caller that does not need it — a relic that applies a shock passes the
+## hit's damage and one that applies a burn ignores it.
+func apply_status(status: Status, stacks: int = 1, source: Node = null, trigger_damage: int = 0) -> bool:
 	if not _is_known(status):
 		push_warning("[status] %s: unknown status id %d refused" % [entity_name(), status])
 		return false
@@ -240,11 +290,14 @@ func apply_status(status: Status, stacks: int = 1, source: Node = null) -> bool:
 		return _freeze_from_chill(source)
 	entry["stacks"] = total
 	entry["remaining"] = duration(status)
+	entry["source"] = source if is_instance_valid(source) else null
 	if status == Status.FREEZE:
 		_freeze_double_ready = true
 	_sync_speed_modifiers(status)
 	status_applied.emit(status, total)
 	Events.status_applied.emit(entity(), status, total, source)
+	if status == Status.SHOCK:
+		_chain_shock(source, trigger_damage)
 	return true
 
 
@@ -327,6 +380,106 @@ func consume_mark() -> bool:
 		return false
 	clear(Status.MARK)
 	return true
+
+
+# --- the G22 rows' own reads and behaviour -----------------------------------
+
+## The factor incoming healing is multiplied by: TOXIN's row, "healing received
+## -50 %". 1.0 for an entity with no toxin. The heal path asks for this and
+## multiplies the amount it was about to grant — the penalty is applied where
+## the healing lands, so a caller cannot forget it and a test asserts the heal
+## that arrived rather than the number here.
+func healing_multiplier() -> float:
+	return TOXIN_HEALING_MULTIPLIER if has(Status.TOXIN) else 1.0
+
+
+## The factor every damaging hit against this entity is multiplied by: UNRAVEL's
+## row, "+10 % all damage taken per stack". 1.0 with no UNRAVEL. `Damage.compute`
+## reads it into the formula's `status_mult` term; Kindling's BURN term and
+## Permafrost's FREEZE term are the attacker-side terms G23 adds beside this one.
+func damage_taken_multiplier() -> float:
+	return 1.0 + UNRAVEL_DAMAGE_TAKEN_PER_STACK * float(stacks(Status.UNRAVEL))
+
+
+## True while the relic `id` is held by either effect host that governs this
+## entity's statuses: the applier's (the usual case — the relic that applied the
+## shock or the toxin is the player's) or, when the entity applied the status to
+## itself, the entity's own host. Read off an `EffectHost` and never off a
+## hard-coded number, so a relic stays an attachment rather than a code path.
+func has_relic(id: StringName, source: Node = null) -> bool:
+	for host: EffectHost in _effect_hosts(source):
+		if host.has_effect(id):
+			return true
+	return false
+
+
+## How many enemies one SHOCK application reaches: the spec's 2, plus
+## `LIGHTNING_ROD_CHAIN_BONUS` when Lightning Rod is held. The relic adds to the
+## count rather than replacing it, so a build without the relic chains exactly
+## what the table says.
+func chain_count(source: Node = null) -> int:
+	var bonus := LIGHTNING_ROD_CHAIN_BONUS if has_relic(LIGHTNING_ROD_ID, source) else 0
+	return SHOCK_CHAIN_TARGETS + bonus
+
+
+## The damage one chained enemy takes: 30 % of the trigger damage, rounded.
+## Zero for an application that carried none, which is what makes a bare
+## `apply_status(SHOCK, 1)` land the status and chain nothing.
+func chain_damage(trigger_damage: int) -> int:
+	return roundi(float(maxi(trigger_damage, 0)) * SHOCK_CHAIN_DAMAGE_FRACTION)
+
+
+## The enemies a SHOCK application chains to: the nearest ones to this entity
+## within `SHOCK_CHAIN_RADIUS`, nearest first, at most `chain_count()` of them,
+## and never this entity itself. The candidate set is the `ENEMY_TAG` group,
+## which is where Dev A's enemies register (**blocked on Dev A (W4-A1)** for the
+## real registrant; today it is whatever the world — or a test double — put
+## there). An entity the component does not carry to, or one with no `Health`,
+## is simply skipped by the delivery.
+func chain_targets(source: Node = null) -> Array[Node]:
+	var reachable: Array[Node] = []
+	var tree := get_tree()
+	if tree == null:
+		return reachable
+	var here := _entity_position()
+	for candidate: Node in tree.get_nodes_in_group(ENEMY_TAG):
+		if candidate == entity() or not is_instance_valid(candidate):
+			continue
+		var positioned := candidate as Node2D
+		if positioned == null:
+			continue
+		if here.distance_to(positioned.global_position) <= SHOCK_CHAIN_RADIUS:
+			reachable.append(positioned)
+	reachable.sort_custom(_nearer_first)
+	var chained: Array[Node] = []
+	var limit: int = chain_count(source)
+	for candidate: Node in reachable:
+		if chained.size() >= limit:
+			break
+		chained.append(candidate)
+	return chained
+
+
+## The hit a chained enemy receives: the status tick's shape (the status's
+## element, the `status` tag, the status's own name) plus `CHAIN_TAG`, so a
+## listener can tell a shock that travelled from a burn that did not. No proc
+## depth and no crit: a chain is a status result, not a chain link of effects.
+func chain_hit(amount: int) -> HitData:
+	var hit := tick_hit(Status.SHOCK, amount)
+	hit.tags.append(CHAIN_TAG)
+	return hit
+
+
+## Runs SHOCK's chain for one application. Called from `apply_status()` and
+## nowhere else, so the row has one implementation. A warning-free no-op when
+## the application carried no damage, which is the common case for a fixture and
+## a caller that applies a shock without a triggering hit.
+func _chain_shock(source: Node, trigger_damage: int) -> void:
+	var amount := chain_damage(trigger_damage)
+	if amount <= 0:
+		return
+	for target: Node in chain_targets(source):
+		_deliver_to(target, chain_hit(amount))
 
 
 # --- reads for the rest of the game ------------------------------------------
@@ -435,15 +588,13 @@ func is_moving() -> bool:
 func deal_status_damage(status: Status, amount: int) -> bool:
 	if amount <= 0:
 		return false
-	var sink: Node = health_component()
-	if sink == null:
+	if health_of(entity()) == null:
 		if not _warned_missing_health:
 			_warned_missing_health = true
 			push_warning("[status] %s: no %s to receive status damage, ticks dropped" % [
 				entity_name(), HEALTH_NODE])
 		return false
-	sink.call(HEALTH_METHOD, tick_hit(status, amount))
-	return true
+	return _deliver_to(entity(), tick_hit(status, amount))
 
 
 ## The `HitData` a tick hands over: the amount as both `base_damage` and
@@ -464,13 +615,33 @@ func tick_hit(status: Status, amount: int) -> HitData:
 ## rather than a typed cast because the component is Dev A's and does not exist
 ## yet.
 func health_component() -> Node:
-	var owner_entity := entity()
-	if owner_entity == null:
+	return health_of(entity())
+
+
+## The `Health` of any node, or null when it carries none. The one lookup every
+## status result's damage goes through — the entity's own tick and a SHOCK
+## chain's delivery to another enemy — so "who can receive status damage" is one
+## decision rather than two.
+func health_of(target: Node) -> Node:
+	if target == null or not is_instance_valid(target):
 		return null
-	var node: Node = owner_entity.get_node_or_null(HEALTH_NODE)
+	var node: Node = target.get_node_or_null(HEALTH_NODE)
 	if node == null or not node.has_method(HEALTH_METHOD):
 		return null
 	return node
+
+
+## Hands `hit` to `target`'s `Health`, returning whether a hit was delivered. A
+## target with no `Health` is a silent skip rather than a warning: a chain lands
+## on whatever the group put in range, and an enemy that carries no health yet is
+## not this component's problem to report (SPEC-combat-core owns the real
+## component — **blocked on Dev A (W2-A1)**).
+func _deliver_to(target: Node, hit: HitData) -> bool:
+	var sink: Node = health_of(target)
+	if sink == null:
+		return false
+	sink.call(HEALTH_METHOD, hit)
+	return true
 
 
 # --- ticking ----------------------------------------------------------------
@@ -507,7 +678,15 @@ func _tick(scaled_delta: float) -> void:
 			deal_status_damage(status, whole)
 		entry["carry"] = carry
 		if remaining <= 0.0 and duration(status) > NO_EXPIRY:
-			expired.append(status)
+			# SPEC-stats-status, TOXIN's row: "Plague Doctor's Mask disables
+			# expiry". The mask re-arms the clock instead of letting the toxin
+			# go, so a masked build's stacks persist and its bar still reads a
+			# sane value; dropping the mask lets the re-armed window run out
+			# naturally, which is what "disables expiry" means while it is held.
+			if status == Status.TOXIN and has_relic(PLAGUE_DOCTORS_MASK_ID, entry.get("source") as Node):
+				entry["remaining"] = duration(status)
+			else:
+				expired.append(status)
 	for status: int in expired:
 		clear(status)
 
@@ -583,11 +762,49 @@ func _freeze_from_chill(source: Node) -> bool:
 	return true
 
 
+## The effect hosts that govern this entity's statuses: the applier's first (the
+## relic that applied the status belongs to the player who applied it), then the
+## entity's own, if it carries one. Both are checked by `has_relic()`, so a relic
+## is found whether the entity applied the status to itself or had it applied.
+func _effect_hosts(source: Node) -> Array[EffectHost]:
+	var hosts: Array[EffectHost] = []
+	var applying := source as Effect
+	if applying != null and is_instance_valid(applying.host):
+		hosts.append(applying.host)
+	var owner_entity := entity()
+	if owner_entity == null:
+		return hosts
+	var own := owner_entity.get_node_or_null(EFFECT_HOST_NODE) as EffectHost
+	if own != null and not hosts.has(own):
+		hosts.append(own)
+	return hosts
+
+
+## This entity's position in the world, for the SHOCK radius measurement. Zero
+## for an entity that carries no transform, which puts every candidate at its own
+## distance from the origin rather than failing the chain.
+func _entity_position() -> Vector2:
+	var positioned := entity() as Node2D
+	return Vector2.ZERO if positioned == null else positioned.global_position
+
+
+## `sort_custom` predicate for the chain: true when `a` is nearer this entity
+## than `b`.
+func _nearer_first(a: Node, b: Node) -> bool:
+	var here := _entity_position()
+	var first := a as Node2D
+	var second := b as Node2D
+	return here.distance_squared_to(first.global_position) < here.distance_squared_to(second.global_position)
+
+
 ## The mutable record for `status`, created empty on first use. Dictionaries are
-## references, so the caller writes straight into the table.
+## references, so the caller writes straight into the table. `source` is the
+## effect that applied the status, kept so a later tick can ask the same host the
+## application asked (TOXIN's Plague Doctor's Mask exemption); it is null for an
+## application that named none.
 func _entry(status: int) -> Dictionary:
 	if not _active.has(status):
-		_active[status] = {"stacks": 0, "remaining": NO_EXPIRY, "carry": 0.0}
+		_active[status] = {"stacks": 0, "remaining": NO_EXPIRY, "carry": 0.0, "source": null}
 	return _active[status] as Dictionary
 
 

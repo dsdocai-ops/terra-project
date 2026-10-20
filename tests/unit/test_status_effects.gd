@@ -13,6 +13,12 @@ extends GutTest
 ## The rows' individual behaviour beyond the core is G21 (BURN, CHILL -> FREEZE,
 ## MARK) and G22 (SHOCK, TOXIN, BLEED, UNRAVEL); this file pins the core those
 ## goals extend, so a change there fails here as well as in their own cases.
+##
+## The G22 section below pins the remaining four rows: SHOCK's 30 %-of-trigger
+## radius chain and its Lightning Rod bonus, TOXIN's unlimited per-stack tick,
+## its halved healing (driven through the heal path, not read as a number) and
+## its Plague Doctor's Mask exemption, BLEED's move gate and UNRAVEL's
+## taken-damage multiplier as `Damage.compute` reads it.
 
 const STATUS_NODE: NodePath = ^"StatusEffects"
 const STATUS_NAME: StringName = &"StatusEffects"
@@ -27,6 +33,28 @@ const SPEC_PATH: String = "res://specs/SPEC-stats-status.md"
 const SOURCES: Array[StringName] = [&"status-stop", &"status-slow"]
 ## The stop source, named once so the stop and the clear cannot drift.
 const STOP_SOURCE: StringName = &"status-stop"
+
+## The player scene and the marker effect the two relic cases attach: an
+## `EffectHost` only accepts an effect script, and neither `lightning_rod` nor
+## `plague_doctors_mask` exists as content until W4-B6 (G32…G35), so the cases
+## attach a do-nothing `Effect` under the real relic's id — which is all the
+## component's lookup asks about.
+const PLAYER_SCENE: String = "res://scenes/player/player.tscn"
+const MARKER_EFFECT_SCRIPT: String = "res://tests/helpers/relic_marker_effect.gd"
+const LIGHTNING_ROD: StringName = &"lightning_rod"
+const PLAGUE_DOCTORS_MASK: StringName = &"plague_doctors_mask"
+
+## Where the chain cases put their enemy doubles, relative to the shocked
+## entity: two inside SHOCK's 96 px radius, one just outside it, and one more
+## inside it to prove the two-target cap rather than only the radius.
+const CHAIN_NEAR: Vector2 = Vector2(24.0, 0.0)
+const CHAIN_SECOND: Vector2 = Vector2(48.0, 0.0)
+const CHAIN_THIRD: Vector2 = Vector2(72.0, 0.0)
+const CHAIN_FOURTH: Vector2 = Vector2(88.0, 0.0)
+const CHAIN_FAR: Vector2 = Vector2(300.0, 0.0)
+## The damage of the hit that applied the shock, so 30 % of it is a round number.
+const TRIGGER_DAMAGE: int = 1000
+const CHAIN_DAMAGE: int = 300
 
 const TPS: int = 60
 const MAX_HP: float = 100.0
@@ -46,6 +74,9 @@ var _entity: CharacterBody2D
 var _status: StatusEffects
 var _health: StatusHealthStub
 var _block: StatBlock
+## The enemy doubles this case built, in creation order (autofreed with the
+## entity they are parented under).
+var _enemies: Array[StatusEnemyStub] = []
 
 ## The last `Events.status_applied` this file's listener saw.
 var _bus_target: Node = null
@@ -72,6 +103,7 @@ func before_each() -> void:
 	_bus_status = -1
 	_bus_stacks = 0
 	_bus_source = null
+	_enemies.clear()
 	Events.status_applied.connect(_on_bus_status_applied)
 	_spawn()
 
@@ -120,6 +152,66 @@ func _spawn(component: StatusEffects = null) -> StatusEffects:
 ## it (`TimeManager.scale_for()` only walks the group a node joined).
 func _register_enemy() -> void:
 	TimeManager.set_group(_entity, TimeManager.Group.ENEMY)
+
+
+## Adds an enemy double `at` (relative to the fixture entity) and puts it in the
+## `enemy` group SHOCK's chain query walks — the source Dev A's `enemies-ai`
+## will register in (blocked on Dev A (W4-A1)). Autofreed with the entity it is
+## parented under.
+func _spawn_enemy(at: Vector2) -> StatusEnemyStub:
+	var enemy := StatusEnemyStub.make(_entity, at)
+	_enemies.append(enemy)
+	return enemy
+
+
+## A real player carrying one marker relic on its `EffectHost`, so a case can
+## assert that the component reads the relic off the host that applied the
+## status rather than from a hard-coded number. Returns the attached `Effect`,
+## which is what a case passes as `apply_status`'s `source`.
+func _holder_with_relic(id: StringName) -> Effect:
+	var player: Player = (load(PLAYER_SCENE) as PackedScene).instantiate() as Player
+	player.name = "RelicHolder"
+	add_child_autofree(player)
+	return _attach_relic(EffectHostPlayer.install(player), id)
+
+
+## Attaches one marker relic under `id` to `host` — a no-op `Effect`, since
+## neither `lightning_rod` nor `plague_doctors_mask` is content until W4-B6 and
+## the component's lookup only asks whether the id is held.
+func _attach_relic(host: EffectHost, id: StringName) -> Effect:
+	var relic := ContentData.new()
+	relic.id = id
+	relic.display_name = String(id)
+	relic.effect_script = load(MARKER_EFFECT_SCRIPT) as GDScript
+	return host.add(relic)
+
+
+## The *target* half of the relic lookup: a real player carrying `id`, with this
+## file's `StatusEffects` component and `Health` double swapped in for
+## `player.tscn`'s bare `Node`s (**blocked on Dev A (W2-A1)**: the scene's
+## `StatusEffects` and `Health` are placeholders until Dev A composes them, and
+## `EffectHost.add()` refuses a host whose parent is not a `Player`). Returns the
+## player's `StatusEffects`, so a case applies a status to the entity that holds
+## the host and checks the relic was read from it.
+func _target_player_with_relic(id: StringName) -> StatusEffects:
+	var player: Player = (load(PLAYER_SCENE) as PackedScene).instantiate() as Player
+	player.name = "RelicTarget"
+	add_child_autofree(player)
+	for path: NodePath in [STATUS_NODE, HEALTH_NODE]:
+		var bare: Node = player.get_node_or_null(path)
+		if bare != null:
+			player.remove_child(bare)
+			bare.free()
+	var health := StatusHealthStub.new()
+	health.name = HEALTH_NAME
+	health.max_hp = int(MAX_HP)
+	health.current_hp = int(MAX_HP)
+	player.add_child(health)
+	var statuses := StatusEffects.new()
+	statuses.name = STATUS_NAME
+	player.add_child(statuses)
+	_attach_relic(EffectHostPlayer.install(player), id)
+	return statuses
 
 
 func _on_bus_status_applied(target: Node, status: int, stacks: int, source: Node) -> void:
@@ -541,3 +633,192 @@ func test_reapplying_mark_does_not_stack_or_rearm() -> void:
 	_status.apply_status(StatusEffects.Status.MARK, 2)
 	assert_true(_status.has(StatusEffects.Status.MARK), "a re-apply is still just the one mark")
 	assert_true(_status.consume_mark(), "and it is still consumed exactly once")
+
+
+# --- G22: SHOCK, TOXIN, BLEED, and UNRAVEL --------------------------------
+#
+# The remaining four spec rows. SHOCK carries the element the Storm combos and
+# the Storm Sandals relic build on, TOXIN the Poison identity plus the healing
+# penalty other systems read, BLEED the Blood identity and its move gate, and
+# UNRAVEL the taken-damage multiplier `Damage.compute` folds into `status_mult`.
+# Each row's numbers are the spec table's, asserted against the component's own
+# constants and against the spec file's sentence.
+
+func test_the_four_g22_rows_carry_the_spec_tables_numbers() -> void:
+	var spec := FileAccess.get_file_as_string(SPEC_PATH)
+	assert_true(spec.contains("On apply, chains 30% of trigger damage to up to 2 enemies within 96 px; Lightning Rod +2 chains"),
+		"SHOCK's row, verbatim from SPEC-stats-status")
+	assert_true(spec.contains("1.5% max HP per second per stack; healing received -50%; Plague Doctor's Mask disables expiry"),
+		"TOXIN's row, verbatim")
+	assert_true(spec.contains("While the target moves, 2% max HP per second per stack"),
+		"BLEED's row, verbatim")
+	assert_true(spec.contains("+10% all damage taken per stack"), "UNRAVEL's row, verbatim")
+	assert_true(spec.contains("(+UNRAVEL stacks * 0.1)"), "and the formula's UNRAVEL term, verbatim")
+	assert_almost_eq(StatusEffects.SHOCK_CHAIN_DAMAGE_FRACTION, 0.30, 0.001, "30 % of the trigger damage")
+	assert_eq(StatusEffects.SHOCK_CHAIN_TARGETS, 2, "up to 2 enemies")
+	assert_almost_eq(StatusEffects.SHOCK_CHAIN_RADIUS, 96.0, 0.001, "within 96 px")
+	assert_eq(StatusEffects.LIGHTNING_ROD_CHAIN_BONUS, 2, "Lightning Rod +2 chains")
+	assert_almost_eq(StatusEffects.TOXIN_DAMAGE_PER_SECOND, 0.015, 0.0001, "1.5 % max HP per stack per second")
+	assert_almost_eq(StatusEffects.TOXIN_HEALING_MULTIPLIER, 0.5, 0.001, "healing received -50 %")
+	assert_almost_eq(StatusEffects.BLEED_DAMAGE_PER_SECOND, 0.02, 0.0001, "2 % max HP per stack per second")
+	assert_almost_eq(StatusEffects.UNRAVEL_DAMAGE_TAKEN_PER_STACK, 0.10, 0.0001, "+10 % damage taken per stack")
+
+
+func test_shock_chains_thirty_percent_of_the_trigger_damage_to_the_nearest_two_in_range() -> void:
+	var nearest := _spawn_enemy(CHAIN_NEAR)
+	var second := _spawn_enemy(CHAIN_SECOND)
+	var third := _spawn_enemy(CHAIN_THIRD)
+	var far := _spawn_enemy(CHAIN_FAR)
+	assert_true(_status.apply_status(StatusEffects.Status.SHOCK, 1, null, TRIGGER_DAMAGE),
+		"the shock lands on the entity")
+	assert_eq(nearest.health.total_damage(), CHAIN_DAMAGE, "the nearest enemy takes 30 % of the trigger damage")
+	assert_eq(second.health.total_damage(), CHAIN_DAMAGE, "and so does the second")
+	assert_eq(third.health.total_damage(), 0, "a third enemy inside the radius is past the two-target cap")
+	assert_eq(far.health.total_damage(), 0, "300 px away is outside the 96 px radius")
+	assert_eq(_health.total_damage(), 0, "the entity that carries the shock never chains to itself")
+	assert_eq(nearest.health.last_element(), HitData.Element.STORM, "the chain carries the Storm element")
+	assert_true(nearest.health.hits[0].tags.has(StatusEffects.STATUS_TAG),
+		"and is marked as a status result rather than a connecting hit")
+
+
+func test_a_shock_with_no_trigger_damage_chains_no_damage() -> void:
+	var nearest := _spawn_enemy(CHAIN_NEAR)
+	_status.apply_status(StatusEffects.Status.SHOCK, 1)
+	assert_true(_status.has(StatusEffects.Status.SHOCK), "the shock still lands and still refreshes")
+	assert_eq(nearest.health.total_damage(), 0, "30 % of nothing is nothing")
+
+
+func test_reapplying_shock_refreshes_rather_than_stacking_or_redoubling() -> void:
+	var nearest := _spawn_enemy(CHAIN_NEAR)
+	_status.apply_status(StatusEffects.Status.SHOCK, 1, null, TRIGGER_DAMAGE)
+	await wait_physics_frames(30)
+	assert_lt(_status.remaining(StatusEffects.Status.SHOCK), StatusEffects.SHOCK_DURATION,
+		"the clock had started running down")
+	_status.apply_status(StatusEffects.Status.SHOCK, 1, null, TRIGGER_DAMAGE)
+	assert_eq(_status.stacks(StatusEffects.Status.SHOCK), 1, "SHOCK is a refresh row: still one stack")
+	assert_almost_eq(_status.remaining(StatusEffects.Status.SHOCK), StatusEffects.SHOCK_DURATION, 0.05,
+		"and the re-apply resets its clock")
+	assert_eq(nearest.health.hit_count(), 2, "each application chains once; neither is doubled")
+
+
+func test_lightning_rod_adds_two_chains_read_off_the_effect_host() -> void:
+	var rod := _holder_with_relic(LIGHTNING_ROD)
+	assert_ne(rod, null, "the relic is attached to a player's EffectHost")
+	var first := _spawn_enemy(Vector2(20.0, 0.0))
+	var second := _spawn_enemy(Vector2(40.0, 0.0))
+	var third := _spawn_enemy(Vector2(60.0, 0.0))
+	var fourth := _spawn_enemy(Vector2(80.0, 0.0))
+	_status.apply_status(StatusEffects.Status.SHOCK, 1, rod, TRIGGER_DAMAGE)
+	for enemy: StatusEnemyStub in [first, second, third, fourth]:
+		assert_eq(enemy.health.total_damage(), CHAIN_DAMAGE,
+			"+2 chains reaches four enemies in range, not the two the base row allows")
+	assert_eq(_status.chain_count(rod), StatusEffects.SHOCK_CHAIN_TARGETS + StatusEffects.LIGHTNING_ROD_CHAIN_BONUS,
+		"and the count is read off the host, not hard-coded")
+
+
+func test_the_base_chain_count_needs_no_lightning_rod() -> void:
+	assert_eq(_status.chain_count(null), StatusEffects.SHOCK_CHAIN_TARGETS,
+		"with no relic anywhere the chain count is the spec's 2")
+
+
+func test_the_targets_own_effect_host_is_read_for_the_lightning_rod() -> void:
+	# The criterion's own wording is "read from the *target's* effect host": the
+	# target of the application is the entity that carries the shock, so when
+	# that entity holds a host of its own the relic is read from there too. The
+	# applier and the target are two different hosts and neither is the only one
+	# that works.
+	var target := _target_player_with_relic(LIGHTNING_ROD)
+	var first := _spawn_enemy(Vector2(20.0, 0.0))
+	var second := _spawn_enemy(Vector2(40.0, 0.0))
+	var third := _spawn_enemy(Vector2(60.0, 0.0))
+	var fourth := _spawn_enemy(Vector2(80.0, 0.0))
+	assert_true(target.apply_status(StatusEffects.Status.SHOCK, 1, null, TRIGGER_DAMAGE),
+		"a shock applied with no applier at all still lands and still chains")
+	for enemy: StatusEnemyStub in [first, second, third, fourth]:
+		assert_eq(enemy.health.total_damage(), CHAIN_DAMAGE,
+			"and the +2 is read off the target's own host, four enemies deep")
+
+
+func test_toxin_is_unlimited_and_ticks_one_and_a_half_percent_per_stack() -> void:
+	_status.apply_status(StatusEffects.Status.TOXIN, 12)
+	assert_eq(_status.stacks(StatusEffects.Status.TOXIN), 12, "TOXIN has no stack cap")
+	assert_almost_eq(_status.damage_per_second(StatusEffects.Status.TOXIN, 4), MAX_HP * 0.015 * 4.0, 0.001,
+		"four stacks read 6 damage a second on 100 HP")
+	_status.clear(StatusEffects.Status.TOXIN)
+	_status.apply_status(StatusEffects.Status.TOXIN, 4)
+	await wait_physics_frames(TPS)
+	_assert_dps(MAX_HP * 0.015 * 4.0, "and four stacks deal that over a second of frames")
+
+
+func test_toxin_halves_the_healing_received_through_the_heal_path() -> void:
+	_status.apply_status(StatusEffects.Status.TOXIN, 1)
+	assert_almost_eq(_status.healing_multiplier(), StatusEffects.TOXIN_HEALING_MULTIPLIER, 0.001,
+		"a toxic entity heals at half rate")
+	_health.current_hp = 50
+	assert_eq(_health.heal(20), 10, "and 20 healing lands as 10 -- asserted through the heal, not the number")
+	assert_eq(_health.healed_total, 10, "the health component saw exactly the halved amount")
+	_status.clear(StatusEffects.Status.TOXIN)
+	assert_almost_eq(_status.healing_multiplier(), 1.0, 0.001, "with the toxin gone the penalty is lifted")
+	assert_eq(_health.heal(20), 20, "and a clean entity heals in full")
+
+
+func test_plague_doctors_mask_stops_toxin_expiring() -> void:
+	var mask := _holder_with_relic(PLAGUE_DOCTORS_MASK)
+	assert_ne(mask, null, "the mask is attached to a player's EffectHost")
+	_status.apply_status(StatusEffects.Status.TOXIN, 2, mask)
+	watch_signals(_status)
+	await wait_physics_frames(int(StatusEffects.TOXIN_DURATION * float(TPS)) + 30)
+	assert_true(_status.has(StatusEffects.Status.TOXIN),
+		"the mask disables expiry: the toxin is still there after its 6 s clock")
+	assert_eq(_status.stacks(StatusEffects.Status.TOXIN), 2, "with its stacks intact")
+	assert_signal_not_emitted(_status, "status_expired", "and it never expired")
+
+
+func test_toxin_expires_after_six_seconds_without_the_mask() -> void:
+	_status.apply_status(StatusEffects.Status.TOXIN, 2)
+	watch_signals(_status)
+	await wait_physics_frames(int(StatusEffects.TOXIN_DURATION * float(TPS)) + 30)
+	assert_false(_status.has(StatusEffects.Status.TOXIN),
+		"without the mask the same 6 s of scaled time ends it")
+	assert_signal_emitted_with_parameters(_status, "status_expired", [StatusEffects.Status.TOXIN])
+
+
+func test_bleed_ticks_only_while_the_target_is_moving() -> void:
+	_status.apply_status(StatusEffects.Status.BLEED, 5)
+	_status.apply_status(StatusEffects.Status.BLEED, 8)
+	assert_eq(_status.stacks(StatusEffects.Status.BLEED), StatusEffects.BLEED_MAX_STACKS,
+		"BLEED stacks to 10 and stops there")
+	var ten_stacks: float = MAX_HP * 0.02 * float(StatusEffects.BLEED_MAX_STACKS)
+	_entity.velocity = Vector2.ZERO
+	assert_false(_status.is_moving(), "a still entity reads as still")
+	await wait_physics_frames(TPS)
+	assert_eq(_health.total_damage(), 0, "so 60 frames of ten bleed stacks deal no damage at all")
+	_entity.velocity = Vector2(60.0, 0.0)
+	assert_true(_status.is_moving(), "a moving entity reads as moving")
+	assert_almost_eq(_status.damage_per_second(StatusEffects.Status.BLEED, StatusEffects.BLEED_MAX_STACKS),
+		ten_stacks, 0.001, "and ten stacks read 20 damage a second on 100 HP")
+	await wait_physics_frames(TPS)
+	_assert_dps(ten_stacks, "while it moves, ten stacks deal 20 damage over a second")
+
+
+func test_unravel_stacks_to_five_and_adds_ten_percent_damage_taken_per_stack() -> void:
+	assert_almost_eq(_status.damage_taken_multiplier(), 1.0, 0.001, "no UNRAVEL, no multiplier")
+	_status.apply_status(StatusEffects.Status.UNRAVEL, 7)
+	assert_eq(_status.stacks(StatusEffects.Status.UNRAVEL), StatusEffects.UNRAVEL_MAX_STACKS,
+		"UNRAVEL stacks to 5 and stops there")
+	assert_almost_eq(_status.damage_taken_multiplier(), 1.5, 0.001, "and adds 10 % damage taken per stack")
+
+
+func test_damage_compute_reads_the_targets_unravel_multiplier() -> void:
+	var attacker := StatBlock.new()
+	attacker.base = {StatBlock.Stat.ATTACK: 100.0}
+	var plain := HitData.new()
+	plain.base_damage = 100.0
+	assert_eq(Damage.compute(attacker, _block, plain, null, null), 100,
+		"a target with no UNRAVEL takes the raw damage")
+	_status.apply_status(StatusEffects.Status.UNRAVEL, 3)
+	var unravelled := HitData.new()
+	unravelled.base_damage = 100.0
+	assert_eq(Damage.compute(attacker, _block, unravelled, null, _status), 130,
+		"three stacks take 30 % more, folded into status_mult")
+	assert_false(unravelled.is_crit, "and that is the only term the target's statuses contribute so far")
