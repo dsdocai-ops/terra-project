@@ -21,7 +21,14 @@ var echo_shards_earned: int = 0
 var class_xp_earned: int = 0
 ## This player's share of the party's shared gold.
 var gold_share: int = 0
+## True while this player is downed and waiting for a revive. Written by the
+## host from Events.player_downed (W3-B2b); a downed player is not living for
+## the all-downed DEFEAT rule (BRIEF Assumption 7).
 var is_downed: bool = false
+## True once this player is dead and cannot be revived this run. A dead player
+## is not living for the same rule. Kept apart from is_downed so the end-of-run
+## summary can tell "went down" from "died".
+var is_dead: bool = false
 
 
 func _init(
@@ -32,6 +39,12 @@ func _init(
 	peer_id = p_peer_id
 	character_id = p_character_id
 	class_id = p_class_id
+
+
+## True while this player still stands: neither downed nor dead. GameState's
+## all-downed check counts these, so the run ends when none are left.
+func is_standing() -> bool:
+	return not is_downed and not is_dead
 
 
 ## Adds a weapon to the loadout (idempotent) and records its mutations.

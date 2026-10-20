@@ -5,6 +5,9 @@ extends Node
 ## that run_ended hands to the death/extract screen. Rope rooms, floor
 ## generation, networking, the HUD and the debug console all call or listen
 ## here (SPEC-run-economy).
+## The host also owns the run's failure branch: it watches player_downed /
+## player_died and ends the run with DEFEAT once nobody is left standing,
+## printing the placeholder death/extract summary (W3-B2b).
 ## Sync: run state, votes and loot rolls are host-authoritative; per-player
 ## totals are sent to their owning peer. Clients call request_* and read the
 ## past-tense broadcasts. See SPEC-run-economy.
@@ -27,6 +30,13 @@ const ADVANCE_REFUSAL_NO_RUN: StringName = &"no_run"
 const ADVANCE_REFUSAL_EXIT_SHUT: StringName = &"exit_shut"
 const ADVANCE_REFUSAL_LAST_FLOOR: StringName = &"last_floor"
 
+## The three words the end-of-run summary prints for a player. Kept as
+## constants so the death/extract screen (week 5) and the tests read the same
+## strings the placeholder log line writes.
+const PLAYER_STATUS_STANDING: String = "standing"
+const PLAYER_STATUS_DOWNED: String = "downed"
+const PLAYER_STATUS_DEAD: String = "dead"
+
 ## The live World scene. Modules reach World/Players etc. through this,
 ## never by absolute path.
 var world: World = null
@@ -39,6 +49,11 @@ var forced_seed: int = 0
 ## Why the last next_floor() call was refused; ADVANCE_REFUSAL_NONE when it
 ## advanced (or when next_floor() has not run). Reset by every call.
 var last_advance_refusal: StringName = ADVANCE_REFUSAL_NONE
+## The end-of-run summary line the last end_run() printed (or "" before the
+## first run ends). The placeholder death/extract screen is one print until
+## ui-hud builds the real panel (week 5); keeping the text here makes what the
+## player sees readable from code and from tests, not only from a log.
+var last_run_summary: String = ""
 
 
 ## Host only. Starts a run: resolves the seed, builds the RunState at
@@ -60,6 +75,7 @@ func start_run(run_seed: int, start_floor: int, party: Array) -> void:
 			continue
 		run.add_player(_slice_from(info))
 	_subscribe_room_cleared()
+	_subscribe_player_events()
 	run_started.emit(resolved_seed)
 	Events.run_started.emit(resolved_seed)
 	print("[run] started seed %d at floor %d with %d player(s)" % [resolved_seed, run.floor_index, run.players.size()])
@@ -118,6 +134,102 @@ func _on_room_cleared(_room: Node) -> void:
 	run.rooms_cleared += 1
 
 
+## Host only. One player went down (SPEC-player-controller's player_downed).
+## Marks the run slice and ends the run with DEFEAT once nobody is left
+## standing: SPEC-run-economy's "run ends when every player is downed or dead",
+## and BRIEF Assumption 7 — downed counts as not living, so a solo run ends on
+## its first down. Guarded rather than subscribed conditionally, because Events
+## is a global bus clients also drive; the run's own downed flags stay
+## host-authoritative.
+func _on_player_downed(player: Player) -> void:
+	if not _is_tracking_run():
+		return
+	var slice: RunPlayerState = _slice_for(player)
+	if slice == null or slice.is_downed:
+		# A repeat for an already-downed player is not a second loss.
+		return
+	slice.is_downed = true
+	_check_run_defeat()
+
+
+## Host only. One player died (SPEC-player-controller's player_died). A dead
+## player never stands again this run, so this is the same all-downed check as
+## a down — the slice keeps `is_dead` apart from `is_downed` only so the
+## summary can say which happened.
+func _on_player_died(player: Player) -> void:
+	if not _is_tracking_run():
+		return
+	var slice: RunPlayerState = _slice_for(player)
+	if slice == null:
+		return
+	slice.is_dead = true
+	_check_run_defeat()
+
+
+## True when a player event belongs to a live run owned by this peer: nobody
+## else may move the run's downed flags.
+func _is_tracking_run() -> bool:
+	return NetworkManager.is_host and run != null
+
+
+## The run slice of the player an event named, or null when the event is not
+## ours to act on. Warns rather than failing silently, so a stray event is
+## visible in the log.
+func _slice_for(player: Player) -> RunPlayerState:
+	if player == null:
+		push_warning("[run] a player event named no player; ignored")
+		return null
+	var slice: RunPlayerState = run.get_player(player.peer_id)
+	if slice == null:
+		push_warning("[run] peer %d is not in this run; its event is ignored" % player.peer_id)
+	return slice
+
+
+## Host only. Ends the run with DEFEAT when no player is left standing
+## (BRIEF Assumption 7). Run after every downed and dead event. end_run()
+## clears `run` before it emits, so a listener that ends the run again, and any
+## further event from the same frame, lands on the null guard instead: the run
+## ends exactly once.
+func _check_run_defeat() -> void:
+	if run == null:
+		return
+	for peer_id: int in run.players:
+		var slice: RunPlayerState = run.get_player(peer_id)
+		if slice != null and slice.is_standing():
+			return
+	print("[run] every player is downed or dead; ending the run")
+	end_run(RunEndReason.Reason.DEFEAT)
+
+
+## The status word for one player in the summary line.
+static func player_status_word(slice: RunPlayerState) -> String:
+	if slice == null:
+		return PLAYER_STATUS_STANDING
+	if slice.is_dead:
+		return PLAYER_STATUS_DEAD
+	if slice.is_downed:
+		return PLAYER_STATUS_DOWNED
+	return PLAYER_STATUS_STANDING
+
+
+## The one-line end-of-run summary: why the run stopped, its seed, how far the
+## party got and how each player ended up. It is the placeholder death/extract
+## screen (W3-B2 acceptance text) until ui-hud builds the real panel in week 5.
+## `finished` is the run as it was at the moment it ended, because end_run()
+## has already cleared the live one.
+func _run_summary_line(result: RunResult, finished: RunState) -> String:
+	var standings: PackedStringArray = PackedStringArray()
+	if finished != null:
+		for peer_id: int in finished.players:
+			standings.append("%d %s" % [peer_id, player_status_word(finished.get_player(peer_id))])
+	return "[run] %s — seed %d, floors cleared %d, players: %s" % [
+		RunEndReason.Reason.keys()[result.reason],
+		result.seed,
+		result.floors_cleared,
+		", ".join(standings) if not standings.is_empty() else "none",
+	]
+
+
 ## Host only. A client's rope vote (SPEC-run-economy). Week 3 ships the
 ## signature and the host guard only: solo extraction is immediate (Rope), and
 ## the co-op vote prompt with its rope_vote_updated broadcast lands in week 5.
@@ -148,9 +260,14 @@ func end_run(reason: RunEndReason.Reason) -> void:
 		result.set_player_tables(peer_id, RunResult.empty_table(), RunResult.empty_table())
 	run = null
 	_unsubscribe_room_cleared()
+	_unsubscribe_player_events()
+	# The summary is built from the snapshot, because the live run is already
+	# cleared: this print is the placeholder death/extract screen until ui-hud
+	# builds the real one (week 5).
+	last_run_summary = _run_summary_line(result, finished)
+	print(last_run_summary)
 	run_ended.emit(result)
 	Events.run_ended.emit(result)
-	print("[run] ended (%s) after %d floor(s), seed %d" % [RunEndReason.Reason.keys()[reason], finished.floors_cleared, finished.seed])
 
 
 ## Host only. Starts counting cleared rooms for the live run. Idempotent, so a
@@ -164,6 +281,25 @@ func _subscribe_room_cleared() -> void:
 func _unsubscribe_room_cleared() -> void:
 	if Events.room_cleared.is_connected(_on_room_cleared):
 		Events.room_cleared.disconnect(_on_room_cleared)
+
+
+## Called by the host's start_run: starts listening for the player events the
+## all-downed rule needs. Idempotent, so a second start_run replacing a live
+## run never records one down twice.
+func _subscribe_player_events() -> void:
+	if not Events.player_downed.is_connected(_on_player_downed):
+		Events.player_downed.connect(_on_player_downed)
+	if not Events.player_died.is_connected(_on_player_died):
+		Events.player_died.connect(_on_player_died)
+
+
+## Stops listening for player events. Safe to call when nothing is connected.
+## This is also what makes an ended run stay ended: no event can resurrect it.
+func _unsubscribe_player_events() -> void:
+	if Events.player_downed.is_connected(_on_player_downed):
+		Events.player_downed.disconnect(_on_player_downed)
+	if Events.player_died.is_connected(_on_player_died):
+		Events.player_died.disconnect(_on_player_died)
 
 
 ## Host only. The seed a run starts with: --seed (GameState.forced_seed) wins,

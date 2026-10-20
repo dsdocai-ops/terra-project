@@ -358,6 +358,48 @@ its guards, `can_apply_rope_request(sender)` and `can_send_request()`. Tests:
 first, with `tests/helpers/interactable_stub.gd` standing in for Dev A's
 `Interactable` component.
 
+### W3-B2b — run ends with `DEFEAT` when every player is downed or dead (`run-economy`)
+
+`GameState` now owns the run's failure branch. `start_run()` subscribes the
+host to `Events.player_downed(player)` and `Events.player_died(player)` through
+named handlers (`_subscribe_player_events`, idempotent, disconnected in
+`end_run()`), and each handler writes the event into the run slice —
+`RunPlayerState.is_downed` / `is_dead` — then runs `_check_run_defeat()`. That
+check walks the party and, when no slice is still standing, prints
+`[run] every player is downed or dead; ending the run` and calls
+`end_run(RunEndReason.Reason.DEFEAT)`. The rule is SPEC-run-economy's "run ends
+when every player is downed or dead (`DEFEAT`)" and BRIEF Assumption 7: a
+downed player is not living, so **a solo run ends on its first down** and co-op
+ends on the last one. Wire-visible results: `run_ended` (and `Events.run_ended`)
+fire exactly once, `GameState.run` becomes null, and the `Events.room_cleared`
+counter stops.
+
+`RunPlayerState` gains `is_dead` and `is_standing()` (`not is_downed and not
+is_dead`). `is_dead` is kept apart from `is_downed` so the summary can say
+*which* happened; both make a player not-standing, so the check itself reads
+one predicate.
+
+The placeholder death/extract summary is one printed line, built by
+`_run_summary_line(result, finished)` from the `RunState` snapshot (end_run has
+already cleared the live one) and kept in the new public `GameState.last_run_summary`:
+
+```
+[run] DEFEAT — seed 4242, floors cleared 3, players: 1 downed, 2 dead
+```
+
+It prints for **every** end reason, not only defeat, because the same line is
+the extraction summary until `ui-hud` builds the real panel (week 5). The
+headless defeat path and its line are in
+`.goals/evidence/g6-defeat-summary.log`; the full suite is 432 tests green in
+`.goals/evidence/g6-gut.log`. Tests: `tests/unit/test_run_end_defeat.gd`
+(22 tests / 81 asserts), written and confirmed red first (19 of 22 failing),
+driving `Events.player_downed` / `Events.player_died` from test-local `Player`
+doubles — bare `Player.new()` objects with only `peer_id` set, never added to
+the tree, so nothing in Dev A's `player.tscn` or its states is touched
+(**blocked on Dev A (W3-A5)** for the real `Downed`/`Dead` states and their
+emitters; the swap-in is nothing on my side — the host already listens to the
+spec's events).
+
 ---
 
 ## Decisions made without a human
@@ -683,6 +725,39 @@ already recorded in a spec or a comment, the location is given.
       Dev A's (W3-A2); the populator carries a `TODO` naming it and the
       swap-in is the single `rope.position` line.
 
+27. **The all-downed run end and its summary (W3-B2b).** Five calls the specs
+    leave open:
+    - *`RunPlayerState.is_dead` is new.* SPEC-run-economy lists `is_downed` but
+      needs a dead player to count as not-standing too ("every player is downed
+      **or dead**"). One flag could not carry both facts, and the summary is
+      required to say which happened, so death gets its own field and
+      `is_standing()` is the single predicate the defeat check reads. The
+      alternative — reusing `is_downed` for a death — would have made the
+      end-of-run line lie about how a teammate finished.
+    - *The summary names each player and their status.* The key shape
+      (`reason`, `seed`, `floors_cleared`, per-peer kept/lost) is already in
+      `RunResult`; the line adds the standings, because a `DEFEAT` line with no
+      players is not a summary of anything. Format is
+      `[run] <REASON> — seed S, floors cleared N, players: <peer> <status>, …`,
+      one line so the smoke and the evidence greps can find it.
+    - *The line prints for every end reason, not just `DEFEAT`.* The task text
+      calls it the "death/extract summary", so `EXTRACT` and `ABORT` print it
+      too; a separate defeat-only print would mean two formats for one screen.
+    - *`GameState.last_run_summary` is new public API*, beyond the declared
+      signatures: the printed text is otherwise only observable by capturing
+      stdout, and the upcoming death/extract screen (`ui-hud`, week 5) and the
+      debug console both want the string rather than a second copy of the
+      format. `_run_summary_line()` itself stays private.
+    - *The placeholder print is verified by a headless GUT run, not a launched
+      game.* No launch arg reaches a defeat yet (the rope extracts, `god`/`kill`
+      are debug-local, and `--smoke=N` only autowalks), and adding a
+      `--smoke-defeat` driver would be a launch-arg the specs don't ask for.
+      `test_run_end_defeat.gd` drives the real path — `Events.player_downed` →
+      `GameState` → `end_run` → print — under `--headless`, and its log is the
+      evidence (`.goals/evidence/g6-defeat-summary.log`). The in-game defeat is
+      on the manual-check list below until Dev A's `Downed`/`Dead` states
+      (W3-A5) emit these events for real.
+
 ---
 
 ## Running the game
@@ -769,6 +844,11 @@ short checklist for Dev A and the human; none of them block week 2.
   verification; the headless suite covers the parser, registry, and every
   command's logic, but not the visual toggle or the cross-window RPC round
   trip).
+- **In-game defeat** — in a windowed co-op run, down both players (once Dev A's
+  `Downed`/`Dead` states exist, W3-A5) and confirm the run ends with `DEFEAT`,
+  the printed summary names both players, and the HUD clears. The headless test
+  drives the same events from doubles; only the real states and emitters are
+  unverified (W3-B2b, decision 27).
 
 ---
 
