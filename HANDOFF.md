@@ -3337,6 +3337,162 @@ Resource field), no `Events` signal, no `.tscn`, no save schema, no CI, no addon
 
 ---
 
+### G5 — the six "On Dodge" relics (W4-B6, raw goal G32) (`relics`)
+
+Design doc 9.1 nos. 1 to 6, shipped 2026-10-20 as the first half of **W4-B6**:
+Ember Boots, Storm Sandals, Mirror Step, Frostwalkers, Ghost Wrap, Rebound
+Spring.
+
+**What shipped.** `data/relics/<id>.tres` × 6 and
+`scripts/effects/relics/<id>.gd` × 6 — one effect script per relic (decision 59) —
+which is SPEC-project's "content is data: a `.tres` plus an optional effect
+script" read literally: no new system, no new Resource field, no new signal.
+`tests/integration/test_relic_triggers.gd` is the batch's suite, **10 cases /
+181 asserts**, written first and run red before a single script existed
+(`.goals/evidence/g5/g5-red.log`: 32 parse errors naming all six missing classes,
+`[GUT ERROR] Nothing was run`). Two doubles carry the seams this lane does not
+own, both shipping with the goal: `tests/helpers/relic_fx_root_stub.gd`
+(`RelicFxRootStub`, the FX-with-gameplay root) and
+`tests/helpers/dodge_seam_stub.gd` (`DodgeSeamStub`).
+
+**The trigger, and the filter that is the whole point.** All six listen on
+`Events.player_dodged(player, perfect)`. `Effect.listen()` only delivers when the
+signal's player argument *is* the effect's own player, so a relic reacts to its
+holder's dodge and to nobody else's. The batch case proves that filter from the
+other side: `EventEmitterHelper` — the bus's own emitter, carrying its own bare
+`Player` — dodges first and nothing at all moves (no spawn, no shock, no alpha
+change), and only then does the holder dodge for real and all five reacting
+relics answer. C9's "assert the documented trigger fires exactly once" is checked
+per relic and again as a count over the six.
+
+**One dodge, one thing.** Each relic's own case counts and each count is one:
+
+- **Ember Boots** spawns one trail at the player's own position and arms it
+  `arm_trail(BURN)` — "dodge leaves a fire trail", and the trail's status is the
+  burn the doc's Pyromaniac row counts.
+- **Storm Sandals** spawns nothing: it applies one `SHOCK` stack
+  (`SHOCK_STACKS = 1`) to each enemy within `DODGE_THROUGH_RADIUS = 96.0` of the
+  dodge — one dodge's own length, SPEC-player-controller's "Fixed distance
+  (~96 px …)" — scanned off the `StatusEffects.ENEMY_TAG` group, the same
+  candidate set SHOCK's own chain propagation reads. An enemy the dodge never
+  came near is asserted untouched, which is what makes "through" a claim and not
+  a spray.
+- **Mirror Step** spawns one clone and arms it `arm_fuse(CLONE_FUSE_SECONDS)`,
+  1.0 s — the description's "1s".
+- **Frostwalkers** spawns one patch on the ground and arms it
+  `arm_patch(FREEZE)`: the description says the ground *freezes*, which is why it
+  is `FREEZE` and not the weaker `CHILL`.
+- **Ghost Wrap** is the only one that reads `perfect`. A plain dodge leaves the
+  player exactly as they were; a perfect one takes `modulate.a` to
+  `INVISIBLE_ALPHA = 0.0` for `INVISIBLE_SECONDS = 2.0` — the "2s" — on the base
+  class's tracked one-shot clock, and a second perfect dodge mid-invisibility
+  re-arms that one clock rather than stacking a second timer. A relic sold while
+  the player is hidden restores the alpha in `_on_detach()`, so nobody stays
+  invisible.
+- **Rebound Spring** doubles the dodge for as long as it is held, through the one
+  field SPEC-player-controller publishes for exactly this relic
+  ("Rebound Spring doubles via a stat-like multiplier exposed as
+  `dodge_distance_mult`") — saved and put back on detach, so it edits no base
+  stat — and on a dodge asks the Dodge state for the reflection, below.
+
+**Criterion 4, three ways.** The suite reads the design doc **at run time** and
+compares the shipped text to it rather than to a copy: `display_name` and
+`description` against 9.1's own lines under `### 9.1 Passive relics (70 listed)`,
+plus `kind = PASSIVE` and `max_stacks = 1` for a passive. Tags are checked against
+the synergy table's rows, which is where they come from: `dodge` on all six
+(Phantom Dancer's row names all six relics) and each relic's element where 9.1
+gives it one — Ember Boots `fire` (Pyromaniac's row), Storm Sandals `storm`
+(Thunderstruck), Frostwalkers `frost` (Glacial), Ghost Wrap `shadow`
+(Nightblade); Mirror Step and Rebound Spring carry `dodge` alone, exactly as the
+table lists them. And the three descriptions that state a number are linked to
+the script constant that number **is** — `NUMBER_LINKS` reads
+`CLONE_FUSE_SECONDS` / `INVISIBLE_SECONDS` / `DODGE_DISTANCE_MULTIPLIER` out of
+the effect scripts and compares them to the "1s" / "2s" / "doubled" in the
+description, the spec rule "balance numbers in the description are the source of
+truth for the effect script's constants" (SPEC-relics`:`37) held as an assertion
+rather than as a habit. `vfx_id` follows SPEC-art-audio's `relic_proc_<tag>` — one
+per relic tag — so Ember Boots fires `relic_proc_fire`, Storm Sandals
+`relic_proc_storm`, Frostwalkers `relic_proc_frost`, Ghost Wrap
+`relic_proc_shadow`, and the two Dodge-tagged relics `relic_proc_dodge`. The
+spawn case checks the lookup itself: a spawning relic takes its scene from its own
+`vfx_id` under `res://scenes/vfx`, so the day the art lands no script changes.
+
+**What is blocked, and on whom.** Nothing here fakes another lane's work; each
+missing provider is a guarded ask that becomes live when the provider lands:
+
+- **`blocked on art-audio (W4-B12/B13)`** for the three proc scenes
+  (`relic_proc_fire`, `relic_proc_dodge`, `relic_proc_frost`). The three spawning
+  relics resolve `scenes/vfx/<vfx_id>.tscn` themselves and **drop the spawn**
+  when the file is not there — a warning-less no-op, never an error — so the case
+  asserts "exactly one trail when the file exists, none when it does not" and
+  re-reads green the day the art lands, with no edit.
+- **`blocked on Dev A (W4-A4)`** for the FX-with-gameplay roots themselves and
+  the gameplay inside them: the trail that burns what stands in it, the clone's
+  detonation hurtbox, the slip on the frozen patch. This lane's contract for a
+  root is the three named arming calls — `arm_trail(status)`, `arm_fuse(seconds)`,
+  `arm_patch(status)` — called **before** the node enters the tree (the seam runs
+  `setup` before `add_child`) and skipped rather than refused when a root does not
+  implement one.
+- **`blocked on Dev A (W2-A8, the Dodge state)`** for Rebound Spring's wall
+  bounce. A relic cannot move the player, so the ask is a seam: a child of the
+  player named `DodgeSeam` implementing `request_wall_bounce()`. The node does not
+  exist yet, so the look-up is by name and the call is guarded by `has_method()` —
+  a guarded no-op, the same shape every other unlanded provider in this lane uses.
+- **`blocked on Dev A (enemies-ai)`** for Ghost Wrap's untargetability: SPEC-
+  enemies-ai puts "Ghost Wrap make a player untargetable and drop aggro" in
+  `Targeting.pick()`, and no interface for "this player is untargetable" exists,
+  so the relic ships the half it owns (the invisible state and its clock) and
+  nothing else. The same lane gap shows in Storm Sandals: no test-time or runtime
+  provider registers a node in the `enemy` group yet, so the scan's candidate set
+  is a double's — the ask is asserted, the population is not.
+
+**Verification.** Import exit 0, 0 error lines (`.goals/evidence/g5/import.log`).
+The file alone: **10 / 10, 181 asserts** (`g5-file-1.log`). The full suite:
+**52 scripts / 889 tests / 889 passing / 57 276 asserts, exit 0, 71.8 s**
+(`gut-full-final.log`). That delta is measured, not inferred, because this goal
+also moves an old number: 51 / 879 / 57 038 at HEAD (`g4/gut-full.log`), and the
+six real `.tres` files are the first content three existing folder-walkers have
+ever seen (`test_relic_data.gd`, `test_tags.gd`, `test_relic_roller.gd`) — +57
+asserts, no new tests. With this goal's file moved aside the suite reports
+51 / 879 / 57 095 (`gut-without-new-file.log`), and 57 038 + 57 + 181 = 57 276
+closes exactly. The content-absent control (six `.tres` moved aside) fails
+**exactly the ten new cases** and nothing else
+(`content-absent-negative-control.log`) — the point of that control being that a
+green suite here cannot be a suite of empty assertions. Six per-relic negative
+controls, one per relic, each disabling one unique anchor inside that relic's own
+handler — the five `if player == null:` guards inverted, Storm Sandals'
+`apply_status(...)` line replaced by `continue`, Ghost Wrap's `if not perfect:`
+inverted, Rebound Spring's `seam.call(...)` replaced by a second null guard (so
+the batch case's own null-seam path is the only thing that changes) — each one
+failing its own case plus the batch case that re-runs all six: 8 / 10 for the
+five, 9 / 10 for Rebound Spring, every one restored **byte-identical**
+(`diff` silent, marker count back to 0) with `negative-controls.sh` doing the
+work. The two-instance smoke test ran first, per CLAUDE.md: **35 ok / 0 FAIL /
+exit 0** (`.goals/evidence/g5/smoke-w4b6.log`), and a clean headless boot
+(`-- --host --smoke=6`) exits 0 with 0 script errors
+(`boot-host-smoke.log`) — a relic's effect scripts are loaded by the game's own
+content path, so "the suite is green" is not the same claim as "the game still
+boots". The suite's three `16 Orphans` rows are `test_player_spawner.gd`'s and
+are identical to the G3a and G4 logs, so nothing here leaks a node.
+
+**One existing test changed.** `tests/unit/test_relic_roller.gd` — G4's case
+asserted that with `data/relics/` empty the real pool offers nothing, which was a
+snapshot of an empty folder that this goal's six data files make false. It is
+rewritten to a content-independent invariant (decision 63): every id the real call
+offers is one the folder holds, and the real call equals the explicit
+`roll_from_pool()` form over that same pool. Red first against the untouched old
+file (`roller-red-from-content.log`, exit 1 with the failure at its old line 695),
+then green 25 / 25 / 318 asserts (`roller-file-green.log`); the old assertion is
+preserved in `.goals/evidence/g5/snapshots/`.
+
+**Ask-first surfaces: one movement, numbered below.** A new
+`scripts/effects/relics/` subfolder (decision 59). Nothing else on the list moved:
+no `project.godot`, no Input Map, no autoload, no `scripts/data/` Resource
+definition (this goal adds no field), no `Events` signal, no `.tscn`, no save
+schema, no CI, no addon.
+
+---
+
 ## Decisions made without a human
 
 These are the judgment calls taken during weeks 1 and 2 that were not dictated
@@ -5395,6 +5551,95 @@ already recorded in a spec or a comment, the location is given.
     `scripts/network/` holds networking's spawners, and neither is in the tree
     either. `scripts/relics/` follows that shape, and `tests/unit/` mirrors it
     per SPEC-project's own rule. Nothing about the tree's other rows moves.
+
+59. **A relic's effect script lives in `scripts/effects/relics/`, one file per
+    relic (2026-10-20).** G5, and every later relic-content goal lands there.
+    SPEC-project's tree already gives effect scripts a row — `scripts/effects/` —
+    and SPEC-project's hard rule is "content is data: a `.tres` plus an optional
+    effect script", so the script's home is the effects tree, not a folder of the
+    module's own: `scripts/relics/` (decision 58) holds relic *logic* that more
+    than one relic shares, while a relic's script is that relic's behaviour and
+    nothing else's. The subfolder is the movement, not the file count — the tree's
+    `scripts/effects/` row now reads as "the effect base and its seams, plus
+    `relics/` for the per-relic scripts", and `scripts/effects/relics/<id>.gd` is
+    named for its `data/relics/<id>.tres` so the pair is findable from either
+    side. Six files landed with G5; the next fourteen in W4-B6 land the same way,
+    one each, and no relic script is shared between two relics. Nothing about the
+    tree's other rows moves.
+60. **A spawning relic resolves its own `vfx_id` and arms the root through one
+    named method, dropping the spawn when either is absent (2026-10-20).** G5.
+    Three relics — Ember Boots, Mirror Step, Frostwalkers — spawn an FX-with-
+    gameplay node and must hand it the number or the status the design doc states.
+    The script does not instantiate the scene, does not own the gameplay, and does
+    not error when the art is not there: it resolves
+    `res://scenes/vfx/<vfx_id>.tscn` from its own data file's `vfx_id` (SPEC-
+    art-audio's `relic_proc_<tag>` id, the same id the artifact's VFX library is
+    keyed by), spawns through the world's spawner seam so the host authors it and
+    clients receive it, and asks the node for one named arming call —
+    `arm_trail(status)`, `arm_fuse(seconds)`, `arm_patch(status)` — called before
+    the node enters the tree (the seam runs `setup` before `add_child`, so the
+    trail's first frame is already armed). When the scene file is absent the spawn
+    is dropped as a no-op and when the root does not implement the method the
+    spawn stands unarmed: both are the guarded-no-op shape this lane uses for
+    every provider it does not own (W4-B12/B13 for the art, W4-A4 for the
+    gameplay), and both are asserted in the direction that stays true either way —
+    "exactly one when the file exists, none when it does not" — so the day the art
+    lands the case re-reads green without an edit. The alternative, instantiating
+    a placeholder scene here or writing the arming call as a hard requirement,
+    would have put this lane's tests in charge of another lane's interface and
+    would have failed red on content nobody has drawn yet. New surface:
+    `scripts/effects/relics/*.gd` and the three method names, which are the
+    contract the roots are built to.
+61. **The two asks this lane cannot make yet are recorded as guarded no-ops, not
+    as stubs with behaviour (2026-10-20).** G5. Rebound Spring's wall bounce is
+    the Dodge state's movement and Ghost Wrap's "untargetable" is
+    `Targeting.pick()`'s, so neither belongs to a relic. Both are written as an
+    ask the relic makes and cannot complete — a child of the player named
+    `DodgeSeam` implementing `request_wall_bounce()`, looked up by name and
+    guarded by `has_method()`, and for the targeting half **no call at all**,
+    because no interface for "this player is untargetable" exists to name. The
+    reason for the asymmetry: a seam with a name is a seam a provider can land
+    against without this lane being touched, while a call invented for an
+    interface that does not exist would fix a shape enemies-ai has not chosen.
+    `blocked on Dev A (W2-A8, the Dodge state)` and `blocked on Dev A
+    (enemies-ai)` are recorded in both scripts' doc comments and in the G5 entry.
+    Nothing in a running build registers a node in the `enemy` group yet either,
+    so Storm Sandals' scan reads its candidate set from a double — the same
+    limitation, one layer down. New surface: `tests/helpers/dodge_seam_stub.gd`.
+62. **The six "On Dodge" relics ship COMMON for the elemental three and RARE for
+    the three that change movement, as a first pass (2026-10-20).** G5. The design
+    doc's 9.1 list gives each relic a name, a line of text and a tag, and the
+    synergy table gives the tags — but no rarity and no weight, while
+    `RelicData.Rarity` requires one and G4's roller reads it. The judgment: Ember
+    Boots, Storm Sandals and Frostwalkers are the plain on-element procs and land
+    COMMON; Mirror Step, Ghost Wrap and Rebound Spring change how the dodge
+    behaves or where the player is and land RARE. All six take `weight = 1.0` and
+    `max_stacks = 1`, so within a tier they are equally likely and none of them
+    stacks — `max_stacks = 1` is not a placeholder, it is the batch's own
+    property: the doc describes each as one effect on one dodge. These are the
+    numbers a human re-tiers when the Shrine's real economy is tuned in week 11,
+    and the reason to write them down here is that a rarity in a `.tres` is a
+    balance decision that no spec dictated. No weight in
+    `RelicData.RARITY_ROLL_WEIGHTS` moved.
+63. **G4's "empty folder" roller case is rewritten to a content-independent
+    invariant (2026-10-20).** G5. `tests/unit/test_relic_roller.gd` asserted that
+    with `data/relics/` empty the real `roll()` offers nothing — true when G4
+    landed, and false the moment G5's six `.tres` files existed. The failure was
+    real and the case was wrong, not the code: it pinned *how much content has
+    landed*, which is not a property of the roller, and every later relic-content
+    goal would have had to touch it. The replacement states the property that
+    stays true at any content count — every id the real call offers is one
+    `data/relics/` holds (it invents nothing), and the real call is exactly the
+    explicit `roll_from_pool()` form over that same pool — while the distribution,
+    Luck and `max_stacks` cases keep running on a synthetic pool the test builds
+    itself, so they remain a property of the roller and not of the folder. Red
+    first against the untouched old file (`roller-red-from-content.log`, exit 1 at
+    the old assertion), then green 25 / 25 / 318 asserts
+    (`roller-file-green.log`); the old text is preserved in
+    `.goals/evidence/g5/snapshots/`. The alternative — leaving it and letting the
+    suite stay red — is exactly what the "never skip or delete a failing test"
+    rule forbids, and weakening it to "offers nothing or something" would have
+    asserted nothing at all.
 
 ---
 

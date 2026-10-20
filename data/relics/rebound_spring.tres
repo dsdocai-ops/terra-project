@@ -1,0 +1,20 @@
+[gd_resource type="Resource" script_class="RelicData" load_steps=3 format=3]
+
+[ext_resource type="Script" path="res://scripts/data/relic_data.gd" id="1_relic"]
+[ext_resource type="Script" path="res://scripts/effects/relics/rebound_spring.gd" id="2_effect"]
+
+[resource]
+script = ExtResource("1_relic")
+id = &"rebound_spring"
+display_name = "Rebound Spring"
+tags = Array[StringName]([&"dodge"])
+effect_script = ExtResource("2_effect")
+vfx_id = &"relic_proc_dodge"
+sfx_id = &""
+rarity = 1
+kind = 0
+description = "Dodge distance doubled, dodging into walls bounces you off them."
+max_stacks = 1
+active_cooldown = 0.0
+active_charges = 0
+weight = 1.0

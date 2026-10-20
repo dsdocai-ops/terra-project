@@ -10,13 +10,14 @@ extends GutTest
 ## SPEC-run-economy, "Loot tables", fixes the Luck term verbatim: "Luck stat
 ## raises rarity rolls: `rarity_roll += LUCK * 0.01`."
 ##
-## Every case below runs on a **synthetic candidate pool this test builds
-## itself**, through `roll_from_pool()`, because `data/relics/` holds no content
-## until the first relic batch lands and a green scan of an empty folder would
-## prove nothing. The pool is deliberately lopsided — several relics per tier
-## with *different* `weight` values — so a lazier implementation that rolled on
-## the relics' own weights and ignored the tier stage could not pass the
-## distribution case.
+## The distribution, Luck and `max_stacks` cases run on a **synthetic candidate
+## pool this test builds itself**, through `roll_from_pool()`, so the numbers are
+## a property of the roller and not of how much content has landed. The pool is
+## deliberately lopsided — several relics per tier with *different* `weight`
+## values — so a lazier implementation that rolled on the relics' own weights and
+## ignored the tier stage could not pass the distribution case. The real folder's
+## path is covered too, and written so it says the same thing whether the folder
+## is empty or full: the real call may only ever offer ids `data/relics/` holds.
 ##
 ## The distribution and "a cursed relic can roll when allowed" cases are driven
 ## by a **fixed seed**, so the shares are the same on every run and the test can
@@ -660,9 +661,8 @@ func test_luck_of_reads_stat_luck_off_the_players_stat_block() -> void:
 
 func test_roll_from_a_player_reads_the_luck_and_the_held_ids_it_holds() -> void:
 	# The spec's own call shape, end to end: `roll(player, count, allow_cursed)`.
-	# `data/relics/` is empty until the first relic batch lands, so the roll is
-	# driven by a pool this test wrote, and the case asserts the player's own
-	# state reached it.
+	# The pool this test wrote drives the first half, so the case asserts the
+	# player's own state reached the roller.
 	GameState.start_run(4242, 1, [])
 	var slice := RunPlayerState.new(1)
 	slice.relics = [&"pool_a"] as Array[StringName]
@@ -690,10 +690,17 @@ func test_roll_from_a_player_reads_the_luck_and_the_held_ids_it_holds() -> void:
 	assert_true(rolled.has(&"pool_b"), "the three-stack one it holds none of does")
 	assert_eq(rolled.size(), 1, "and that is everything the pool can still offer")
 
-	# The empty content folder is the real path's pool today, so the real call
-	# returns nothing rather than inventing a relic.
+	# The real path is `data/relics/` loaded and rolled, nothing else. Written so
+	# it holds at any content count rather than pinning the folder's emptiness:
+	# every id the real call offers is one the folder holds (it invents nothing),
+	# and it offers exactly what the explicit form over that same pool offers.
+	var real_pool: Array[RelicData] = RelicRoller.load_pool(RELIC_DIR)
+	var content_ids: Array[StringName] = RelicRoller.ids_of(real_pool)
+	var real_rolled: Array[StringName] = RelicRoller.roll(player, 3, false, _seeded(DISTRIBUTION_SEED))
+	for relic_id: StringName in real_rolled:
+		assert_true(content_ids.has(relic_id), "the real pool only offers ids %s holds (%s)" % [RELIC_DIR, relic_id])
 	assert_eq(
-		RelicRoller.roll(player, 3, false, _seeded(DISTRIBUTION_SEED)),
-		[] as Array[StringName],
-		"with `data/relics/` empty the real pool offers nothing"
+		real_rolled,
+		RelicRoller.roll_from_pool(real_pool, RelicRoller.held_counts(player), RelicRoller.luck_of(player), 3, false, _seeded(DISTRIBUTION_SEED)),
+		"the real call is %s loaded and rolled, never a pool of its own" % RELIC_DIR
 	)
