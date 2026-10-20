@@ -1200,9 +1200,12 @@ waiting on a real class has exactly one line in `events.gd` of the form
 The test asserts one such line per placeholder type, that each names the class
 which replaces it, and that the owner set matches a hard-coded map: `HitInfo` and
 `Projectile` → combat-core, `Enemy` → enemies-ai, `Room` → floor-generation,
-`Pickup` → run-economy, `RelicData`/`SynergyData` → relics, `WeaponData`/
+`Pickup` → run-economy, `SynergyData` → relics, `WeaponData`/
 `MutationData` → weapons, `AbilityData` → abilities, `AscensionData` →
-classes-characters, `StatusEffects.Status`/`Combo` → stats-status. The blocker ids
+classes-characters, `StatusEffects.Status` → stats-status. (That is the map as
+it stands today, eleven placeholders; when the section above was written it held
+twelve — `Combo` graduated at G24 and `RelicData` at G27, both 2026-10-20, and
+each left this map with its pin.) The blocker ids
 are the real ones from `tasks/todo.md` (W2-A1, W2-A6, W2-A9, W3-A2, W5-A1, W5-A4,
 W7-A3), so "we retype this when the owner lands" cannot rot into a comment nobody
 re-checks.
@@ -1247,7 +1250,10 @@ Arguments are built from `tests/helpers/` doubles: a bare `Player.new()` that is
 never added to the tree (so Dev A's `_ready` never runs — the
 `test_run_end_defeat.gd` pattern), an `EnemyBaseStub` for the enemy signals, a
 plain `Resource` carrying a `resource_name` for the `*Data` parameters whose
-Resources land in W4-B5/later, and a new `EventEmitterNodeStub` for the
+Resources land in W4-B5/later (since G27, 2026-10-20, `relic_picked` and
+`relic_removed` are typed `RelicData` and get a real one from `_relic()` instead;
+`_resource()` keeps its job for the signals still typed `Resource`), and a new
+`EventEmitterNodeStub` for the
 parameters still declared `Node` (`Room`, `Pickup`, `Projectile`, `source`).
 The helper frees every node it created in `cleanup()`, which the test calls in
 `after_each`.
@@ -3011,6 +3017,123 @@ will attach to the player's `EffectHost` (the `EFFECT_HOST_NODE` the hook reads)
 so until they exist no live combo is multiplied. Mage Arcane Flow is not
 implemented. And the two floor curves' numbers are a balance choice, not a
 specification — decision 55 records them as the human's to correct.
+
+#### G27 — `RelicData` and the relic data-driven test (2026-10-20)
+
+**What shipped.** `scripts/data/relic_data.gd` (+ `.uid`): `class_name RelicData
+extends ContentData`, with SPEC-relics' two enums — `Rarity { COMMON, RARE,
+EPIC, LEGENDARY, CURSED }` and `Kind { PASSIVE, ACTIVE, CURSED }` — and the
+seven exports the spec's block lists: `rarity`, `kind`, `description`,
+`max_stacks` (default 1), `active_cooldown`, `active_charges` and `weight`
+(default 1.0). `id`, `display_name`, `tags`, `effect_script` and `icon` stay on
+`ContentData` and are **not** re-declared, so no saved `.tres` of either type
+moves (the spec's block lists them only because the block shows the whole
+relic). Alongside the fields, the class carries the two tables the rest of the
+batch reads: the Shrine rarity weights as `RARITY_WEIGHT_COMMON` 60,
+`RARITY_WEIGHT_RARE` 28, `RARITY_WEIGHT_EPIC` 10, `RARITY_WEIGHT_LEGENDARY` 2
+and the `RARITY_ROLL_WEIGHTS: Dictionary[int, int]` they build, read through
+`static func roll_weight(rarity) -> int` (0 for `CURSED`, which never rolls at a
+Shrine); and `WEEK_4_IDS`, design doc 9.1 nos. 1 to 20 in that order as the
+snake_case file-name ids (`ember_boots` … `trophy_belt`), so G5–G8's content and
+G8's completeness gate have one definition of "the 20".
+
+`scripts/autoload/events.gd`: `relic_picked` and `relic_removed` now declare
+`relic: RelicData` instead of the `Resource` placeholder, and the
+`## TODO(relics): RelicData <- Resource (blocked on Dev B, W4-B5)` pin is
+deleted — the bus's placeholder count is 11, down from 12. No other signal
+moved (`SynergyData`, `Pickup`, `Room`, `Enemy`, `Projectile`, `WeaponData`,
+`MutationData`, `AbilityData`, `AscensionData` and `StatusEffects.Status` keep
+their placeholders and their pins). `tests/helpers/event_emitter.gd` gained
+`_relic()`, a real minimal `RelicData`, because a typed signal refuses the plain
+`Resource` those two emitters used to send; `_resource()` keeps its job for the
+signals still typed `Resource`.
+
+`tests/unit/test_relic_data.gd` is the goal's other half — the data-driven test
+SPEC-relics' "Testing" section names. It walks `data/relics/` recursively and
+applies the rules to every `.tres` it finds (id == file name, non-empty
+`display_name` and `description`, a `rarity` in `Rarity`, a `kind` in `Kind`, 1
+to 2 tags all of which `Tags.is_valid()` accepts, `max_stacks >= 1`, and an
+`effect_script` that extends `Effect`), and — because the folder holds no relic
+at all until G5 lands the first six — demonstrates **every** rule on fixtures it
+writes itself into `user://_relic_fixtures/`, removed in `after_each()`: a
+conforming relic saved and reloaded (proving the enums survive the file), two
+written files found by the same walker the real scan uses, and eleven
+single-field mutations of the conforming fixture each asserting that exactly one
+rule fires and names its violation. The folder scan reports its own count with
+`pass_test` and asserts nothing about it, so this file stays green as the batch
+arrives.
+
+Two more cases pin the tables against their sources at run time rather than
+retyping them: the weights are compared against SPEC-relics' own sentence
+(`Shrine rolls: common 60, rare 28, epic 10, legendary 2`) and `WEEK_4_IDS`
+against the numbered lines of `SINKHOLE_SPEC.md` §9.1, parsed out of both
+documents in the test, plus the enums' declaration order (which is the value
+serialised into every `.tres`) and the spec block's defaults.
+
+**Accept.** `tests/unit/test_relic_data.gd` **10/10 / 104 asserts** exit 0
+(`.goals/evidence/g3/test-relic-data.log`), written and run red first — a parse
+error naming exactly `RelicData` as an undeclared type, with `test_events_bus.gd`
+4 failing / 6 passing on the placeholder pins and the TODO count this change
+retires (`.goals/evidence/g3/red-test-relic-data.log`,
+`g3/red-test-events-bus.log`). Full suite **50 scripts / 854 tests / 854 passing
+/ 56 737 asserts**, exit 0 (`g3/gut-full.log`, up from 49 / 844 / 844 / 56 636 at
+`91ec4a3` — exactly this goal's +1 script, +10 tests and +101 asserts). `--import`
+exit 0 with **0 error lines** (`g3/import.log`). The four neighbouring suites
+re-run individually green and unchanged where nothing about them changed:
+`test_events_bus.gd` 10/10, `test_events_emitters.gd` 10/10, `test_autoloads.gd`
+7/7, `integration/test_data_loads.gd` 2/2 (`g3/test-*.log`). One failing path
+forced and kept, then reverted byte-exact: with `_problems_for()`'s tag-count
+check short-circuited to `if false:` **exactly the two tag rules fail** — "tags
+holds 0 entries" and "tags holds 3 entries", both reporting `[]` problems — 9
+passing / 1 failing, 100/102 asserts, and no other rule moves
+(`g3/negative-control.log`); restoration proven by
+`sha256sum -c` printing `OK` for `be50083e…`, `diff -q` printing nothing
+(`restored-identical`), the marker count back to 0, and the file re-green at
+10/10 / 104 asserts. `grep -rn "Engine.time_scale" scripts/ scenes/` is still
+empty and `grep -c "TODO(relics): RelicData" scripts/autoload/events.gd` is 0.
+**No two-instance smoke run**: the commit adds no RPC, replication or spawner
+wiring (BRIEF C17) — it is a data class, two signal type declarations and a test.
+
+**Judgment calls.**
+
+- **The rules live in the test, as one pure function both halves call.** The
+  spec's "Testing" section makes this file the enforcement mechanism, and a
+  validator method on production `RelicData` would be public surface no other
+  goal needs and no `.tres` reads. `_problems_for()` returns a list of
+  human-readable problems, so the folder scan and the eleven fixture cases assert
+  against the same code and a rule cannot be enforced in one place and described
+  in another; it follows `test_events_bus.gd`'s pure-helper shape.
+- **The rule set is the union of the spec's "Testing" line and the plan's
+  bullet.** The spec names `effect_script extends Effect` and the plan's bullet
+  does not; the plan names `max_stacks >= 1` and `display_name`, which the
+  spec's sentence leaves implicit. All of them are checked, since a relic that
+  fails any is broken content. The inheritance rule walks `get_base_script()`
+  rather than instantiating, so checking 88 files opens no node, and it accepts
+  `Effect` itself as well as any subclass.
+- **An empty folder is reported, never asserted.** `pass_test("%d relic .tres
+  files …")` plus an assertion that `res://data/relics/` exists, so "nothing
+  found" is distinguishable from "the walker is broken" — and the fixture folder
+  proves the walker finds what is there. The count assertion belongs to G8's
+  completeness gate, which will read `WEEK_4_IDS` rather than a second list.
+- **`Kind` is this class's own second enum**, because the spec's block writes
+  `kind: Kind` and names no other home for it. `Combo.Kind`
+  (`scripts/components/combo.gd`) is a member of a different class and is not
+  reachable as a bare `Kind`, so the two do not collide; decision 56 records it.
+- **The order of both enums is pinned as a claim, not a comment.** It is what
+  every relic `.tres` on disk serialises, so a reordering would silently re-map
+  all 88 relics' rarity and kind. The case asserts `keys()` and `values()`.
+- **`GDScript`, not `Resource`, on `effect_script`** is inherited from
+  `ContentData` unchanged; only this test's check is new.
+
+**Not claimed.** `data/relics/` holds only `.gdkeep`, so the real scan examines
+zero files today and every rule above is proven on fixtures rather than on
+content — the 20 `.tres` are G5–G8. `RelicRoller` does not exist, so
+`roll_weight()` and `WEEK_4_IDS` have no production reader yet (G4 and G8).
+Nothing in a running build touches `RelicData`: `relic_picked`/`relic_removed`
+have no production emitter (the Shrine flow and `request_pick_relic` are G10),
+and `SynergyData` is still a placeholder. `tasks/todo.md`'s **W4-B5 stays open** —
+this goal ships `RelicData` and its test; the roller, the Shrine, the pick RPC,
+the codex record and the 20 relics are the rest of it.
 
 ---
 
@@ -4988,6 +5111,61 @@ already recorded in a spec or a comment, the location is given.
       "Scaling constants" sentence does not, and no Week 4 goal asks for them;
       they are floor-generation's room and modifier rolls. `scripts/scaling.gd`'s
       doc comment records the absence so a later goal does not assume they exist.
+
+56. **`RelicData` is a new `scripts/data/` Resource, and two `Events` signals
+    were retyped to it (2026-10-20, W4-B5 / G27).** SPEC-relics' "RelicData"
+    block fixes the field list, both enums and the rarity weights, and
+    SPEC-project's tree names `scripts/data/relic_data.gd` itself; SPEC-effect-
+    system's "Events bus" table declares `relic_picked`/`relic_removed` as
+    `(player: Player, relic: RelicData)`, which is the clause that sanctions the
+    signal change. Both are nevertheless on the **Ask-first** list — "Changing a
+    `Resource` class definition in `scripts/data/`" and "Adding, removing, or
+    changing the signature of an `Events` signal" (SPEC-project "Ask first") —
+    so they are recorded here rather than assumed. New surface:
+    `scripts/data/relic_data.gd` (+ `.uid`), the two retyped signals and the
+    deleted `## TODO(relics): RelicData <- Resource` pin in
+    `scripts/autoload/events.gd`, and `tests/helpers/event_emitter.gd`'s new
+    `_relic()` double. No field of `ContentData` was renamed, retyped or
+    re-declared, and no other signal moved: `SynergyData`, `Pickup`, `Room`,
+    `Enemy`, `Projectile`, `WeaponData`, `MutationData`, `AbilityData`,
+    `AscensionData` and `StatusEffects.Status` keep their placeholders and their
+    pins — eleven of them, down from twelve.
+
+    - **The data rules live in the test, as one pure function both halves call.**
+      SPEC-relics' "Testing" section makes `test_relic_data.gd` the enforcement
+      mechanism, and a validator method on production `RelicData` would be public
+      surface nothing else needs and no `.tres` reads. `_problems_for()` returns
+      a list of human-readable problems, so the folder scan and the eleven
+      fixture cases assert against the same code and a rule cannot be enforced in
+      one place and described in another (the `test_events_bus.gd` helper shape).
+    - **The rule set is the union of the spec's "Testing" line and the plan's
+      bullet, and it says so.** The spec names `effect_script extends Effect`
+      while the plan's bullet omits it; the plan names `display_name` and
+      `max_stacks >= 1` while the spec's sentence leaves them implicit. A relic
+      that fails any of them is broken content, so all are checked. The
+      inheritance rule walks `get_base_script()` instead of instantiating, so
+      checking 88 files opens no node — and it accepts `Effect` itself as well as
+      any subclass, which is what "extends `Effect`" means in GDScript.
+    - **`Kind` is a second enum on this class, and the spec is where it comes
+      from.** The block writes `kind: Kind  # PASSIVE, ACTIVE, CURSED` and names
+      no other home; no global class declares a conflicting `Kind`, so the only
+      thing `RelicData.Kind` can be confused with is `Combo.Kind`, a member of a
+      different class that is never reachable as a bare identifier. Both enums'
+      declaration order is a claim the test pins, because it is the value
+      serialised into every relic `.tres` on disk.
+    - **The two tables are pinned against the documents, not retyped.** The
+      weights are compared against SPEC-relics' own sentence and `WEEK_4_IDS`
+      against the numbered lines of `SINKHOLE_SPEC.md` §9.1, both parsed out of
+      the files at run time, so an id or a weight edited in one place and not the
+      other fails a test instead of shipping. This is also why `WEEK_4_IDS`
+      exists on the class at all: G5–G8's content and G8's completeness gate
+      otherwise each keep their own copy of "the 20".
+    - **An empty folder is reported, never asserted.** `data/relics/` holds only
+      `.gdkeep` today, so the scan uses `pass_test` for its count and asserts
+      only that the folder exists — a green scan of an empty folder is not
+      evidence, which is exactly why the eleven fixture cases and the written
+      fixture folder carry this goal. Pinning "zero files" would also have to be
+      deleted by G5.
 
 ---
 
