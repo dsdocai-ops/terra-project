@@ -7,6 +7,10 @@
 #    the client asks the host to spawn it through request_debug, the host
 #    resolves one partial hit so HP drops 10 -> 7 on both screens (StateSync),
 #    the client asks the host to kill it, and enemy_killed fires exactly once.
+#  - floor sync (SPEC-networking "Seed sync"): two host/client pairs launched
+#    with the same --seed must generate the same floor — the two layout_hash
+#    values are compared for equality, not merely grepped for presence — and a
+#    third pair on a different --seed must land on a different hash.
 # Logs land in $OUT (default: a temp dir). Exit 0 when every check passes.
 #   GODOT=/path/to/godot tools/smoke_two.sh
 set -u
@@ -85,6 +89,63 @@ check "$OUT/client3.log" '\[smoke3\] client requested kill'              "client
 check "$OUT/host3.log"   '\[console\] kill .* -> killed 1 enem'         "host3 ran the kill through the console"
 check "$OUT/host3.log"   '\[smoke3\] enemy_killed emitted 1 time'        "host3 registered the kill exactly once"
 check "$OUT/client3.log" '\[smoke3\] client sees Enemy[0-9]+ hp=0 \(dead\)' "client3 saw the death replicated"
+
+# --- floor sync (SPEC-networking "Seed sync") ---
+# The host starts the run once the client has joined, which broadcasts
+# floor_ready(seed, floor_index, biome_id, modifiers); each peer generates
+# floor 1 locally from that seed and logs the layout_hash it produced. The two
+# hashes are compared directly — equality is the assertion, presence is not —
+# and a second pair on a different --seed proves the hash actually tracks the
+# seed instead of being a constant both peers happen to print.
+FLOOR_SEED_A="${FLOOR_SEED_A:-20261020}"
+FLOOR_SEED_B="${FLOOR_SEED_B:-987654321}"
+FLOOR_HOST_SECONDS="${FLOOR_HOST_SECONDS:-12}"
+FLOOR_CLIENT_SECONDS="${FLOOR_CLIENT_SECONDS:-9}"
+
+# The layout_hash a peer logged for floor 1 from `seed`, or empty when it never
+# logged one. The seed is part of the pattern, so a peer that generated from
+# some other seed does not count as agreeing.
+floor_hash() {  # floor_hash <file> <seed>
+  grep -Eo "\[floor\] ready seed $2 floor 1 biome [0-9]+ .*layout_hash [0-9]+" "$1" \
+    | head -1 | grep -Eo '[0-9]+$'
+}
+
+# One host/client pair on a shared --seed; logs land in $OUT/*_floor_<tag>.log.
+run_floor_pair() {  # run_floor_pair <tag> <seed>
+  sleep 1  # let the previous pair's sockets release before rebinding $PORT
+  "$GODOT" --headless --path "$PROJECT" -- --host "--seed=$2" "--smoke-floor=$FLOOR_HOST_SECONDS" > "$OUT/host_floor_$1.log" 2>&1 &
+  local host_pid=$!
+  sleep 2
+  "$GODOT" --headless --path "$PROJECT" -- "--join=127.0.0.1:$PORT" "--seed=$2" "--smoke-floor=$FLOOR_CLIENT_SECONDS" > "$OUT/client_floor_$1.log" 2>&1 &
+  local client_pid=$!
+  wait $host_pid $client_pid
+}
+
+run_floor_pair a "$FLOOR_SEED_A"
+check "$OUT/host_floor_a.log"   '\[smoke-floor\] armed on peer 1 \(host\)'         "floor host armed (seed $FLOOR_SEED_A)"
+check "$OUT/client_floor_a.log" '\[smoke-floor\] armed on peer [0-9]+ \(client\)'  "floor client armed (seed $FLOOR_SEED_A)"
+check "$OUT/host_floor_a.log"   '\[smoke-floor\] host started the run with 2 player' "floor host started the run with the client in it"
+FLOOR_HASH_A_HOST=$(floor_hash "$OUT/host_floor_a.log" "$FLOOR_SEED_A")
+FLOOR_HASH_A_CLIENT=$(floor_hash "$OUT/client_floor_a.log" "$FLOOR_SEED_A")
+if [ -n "$FLOOR_HASH_A_HOST" ] && [ "$FLOOR_HASH_A_HOST" = "$FLOOR_HASH_A_CLIENT" ]; then
+  echo "ok   one --seed ($FLOOR_SEED_A) gives one floor: host and client both generated layout_hash $FLOOR_HASH_A_HOST"
+else
+  echo "FAIL seed $FLOOR_SEED_A layout_hash mismatch: host='$FLOOR_HASH_A_HOST' client='$FLOOR_HASH_A_CLIENT'"; fail=1
+fi
+
+run_floor_pair b "$FLOOR_SEED_B"
+FLOOR_HASH_B_HOST=$(floor_hash "$OUT/host_floor_b.log" "$FLOOR_SEED_B")
+FLOOR_HASH_B_CLIENT=$(floor_hash "$OUT/client_floor_b.log" "$FLOOR_SEED_B")
+if [ -n "$FLOOR_HASH_B_HOST" ] && [ "$FLOOR_HASH_B_HOST" = "$FLOOR_HASH_B_CLIENT" ]; then
+  echo "ok   one --seed ($FLOOR_SEED_B) gives one floor: host and client both generated layout_hash $FLOOR_HASH_B_HOST"
+else
+  echo "FAIL seed $FLOOR_SEED_B layout_hash mismatch: host='$FLOOR_HASH_B_HOST' client='$FLOOR_HASH_B_CLIENT'"; fail=1
+fi
+if [ -n "$FLOOR_HASH_B_HOST" ] && [ "$FLOOR_HASH_B_HOST" != "$FLOOR_HASH_A_HOST" ]; then
+  echo "ok   a different --seed ($FLOOR_SEED_B) gives a different floor: $FLOOR_HASH_A_HOST -> $FLOOR_HASH_B_HOST"
+else
+  echo "FAIL the layout_hash did not change with the seed ('$FLOOR_HASH_A_HOST' vs '$FLOOR_HASH_B_HOST')"; fail=1
+fi
 
 echo "logs: $OUT"
 exit $fail

@@ -473,6 +473,58 @@ every screen.
   `scripts/` and `scenes/` and a `grep` for `randi()` / `randf()` / `shuffle(`
   under `scripts/` both came back empty; no Dev A file touched.
 
+### W3-B3a-2 — two-instance proof that one `--seed` gives one floor (`networking`)
+
+W3-B3a proved the RPC shape in a single process and proved the agreement once by
+hand. This task makes the agreement a standing, failing-capable assertion inside
+the smoke, so a future change to the seed path breaks the build instead of
+silently desyncing floors.
+
+- **`tools/smoke_two.sh` gained a floor-sync phase** after step 3: two more
+  host/client pairs, each launched with the *same* `--seed` on both sides
+  (`run_floor_pair <tag> <seed>`), and comparisons rather than prints:
+  - the `layout_hash` each peer logged for floor 1 is extracted with
+    `floor_hash <file> <seed>` (`grep -Eo` on
+    `[floor] ready seed <seed> floor 1 biome <n> …layout_hash <n>`) and the two
+    values are compared for **equality** — the `check()` helper is only used for
+    presence (both peers armed, the host started the run with the client in it);
+    a hash that is missing, zero or different fails the run;
+  - a third pair on a different seed asserts the hash actually **tracks** the
+    seed, so a constant that both peers happen to print cannot pass;
+  - the seed is part of the extraction pattern, so a peer that generated from
+    some other seed yields an empty hash and fails rather than accidentally
+    matching.
+- **Result** (`.goals/evidence/g7b-smoke/`, `GODOT=… bash tools/smoke_two.sh`,
+  33 checks, exit 0, 55 s):
+
+  | seed | host `layout_hash` | client `layout_hash` |
+  |---|---|---|
+  | `20261020` | `3525914442204165144` | `3525914442204165144` |
+  | `987654321` | `708545516277063756` | `708545516277063756` |
+
+- **Negative control** (`.goals/evidence/g7b-smoke/negative-control.log`): the
+  same helper and the same equality branch, run over fabricated logs, take the
+  `FAIL` path for divergent hashes and for a peer on another seed, and the `ok`
+  path only for a genuinely identical pair. A check that cannot fail proves
+  nothing, so the failing path is recorded too.
+- **Dev A's `FloorGenerator` had still not landed** when this ran
+  (`scripts/generation/` holds only `.gdkeep`; re-checked at the start of this
+  task), so the proof runs against the lane-B placeholder layout through
+  `FloorGeneratorSeam` — **blocked on Dev A (W3-A1)**. The check itself is
+  generator-agnostic: it reads the `layout_hash` the seam produced, so re-running
+  `GODOT=… bash tools/smoke_two.sh` after W3-A1 lands re-runs this exact proof
+  against the real generator with no edit to the script.
+- **Tests / import**: full GUT 33 scripts / 459 tests / 12674 asserts exit 0
+  (`.goals/evidence/g7b-gut.log`); headless `--import` exit 0 with 0 error lines
+  (`.goals/evidence/g7b-import.log`). No `scripts/` or `scenes/` file changed —
+  this task is the smoke harness plus its evidence.
+- **Still only floor 1.** The driver starts the run once the client is in, so
+  the pair proves the `run_started` broadcast; the `floor_changed` re-broadcast
+  is covered by `tests/unit/test_floor_sync.gd` and reaches two processes in the
+  later smoke steps. Walking a floor advance through the smoke needs a driver
+  change (the `skip` console command is still a stub until W3-B5) and is on the
+  manual-check list rather than claimed here.
+
 ---
 
 ## Decisions made without a human
@@ -938,6 +990,51 @@ already recorded in a spec or a comment, the location is given.
       the run before the client had connected. Both peers logged
       `layout_hash 3525914442204165144` for `--seed=20261020`.
 
+30. **The floor-hash smoke check is an equality assertion, and it carries its own
+    negative control (W3-B3a-2/G7b).** Judgment calls, each chosen so the proof
+    cannot pass for the wrong reason.
+    - *Equality, not presence.* The existing `check()` helper greps for a
+      pattern, which would pass if both peers logged *different* hashes — the
+      exact failure the check exists to catch. The floor phase therefore extracts
+      each peer's `layout_hash` with `floor_hash <file> <seed>` and compares the
+      two strings, failing when either is empty. `check()` is still used for the
+      presence facts (both drivers armed, the host started the run with the
+      client in it).
+    - *A third pair on a different seed.* Two equal numbers prove agreement only
+      if the number is capable of differing. A constant hash would satisfy the
+      same-seed comparison forever, so the phase also runs a pair on
+      `--seed=987654321` and asserts its hash differs from the first pair's
+      (`3525914442204165144` → `708545516277063756`). That pair's own host/client
+      agreement is asserted too, so it is a second independent two-process proof
+      rather than only a difference check.
+    - *The seed is part of the extraction pattern.* `floor_hash` anchors
+      `ready seed <seed> floor 1`, so a client that generated from some other
+      seed — or a run where the host's `forced_seed` never reached the broadcast —
+      produces an empty hash and fails, instead of matching on the number alone.
+    - *Cost and flakiness.* The phase adds ~28 s (two 12 s host / 9 s client
+      pairs plus a socket-release beat), taking the smoke from ~35 s to ~55 s.
+      That is accepted because the smoke is the only place two real processes
+      meet, and no pair retries: a peer that never connects leaves an empty hash
+      and fails loudly. `FLOOR_SEED_A`, `FLOOR_SEED_B`, `FLOOR_HOST_SECONDS` and
+      `FLOOR_CLIENT_SECONDS` are overridable from the environment, following the
+      script's existing `PORT` / `HOST_SECONDS` convention.
+    - *A negative control is recorded alongside the pass.*
+      `.goals/evidence/g7b-smoke/negative-control.log` runs the same helper and
+      the same branch over fabricated logs and shows the `FAIL` path for
+      divergent hashes and for a peer on another seed. A check whose failing path
+      was never observed is an assumption, not an assertion.
+    - *Only floor 1 is proven here.* The driver starts the run once the client is
+      in, so the pair proves the `run_started` broadcast end to end. The
+      `floor_changed` re-broadcast is covered by `tests/unit/test_floor_sync.gd`
+      and is not claimed as a two-process result: advancing a floor headlessly
+      needs the `skip` console command, which is still a stub until W3-B5, so it
+      stays on the manual-check list.
+    - **Blocked on Dev A (W3-A1)**: the proof ran against the lane-B placeholder
+      layout, because `scripts/generation/floor_generator.gd` still does not
+      exist. Nothing in the check names the generator — it reads the `layout_hash`
+      the seam produced — so the same command re-runs the proof against the real
+      generator once it lands.
+
 ---
 
 ## Running the game
@@ -983,14 +1080,19 @@ godot --path . -- --join=127.0.0.1
 GODOT=/c/Users/Dsedg/Downloads/Godot_v4.7.2-stable_win64.exe/Godot_v4.7.2-stable_win64_console.exe bash tools/smoke_two.sh
 ```
 
-Expect 28 `ok` lines (steps 1 + 2 + 3) and exit 0. On Linux/macOS, `tools/run_two.sh` is the
+Expect 33 `ok` lines (steps 1 + 2 + 3, then the floor-sync phase) and exit 0. On
+Linux/macOS, `tools/run_two.sh` is the
 windowed launcher and `smoke_two.sh` needs `GODOT` pointing at a 4.7.2 binary.
+The floor-sync phase launches two extra host/client pairs on `--seed=20261020`
+and `--seed=987654321` and compares each pair's `layout_hash` for equality; the
+seeds and the pair durations are overridable with `FLOOR_SEED_A`, `FLOOR_SEED_B`,
+`FLOOR_HOST_SECONDS` and `FLOOR_CLIENT_SECONDS`.
 
 ### Tests and import (what CI runs)
 
 ```powershell
 godot --headless --path . --import                                                         # must exit 0, no errors
-godot --headless --path . -s addons/gut/gut_cmdln.gd -gdir=res://tests -ginclude_subdirs -gexit   # 338 tests, exit 0
+godot --headless --path . -s addons/gut/gut_cmdln.gd -gdir=res://tests -ginclude_subdirs -gexit   # 459 tests, exit 0
 ```
 
 ---
