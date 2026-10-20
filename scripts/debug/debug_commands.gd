@@ -1,10 +1,10 @@
 class_name DebugCommands
 extends RefCounted
 ## Registers the debug-tools core command set on a DebugConsole (the
-## SPEC-debug-tools command table): help, spawn, give, gold, skip, seed, god,
-## kill, heal, timestop, timeslow, fps, dump. Handlers return result text;
+## SPEC-debug-tools command table): help, spawn, give, gold, skip, floor, seed,
+## god, kill, heal, timestop, timeslow, fps, dump. Handlers return result text;
 ## targeting commands use the issuing peer id to find the right player.
-## Owned by debug-tools (W2-B4).
+## Owned by debug-tools (W2-B4, floor advance W3-B5a).
 ## Sync: every handler runs on the host (a client's console routes the line
 ## there via NetworkManager.request_debug first), and the host-only seams the
 ## commands touch (spawn, kill, currency) are re-checked by the systems they
@@ -15,6 +15,10 @@ extends RefCounted
 const SOURCE := &"debug_console"
 const GIVE_TYPES: Array[String] = ["relic", "ability", "weapon", "mutation"]
 const DUMP_PATH := "user://debug_dump.json"
+## The most floor advances one `floor <n>` call may make. The target is range
+## checked against RunState's own bounds first and next_floor() refuses past the
+## last floor, so this is a guard on the loop rather than a second rule.
+const MAX_FLOOR_JUMPS: int = 64
 
 var console: DebugConsole
 
@@ -31,7 +35,8 @@ func _register() -> void:
 	console.register(&"spawn", _cmd_spawn, "spawn <enemy_id> [count] [elite] [affix] — spawn enemies at the issuing player (affix ignored until enemies-ai lands)")
 	console.register(&"give", _cmd_give, "give <relic|ability|weapon|mutation> <id> [stacks] — grant to the issuing player (deferred to the owning module)")
 	console.register(&"gold", _cmd_gold, "gold <n> — give n gold to the issuing player (currency_gained event; totals tracked from week 4)")
-	console.register(&"skip", _cmd_skip, "skip — stub: floor advance lands with floor-generation (week 3)")
+	console.register(&"skip", _cmd_skip, "skip — advance one floor (host only; reports why a shut exit blocked it)")
+	console.register(&"floor", _cmd_floor, "floor <n> — jump to floor %d-%d, advancing one floor at a time (host only)" % [RunState.MIN_FLOOR, RunState.MAX_FLOOR])
 	console.register(&"seed", _cmd_seed, "seed <n> — force the next run seed on GameState (0 clears)")
 	console.register(&"god", _cmd_god, "god — toggle god mode for the issuing player (consumed once combat-core Health lands)")
 	console.register(&"kill", _cmd_kill, "kill — kill every enemy under World/Entities (host-only)")
@@ -100,8 +105,69 @@ func _cmd_gold(args: PackedStringArray, peer_id: int) -> String:
 	return "granted %d gold to peer %d (currency_gained emitted; run-economy tracks totals from week 4)" % [amount, peer_id]
 
 
+## `skip` is GameState.next_floor() with the authority's reason reported: the
+## host owns the advance, refuses it while the floor's exit is shut or when the
+## run is over, and records why in `last_advance_refusal`, so the console can
+## say it instead of leaving the reason in the log line alone (W3-B5a).
 func _cmd_skip(_args: PackedStringArray, _peer_id: int) -> String:
-	return "skip: floor advance lands with floor-generation (week 3) — nothing to skip yet"
+	GameState.next_floor()
+	var reason: StringName = GameState.last_advance_refusal
+	if reason != GameState.ADVANCE_REFUSAL_NONE:
+		return "skip refused: %s" % _advance_refusal_text(reason)
+	var state: RunState = GameState.run
+	if state == null:
+		return "skip refused: no run is live"
+	return "skipped to floor %d (biome %d)" % [state.floor_index, state.biome_index]
+
+
+## `floor <n>` jumps the live run to floor n by calling next_floor() once per
+## floor, so every floor it passes through is announced and the same exit rule
+## applies as a normal advance — there is no teleport that skips a shut exit.
+## Refused: a non-integer, a value outside RunState's 1..30, a target behind the
+## current floor (the advance only goes forward), no live run, and a shut exit.
+func _cmd_floor(args: PackedStringArray, _peer_id: int) -> String:
+	if args.is_empty() or not String(args[0]).is_valid_int():
+		return "floor needs a whole number: floor <n> (%d-%d)" % [RunState.MIN_FLOOR, RunState.MAX_FLOOR]
+	var target: int = int(args[0])
+	if target < RunState.MIN_FLOOR or target > RunState.MAX_FLOOR:
+		return "floor %d is out of range: floors are %d-%d" % [target, RunState.MIN_FLOOR, RunState.MAX_FLOOR]
+	var state: RunState = GameState.run
+	if state == null:
+		return "floor refused: %s" % _advance_refusal_text(GameState.ADVANCE_REFUSAL_NO_RUN)
+	var from_floor: int = state.floor_index
+	if target == from_floor:
+		return "already on floor %d" % target
+	if target < from_floor:
+		return "floor %d is behind the current floor %d: floor only advances (skip steps forward one floor)" % [target, from_floor]
+	var steps := 0
+	while GameState.run != null and GameState.run.floor_index < target and steps < MAX_FLOOR_JUMPS:
+		GameState.next_floor()
+		var reason: StringName = GameState.last_advance_refusal
+		if reason != GameState.ADVANCE_REFUSAL_NONE:
+			return "floor %d refused at floor %d after %d step(s): %s" % [
+				target, GameState.run.floor_index, steps, _advance_refusal_text(reason)]
+		steps += 1
+	var arrived: RunState = GameState.run
+	if arrived == null:
+		return "floor refused: no run is live"
+	return "floor %d: advanced %d floor(s) from %d (biome %d)" % [target, steps, from_floor, arrived.biome_index]
+
+
+## The readable text for a refused floor advance, one phrase per GameState
+## ADVANCE_REFUSAL_* code. Kept here so the wording the player reads lives with
+## the console that prints it while GameState stays free of presentation
+## strings, and so a new refusal code fails loudly rather than silently reading
+## as a cleared refusal.
+func _advance_refusal_text(reason: StringName) -> String:
+	if reason == GameState.ADVANCE_REFUSAL_NOT_HOST:
+		return "the host owns floor state"
+	if reason == GameState.ADVANCE_REFUSAL_NO_RUN:
+		return "no run is live"
+	if reason == GameState.ADVANCE_REFUSAL_EXIT_SHUT:
+		return "the current floor's exit is still shut"
+	if reason == GameState.ADVANCE_REFUSAL_LAST_FLOOR:
+		return "this is the run's last floor"
+	return "unknown refusal (%s)" % reason
 
 
 func _cmd_seed(args: PackedStringArray, _peer_id: int) -> String:

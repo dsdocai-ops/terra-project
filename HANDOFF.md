@@ -276,7 +276,9 @@ registry (`register(name, callable, help)`). `scripts/debug/debug_parser.gd`
 tokenizes a line (whitespace split, double-quoted args keep spaces, `\"`
 escapes). `scripts/debug/debug_commands.gd` installs the core set: `help`,
 `spawn <enemy_id> [count] [elite] [affix]`, `give <type> <id> [stacks]`,
-`gold <n>`, `skip` (stub), `seed <n>`, `god`, `kill`, `heal`, `timestop <s>`,
+`gold <n>`, `skip` (a stub as of W2-B4; **superseded 2026-10-20 by W3-B5a**,
+which wired it to `GameState.next_floor()` and added `floor <n>`), `seed <n>`,
+`god`, `kill`, `heal`, `timestop <s>`,
 `timeslow <factor> <s>`, `fps`, `dump`. Commands run on the **host**: a client's
 console sends the line through `NetworkManager.request_debug(cmd, peer_id)`
 (a validated `any_peer`/`call_remote`/`reliable` RPC that emits
@@ -285,8 +287,9 @@ peer (spawn at that player, gold/heal/god on that player).
 
 Where a command touches a system that has not landed yet it validates its input
 and reports the deferral rather than failing: `give`/`heal` wait on
-weapons/abilities/relics/run-economy/combat-core (weeks 4-5), `skip` on
-floor-generation (week 3), and `spawn`/`kill` work today against the W2-B3
+weapons/abilities/relics/run-economy/combat-core (weeks 4-5), `skip` did until
+W3-B5a wired it to `GameState` (**superseded 2026-10-20**), and `spawn`/`kill`
+work today against the W2-B3
 enemy placeholders. The console is added by `main.gd` in debug builds or with
 `--debug-tools`, loaded lazily (never preloaded) so a release export that
 filters `scripts/debug/` out never references it. There is no
@@ -527,7 +530,8 @@ silently desyncing floors.
   the pair proves the `run_started` broadcast; the `floor_changed` re-broadcast
   is covered by `tests/unit/test_floor_sync.gd` and reaches two processes in the
   later smoke steps. Walking a floor advance through the smoke needs a driver
-  change (the `skip` console command is still a stub until W3-B5) and is on the
+  change (the `skip` console command was a stub at the time of this writeup;
+  **W3-B5a landed it 2026-10-20**, so only the driver is missing) and is on the
   manual-check list rather than claimed here.
 
 ### W3-B3a-3 — smoke tooling: `$OUT` is created, and one `PORT` reaches both peers (`debug-tools`)
@@ -883,6 +887,61 @@ host decides, and a refused ask is a readable reason rather than a silence.
   What this task proves is that when the input lands, the ask, the host's rule,
   the refusal reasons and the slice-clearing all exist and are checked.
 
+### W3-B5a — `skip` and `floor <n>` wired to `GameState` (`debug-tools`)
+
+**What shipped.** `skip` is no longer a stub: `DebugCommands._cmd_skip` calls
+`GameState.next_floor()` and then reads the authority's own reason out of
+`GameState.last_advance_refusal`, returning either `skipped to floor N (biome B)`
+or `skip refused: <reason>`. `floor <n>` is new and registered in
+`DebugCommands._register()`: it validates its argument against
+`RunState.MIN_FLOOR`..`RunState.MAX_FLOOR`, then walks to the target by calling
+`GameState.next_floor()` **once per floor** rather than writing `floor_index`
+directly — so every floor it passes through is announced on `floor_changed`, the
+same exit rule applies as a normal advance, and there is no teleport that can
+step over a shut exit or a last floor. The wording of a refusal lives in the new
+private `_advance_refusal_text(reason)`, one readable phrase per
+`GameState.ADVANCE_REFUSAL_*` code, so `GameState` keeps carrying a reason code
+and nothing about presentation.
+
+**Files.** `scripts/debug/debug_commands.gd` (skip rewritten, floor + the
+refusal-text helper + `MAX_FLOOR_JUMPS` added, two help lines updated) and
+`tests/unit/test_console_parser.gd` (the `skip` stub test replaced by 15 cases).
+No other file changed.
+
+**How it was verified.** Tests first, red for the right reason
+(`.goals/evidence/g4/red-console-parser.log`: 16 failing, the old stub's text in
+every `skip` failure and `unknown command: floor` in every `floor` failure),
+then green. `test_console_parser.gd` 43/43 / 145 asserts
+(`.goals/evidence/g4/gut-console.log`); full suite **35 scripts / 543 tests /
+543 passing / 54 081 asserts**, exit 0, up from the 529 baseline
+(`.goals/evidence/g4/gut-full.log`); `--headless --path . --import` exit 0 with
+0 error lines (`g4/import.log`); headless `-- --host --smoke=6` exit 0 with 0
+script/parse errors (`g4/launch-host.log`); `GODOT=… bash tools/smoke_two.sh`
+exit 0 with **35 `ok` lines and 0 FAIL** (`g4/smoke-run.log`, logs in
+`g4/smoke/`) — run even though this commit adds no RPC, because the smoke is the
+standing two-process proof; `grep -rn "Engine.time_scale" scripts/ scenes/` and
+the global-RNG grep both print nothing.
+
+**The cases.** `skip` advances exactly one floor and emits `floor_changed` once;
+`floor 5` from floor 1 lands on floor 5 with 4 advances and 4 `floor_changed`
+emits; `floor 30` is accepted, `floor 0` / `floor 31` / `floor upstairs` are
+refused with a readable reason and change nothing; a target behind the current
+floor is refused as behind; and each refusal branch is a separate case — no live
+run (a host session with a null run, so the reason is `no_run` and not
+`not_host`), a client, a shut exit (`required_rooms_cleared` raised above
+`rooms_cleared`), and the run's last floor.
+
+**Judgment calls.** Recorded as decision 35.
+
+**Not claimed.** `floor <n>` only advances: there is no API that moves the run
+backwards and none is invented here, so a target behind the current floor is a
+readable refusal rather than a jump. Nothing drives the console line from a
+launched game in this task — the unit tests run the real `DebugConsole.run()`
+against the real `GameState` and `NetworkManager`, and the console's
+LineEdit-submit path (host-gated, unchanged) is what a human uses in the editor.
+The two-process smoke still does not walk a floor advance: adding that driver is
+PLAN **G12b**, which this task unblocks.
+
 ---
 
 ## Decisions made without a human
@@ -972,8 +1031,9 @@ already recorded in a spec or a comment, the location is given.
     `LaunchArgs` (a user arg, no `project.godot` change) because
     SPEC-debug-tools names it. Blocked-on-Dev-A seams are recorded in
     `.goals/LOG.md`: `give`/`heal` need run-economy/relics/weapons/combat-core,
-    `skip` needs floor-generation, `god` is debug-local state until Health
-    consumes it.
+    `skip` needed floor-generation (met by W3-B5a, **2026-10-20** — `skip` and
+    `floor <n>` now drive `GameState` directly), `god` is debug-local state
+    until Health consumes it.
 16. **W2-B6 AudioManager buses are created at runtime** — SPEC-art-audio names
     the Master/Music/SFX/UI buses, but the repo ships no
     `default_bus_layout.tres` and a `project.godot` `[audio]` edit is on the
@@ -1385,8 +1445,9 @@ already recorded in a spec or a comment, the location is given.
       in, so the pair proves the `run_started` broadcast end to end. The
       `floor_changed` re-broadcast is covered by `tests/unit/test_floor_sync.gd`
       and is not claimed as a two-process result: advancing a floor headlessly
-      needs the `skip` console command, which is still a stub until W3-B5, so it
-      stays on the manual-check list.
+      needs a smoke driver that presses `skip`; at this writeup `skip` itself was
+      still a stub (**W3-B5a landed it 2026-10-20**, so only the driver is
+      missing) and it stays on the manual-check list.
     - **Blocked on Dev A (W3-A1)**: the proof ran against the lane-B placeholder
       layout, because `scripts/generation/floor_generator.gd` still does not
       exist. Nothing in the check names the generator — it reads the `layout_hash`
@@ -1598,6 +1659,43 @@ already recorded in a spec or a comment, the location is given.
       stub is this task's deliverable. No `.tscn`, no `project.godot`, no Input
       Map, no `Events` signal, no `scripts/data/` Resource, no save schema, no CI
       and no addon was touched.
+
+35. **Debug floor advance: `skip` reports the authority's reason, and `floor <n>`
+    walks rather than teleporting (W3-B5a/G4).** SPEC-debug-tools lists
+    `skip` / `floor <n>` as "advance / jump floor" and says commands execute on
+    the host; it does not say what a refused advance reports, or how a
+    multi-floor jump should behave. Five calls:
+    - *`skip` calls `GameState.next_floor()` and then reads
+      `last_advance_refusal`, instead of pre-checking the run itself.*
+      `GameState` already refuses the advance for four distinct reasons
+      (not host / no run / exit shut / last floor) and records which one in
+      `last_advance_refusal`. If the console pre-checked the run and short-
+      circuited, it would have to duplicate that rule and the two copies could
+      disagree the day one changes. There is one implementation of "may the floor
+      advance", and the console is a reporter of it.
+    - *`floor <n>` walks to the target by calling `next_floor()` once per floor.*
+      Assigning `run.floor_index` directly would be shorter and wrong: it would
+      step over a shut exit, skip the `floor_changed` broadcast every follower
+      depends on, and leave `floors_cleared` lying. Walking means the debug jump
+      is subject to exactly the rules a player's walk to the Exit is, which is
+      what makes it useful for testing Shrines and loot headlessly.
+    - *A target behind the current floor is refused, not implemented.* Nothing in
+      the project can move a run backwards (no rewind, no floor-set API), and
+      inventing one in a debug command would put run state on a second write
+      path. The refusal names the current floor and points at `skip`.
+    - *The refusal wording lives in the console, not in `GameState`.* PLAN G4
+      asked for `last_advance_refusal`; `GameState` stays a reason **code**
+      (`StringName`) so the HUD, the console and any future screen can each say
+      it their own way. `_advance_refusal_text` is the console's table, and an
+      unknown code falls through to a readable "unknown refusal" rather than
+      reading as "nothing was refused".
+    - *New public API* (recorded here per the BRIEF's rule): the
+      `floor` command registration, `DebugCommands.MAX_FLOOR_JUMPS`, and the
+      private `_cmd_floor` / `_advance_refusal_text`. Additions only — `skip`
+      keeps its name and signature, and nothing was renamed or removed. No
+      `project.godot`, Input Map, autoload public API, `scripts/data/` Resource,
+      `Events` signal, save schema, CI or addon was touched — the Input Map is
+      untouched because both commands are typed, not bound.
 
 ---
 

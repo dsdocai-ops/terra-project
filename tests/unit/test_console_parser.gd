@@ -6,7 +6,7 @@ extends GutTest
 ## NetworkManager.request_debug is exercised with its sender validation.
 
 const CORE_COMMANDS: Array[StringName] = [
-	&"help", &"spawn", &"give", &"gold", &"skip", &"seed",
+	&"help", &"spawn", &"give", &"gold", &"skip", &"floor", &"seed",
 	&"god", &"kill", &"heal", &"timestop", &"fps", &"dump",
 ]
 const WORLD_SCENE := "res://scenes/main/world.tscn"
@@ -33,6 +33,11 @@ func after_each() -> void:
 	TimeManager.clear_source(&"debug_console")
 	GameState.world = null
 	GameState.forced_seed = 0
+	# skip / floor advance the live run; drop it and the recorded refusal so no
+	# run state bleeds into the next test file (LESSONS: autoload state leaks
+	# across GUT files).
+	GameState.run = null
+	GameState.last_advance_refusal = GameState.ADVANCE_REFUSAL_NONE
 	if FileAccess.file_exists(DUMP_PATH):
 		DirAccess.remove_absolute(ProjectSettings.globalize_path(DUMP_PATH))
 
@@ -220,9 +225,160 @@ func test_dump_writes_a_json_file() -> void:
 	assert_true(parsed is Dictionary, "dump is a JSON object")
 
 
-func test_skip_is_a_stub() -> void:
+# skip / floor <n> — the debug floor advance wired to GameState (W3-B5a)
+
+
+## A one-player party for a headless run.
+func _party(peer_ids: Array[int]) -> Array[PlayerSpawnInfo]:
+	var party: Array[PlayerSpawnInfo] = []
+	for peer_id: int in peer_ids:
+		party.append(PlayerSpawnInfo.new(peer_id))
+	return party
+
+
+## A live host run starting on `start_floor`; `required_rooms` is how many rooms
+## the floor demands before its exit opens (0 is the RunState default and keeps
+## the exit open).
+func _start_host_run(start_floor: int = 1, required_rooms: int = 0) -> void:
+	NetworkManager.start_solo()
+	assert_true(NetworkManager.is_host, "test session is a host")
+	GameState.start_run(4242, start_floor, _party([1]))
+	GameState.run.required_rooms_cleared = required_rooms
+
+
+func test_skip_advances_the_live_run_one_floor() -> void:
+	_start_host_run()
+	watch_signals(GameState)
 	var result := _console.run("skip", 1)
+	assert_not_null(GameState.run, "skip does not end the run")
+	assert_eq(GameState.run.floor_index, 2, "skip calls GameState.next_floor()")
+	assert_eq(GameState.run.biome_index, 1)
+	assert_eq(GameState.last_advance_refusal, GameState.ADVANCE_REFUSAL_NONE,
+		"an advance that worked records no refusal")
+	assert_signal_emit_count(GameState, "floor_changed", 1)
+	assert_true(String(result).contains("2"), "the result names the new floor: %s" % result)
+
+
+func test_skip_reports_a_shut_exit_without_advancing() -> void:
+	_start_host_run(1, 3)
+	var result := _console.run("skip", 1)
+	assert_eq(GameState.run.floor_index, 1, "a shut exit blocks the advance")
+	assert_eq(GameState.last_advance_refusal, GameState.ADVANCE_REFUSAL_EXIT_SHUT)
 	assert_true(String(result).contains("skip"), result)
+	assert_true(String(result).contains("refused"), result)
+	assert_true(String(result).contains("shut"), "the reason is readable: %s" % result)
+
+
+func test_skip_reports_no_live_run() -> void:
+	# A host session with no live run: the refusal is "no run", not "not host".
+	NetworkManager.start_solo()
+	assert_true(NetworkManager.is_host)
+	assert_null(GameState.run)
+	var result := _console.run("skip", 1)
+	assert_true(String(result).contains("refused"), result)
+	assert_true(String(result).contains("no run"), "the reason is readable: %s" % result)
+	assert_eq(GameState.last_advance_refusal, GameState.ADVANCE_REFUSAL_NO_RUN)
+
+
+func test_skip_reports_the_last_floor() -> void:
+	_start_host_run(RunState.MAX_FLOOR)
+	var result := _console.run("skip", 1)
+	assert_eq(GameState.run.floor_index, RunState.MAX_FLOOR)
+	assert_eq(GameState.last_advance_refusal, GameState.ADVANCE_REFUSAL_LAST_FLOOR)
+	assert_true(String(result).contains("refused"), result)
+	assert_true(String(result).contains("last floor"), "the reason is readable: %s" % result)
+
+
+func test_skip_is_refused_on_a_client() -> void:
+	_start_host_run()
+	NetworkManager.is_host = false
+	var result := _console.run("skip", 1)
+	assert_eq(GameState.run.floor_index, 1, "a client never advances the floor")
+	assert_eq(GameState.last_advance_refusal, GameState.ADVANCE_REFUSAL_NOT_HOST)
+	assert_true(String(result).contains("refused"), result)
+	assert_true(String(result).contains("host"), "the reason is readable: %s" % result)
+
+
+func test_floor_jumps_to_the_named_floor_one_at_a_time() -> void:
+	_start_host_run()
+	watch_signals(GameState)
+	var result := _console.run("floor 5", 1)
+	assert_eq(GameState.run.floor_index, 5, "floor <n> advances until the run is on floor n")
+	assert_eq(GameState.run.floors_cleared, 4, "one advance per floor passed through")
+	assert_signal_emit_count(GameState, "floor_changed", 4)
+	assert_eq(GameState.last_advance_refusal, GameState.ADVANCE_REFUSAL_NONE)
+	assert_true(String(result).contains("5"), "the result names the target floor: %s" % result)
+
+
+func test_floor_accepts_the_last_floor() -> void:
+	_start_host_run()
+	var result := _console.run("floor 30", 1)
+	assert_eq(GameState.run.floor_index, RunState.MAX_FLOOR, "floor 30 is a legal jump target")
+	assert_true(String(result).contains("30"), result)
+
+
+func test_floor_on_the_current_floor_does_not_advance() -> void:
+	_start_host_run(4)
+	var result := _console.run("floor 4", 1)
+	assert_eq(GameState.run.floor_index, 4)
+	assert_true(String(result).contains("already"), result)
+
+
+func test_floor_rejects_a_non_integer() -> void:
+	_start_host_run()
+	var result := _console.run("floor upstairs", 1)
+	assert_eq(GameState.run.floor_index, 1, "a bad argument advances nothing")
+	assert_true(String(result).contains("whole number"), "the reason is readable: %s" % result)
+
+
+func test_floor_rejects_a_value_below_the_first_floor() -> void:
+	_start_host_run()
+	var result := _console.run("floor 0", 1)
+	assert_eq(GameState.run.floor_index, 1, "a bad argument advances nothing")
+	assert_true(String(result).contains("out of range"), "the reason is readable: %s" % result)
+
+
+func test_floor_rejects_a_value_above_the_last_floor() -> void:
+	_start_host_run()
+	var result := _console.run("floor 31", 1)
+	assert_eq(GameState.run.floor_index, 1, "a bad argument advances nothing")
+	assert_true(String(result).contains("out of range"), "the reason is readable: %s" % result)
+
+
+func test_floor_refuses_without_a_live_run() -> void:
+	# A host session with no live run: the refusal is "no run", not "not host".
+	NetworkManager.start_solo()
+	assert_true(NetworkManager.is_host)
+	assert_null(GameState.run)
+	var result := _console.run("floor 3", 1)
+	assert_true(String(result).contains("refused"), result)
+	assert_true(String(result).contains("no run"), "the reason is readable: %s" % result)
+	assert_null(GameState.run, "a refused jump never starts a run")
+
+
+func test_floor_stops_at_a_shut_exit_and_says_where_it_got_to() -> void:
+	_start_host_run(1, 3)
+	var result := _console.run("floor 5", 1)
+	assert_eq(GameState.run.floor_index, 1, "the shut exit blocks the very first step")
+	assert_eq(GameState.last_advance_refusal, GameState.ADVANCE_REFUSAL_EXIT_SHUT)
+	assert_true(String(result).contains("refused"), result)
+	assert_true(String(result).contains("shut"), "the reason is readable: %s" % result)
+
+
+func test_floor_does_not_go_backwards() -> void:
+	_start_host_run(6)
+	var result := _console.run("floor 3", 1)
+	assert_eq(GameState.run.floor_index, 6, "floor only advances")
+	assert_true(String(result).contains("behind"), "the reason is readable: %s" % result)
+
+
+func test_floor_is_refused_on_a_client() -> void:
+	_start_host_run()
+	NetworkManager.is_host = false
+	var result := _console.run("floor 5", 1)
+	assert_eq(GameState.run.floor_index, 1, "a client never advances the floor")
+	assert_eq(GameState.last_advance_refusal, GameState.ADVANCE_REFUSAL_NOT_HOST)
+	assert_true(String(result).contains("refused"), result)
 
 
 func test_heal_is_deferred_until_combat_core() -> void:
