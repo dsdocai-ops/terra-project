@@ -220,6 +220,16 @@ spec'd fields by name, so the swap-in is mechanical (blocked on Dev A, W2-A1).
 reads; deterministic rows use crit chance 0/1 or `force_crit`, and the
 in-between chance band is covered by a seeded 400-roll test.
 
+> **G13a (2026-10-20) — the crit roll is no longer a global roll.** The week-2
+> formula drew its crit from Godot's global RNG, which the definition of done
+> forbids anywhere under `scripts/`. `Damage.compute` now takes a fourth,
+> `null`-defaulted parameter — `rng: RandomNumberGenerator` — and draws the crit
+> from `randf_range(0.0, 1.0)` on it; a caller that passes none gets a
+> `Damage`-owned generator created on first use and seeded from clock entropy.
+> A `force_crit` (MARK) still short-circuits before the draw, so it consumes
+> none. No formula number changed: the 12 golden rows are byte-identical and
+> every week-2 test still passes. See decision 28 for the seam choice.
+
 ### W2-B3 — Enemy/projectile spawners + enemy StateSync (`networking`)
 
 `EnemySpawner` and `ProjectileSpawner` (`scripts/network/`, `MultiplayerSpawner`
@@ -758,6 +768,48 @@ already recorded in a spec or a comment, the location is given.
       on the manual-check list below until Dev A's `Downed`/`Dead` states
       (W3-A5) emit these events for real.
 
+28. **The crit roll's seeded-generator seam (G13a).** The week-2 formula drew
+    its crit from the global RNG, which the definition of done forbids under
+    `scripts/`. The plan offered two seams and asked for the choice to be
+    recorded — `Damage.compute` takes an optional seeded `RandomNumberGenerator`,
+    or it reads one the combat path owns. Four calls:
+    - *The parameter wins over a module-owned generator.* The generator's
+      lifetime belongs to the **run**, not to a formula. `GameState.start_run`
+      already resolves a per-run seed through a seeded generator (decision 23),
+      and Dev A's floor generation (W3-A1) needs that same seed, so one seed
+      should reproduce a floor *and* a crit sequence. A generator hidden inside
+      a static class could not be handed that seed without a rewrite; a
+      parameter *is* the hand-off, and it is `null`-defaulted so every existing
+      call site compiles untouched.
+    - *The null path falls back to a `Damage`-owned generator, not a global
+      roll, and not a constant seed.* It is created on first use and seeded from
+      clock entropy — the pattern `GameState` already uses for its host seed
+      roll. A fixed constant seed was rejected: with no production caller yet,
+      a constant is exactly what a first integration would silently hit, and it
+      would have shipped a permanent crit sequence — a stealth always-crit or
+      never-crit bug — at the same point in every run, for every player.
+    - *A forced crit consumes no draw.* MARK short-circuits before the roll, so
+      adding a MARK cannot shift the crit sequence of every later hit in the
+      run. Nothing depends on this yet, which is the point: it would have been
+      invisible until the sequence was replay-checked, and would have read as a
+      desync when it was.
+    - *The band test drives an injected generator instead of seeding the global
+      RNG.* It used to call `seed(20241019)`; the formula no longer reads the
+      global RNG, so that seeding would have gone on passing while proving
+      nothing about the path the formula actually takes. The 400-roll band now
+      runs on an explicitly seeded generator. The deterministic rows — crit
+      chance 0/1 and `force_crit` — are untouched, so the golden table's
+      semantics are unchanged.
+
+    What the seam does **not** yet do: roll a crit in a live game. `Hurtbox.receive`,
+    the caller the module doc names, is Dev A's combat core (W2-A1, still open),
+    so **no production path calls `Damage.compute` at all** and the fallback
+    generator is what a first integration would hit. What is verified is the
+    seam itself — same seed replays the same sequence, a different seed moves
+    it, and the null path still rolls in band — plus a clean headless launch.
+    Threading `GameState`'s run generator into `compute` is on the manual-check
+    list until that caller lands.
+
 ---
 
 ## Running the game
@@ -849,6 +901,12 @@ short checklist for Dev A and the human; none of them block week 2.
   the printed summary names both players, and the HUD clears. The headless test
   drives the same events from doubles; only the real states and emitters are
   unverified (W3-B2b, decision 27).
+- **Crit-roll reproducibility in a live run** — no production path calls
+  `Damage.compute` yet (Dev A's combat core, W2-A1), so the seeded-generator
+  seam is exercised only by its tests and a headless launch. When
+  `Hurtbox.receive` lands, thread the run's generator into `compute` and
+  confirm two instances on the same `--seed` roll the same crit sequence
+  (G13a, decision 28).
 
 ---
 

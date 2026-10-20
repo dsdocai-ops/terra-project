@@ -189,8 +189,51 @@ func test_ability_power_scales_only_ability_hits() -> void:
 	assert_eq(Damage.compute(attacker, _target(), hit), 30, "ability hit scales 1.0 + 50/100")
 
 
+## Rolls `rolls` hits at 50% crit through one seeded generator and returns the
+## crit flags in order, so two runs with the same seed can be compared.
+func _crit_sequence(crit_seed: int, rolls: int) -> Array[bool]:
+	var rng := RandomNumberGenerator.new()
+	rng.seed = crit_seed
+	var attacker := _attacker({"CRIT_CHANCE": 0.5})
+	var out: Array[bool] = []
+	for i in rolls:
+		var hit := _hit({"base_damage": 10.0})
+		Damage.compute(attacker, _target(), hit, rng)
+		out.append(hit.is_crit)
+	return out
+
+
 func test_crit_roll_is_roughly_the_declared_chance() -> void:
-	seed(20241019)
+	# An injected seeded generator makes the band deterministic; the formula no
+	# longer reads the global RNG, so seeding that would prove nothing.
+	var rng := RandomNumberGenerator.new()
+	rng.seed = 20241019
+	var attacker := _attacker({"CRIT_CHANCE": 0.5})
+	var crits := 0
+	var trials := 400
+	for i in trials:
+		var hit := _hit({"base_damage": 10.0})
+		Damage.compute(attacker, _target(), hit, rng)
+		if hit.is_crit:
+			crits += 1
+	assert_between(crits, 150, 250, "400 rolls at 50% crit land in [150, 250]")
+
+
+func test_injected_rng_replays_the_same_crit_sequence_for_a_seed() -> void:
+	var first := _crit_sequence(20241019, 64)
+	var second := _crit_sequence(20241019, 64)
+	assert_eq(first, second, "the same seed replays the same crit sequence")
+
+
+func test_different_seeds_move_the_crit_sequence() -> void:
+	var first := _crit_sequence(20241019, 64)
+	var other := _crit_sequence(20241020, 64)
+	assert_ne(first, other, "a different seed gives a different crit sequence")
+
+
+func test_null_rng_still_rolls_crits() -> void:
+	# No caller generator: the Damage-owned fallback must keep rolling near the
+	# declared chance rather than freezing at always-crit or never-crit.
 	var attacker := _attacker({"CRIT_CHANCE": 0.5})
 	var crits := 0
 	var trials := 400
@@ -199,4 +242,4 @@ func test_crit_roll_is_roughly_the_declared_chance() -> void:
 		Damage.compute(attacker, _target(), hit)
 		if hit.is_crit:
 			crits += 1
-	assert_between(crits, 150, 250, "400 rolls at 50% crit land in [150, 250]")
+	assert_between(crits, 100, 300, "the fallback generator still rolls near the declared chance")
