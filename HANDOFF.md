@@ -1,9 +1,10 @@
-# HANDOFF — Weeks 1 and 2 (W1-B1 .. W1-B10, W2-B1 .. W2-B6)
+# HANDOFF — Weeks 1 to 3 (W1-B1 .. W1-B10, W2-B1 .. W2-B6, W3-B1 .. W3-B5)
 
 A plain-language rundown of what the Dev B (Surface + Systems) lane shipped in
-week 1 and week 2, how each piece works, every decision that was made without a
-human in the loop, and how to run the build solo and in co-op. Written for Dev
-A and the human who review this handoff; the task list is `tasks/todo.md`.
+week 1, week 2 and week 3, how each piece works, every decision that was made
+without a human in the loop, and how to run the build solo and in co-op. Written
+for Dev A and the human who review this handoff; the task list is
+`tasks/todo.md`.
 
 **Verified baselines:**
 
@@ -17,11 +18,16 @@ A and the human who review this handoff; the task list is `tasks/todo.md`.
   began: import exit 0; 27 GUT scripts / 338 tests green in ~7 s;
   W2-B1 .. W2-B6 ticked, W2-B7 / W2-B8 and W2-A1 .. W2-A13 open; `week-2` not
   tagged. Full verdict in decision 22 below.
-- Week 3, latest (2026-10-20, after W3-B3b): import exit 0; 33 GUT scripts /
-  479 tests green in ~8 s; `tools/smoke_two.sh` 35 `ok` lines / exit 0 (steps
-  1 + 2 + 3, floor-hash agreement, and the client's layout assertion). Dev A's
-  W3-A1 .. W3-A7 are still unlanded, so every floor is generated through the
-  lane-B seam; `week-3` is not tagged.
+- Week 3 close-out (2026-10-20, after W3-B5b, tree at `84395b4`): import exit 0
+  with 0 error lines (`.goals/evidence/g6/import.log`); **35 GUT scripts /
+  554 tests / 554 passing / 54 115 asserts, exit 0** in 9.8 s
+  (`.goals/evidence/g6/gut-full.log`); `tools/smoke_two.sh` **35 `ok` lines /
+  0 FAIL / exit 0** (`.goals/evidence/g6/smoke-run.log`, per-peer logs in
+  `.goals/evidence/g6/smoke/`). Dev A's W3-A1 .. W3-A7 are still unlanded
+  (`scripts/generation/` holds only `.gdkeep`), so every floor is generated
+  through the lane-B seam; **`week-3` is not tagged** — the design-doc "Done
+  when" line is partial. Verdict and reason in decision 37 below and in
+  `specs/WEEKLY.md`.
 
 ---
 
@@ -348,6 +354,86 @@ by `tools/make_placeholder_sfx.gd` under `assets/audio/sfx/<id>.wav`; the
 real synth pipeline (W2-B7 / W2-A13) replaces the files later without
 touching the bank. Tests: `tests/unit/test_audio_manager.gd` (21).
 
+### W3-B1a — `RunState`, `RunPlayerState`, `RunResult`, `RunEndReason` (`run-economy`)
+
+*Written retrospectively at the Week 3 close-out (2026-10-20); the code shipped
+2026-10-19 and the per-task writeup was the debt this goal closes.*
+
+The run's data model, and the first thing every other week-3 module reads. Four
+`RefCounted` classes, each with a `Sync:` line in its doc comment:
+
+- `scripts/run/run_state.gd` (`RunState`) — the seed, `floor_index` clamped to
+  `MIN_FLOOR`..`MAX_FLOOR` (1..30), a **derived** `biome_index` (`(floor-1)/5+1`,
+  1..6 — derived rather than stored so floor and biome cannot disagree), players
+  keyed by peer id, the shared gold/ore pools, the kill/clear counters, and the
+  advance threshold (`rooms_cleared`, `required_rooms_cleared`, `exit_open`,
+  `can_advance()`, `advance_floor()`).
+- `scripts/run/run_player_state.gd` (`RunPlayerState`) — one slice per player:
+  peer/character/class ids, the weapon ids with their per-weapon mutations, relic
+  and ability and potion ids, ascension, echo shards, class XP, gold share, and
+  the downed/dead flags (`is_downed`, `is_dead`, `is_standing()`).
+- `scripts/run/run_result.gd` (`RunResult`) — what a finished run reports:
+  reason, seed, floors cleared, and per-peer `kept`/`lost` tables with a
+  documented `empty_table()` key shape.
+- `scripts/run/run_end_reason.gd` (`RunEndReason.Reason`) — `DEFEAT`, `EXTRACT`,
+  `VICTORY`, `ABORT`. Its own file with a nested enum so `GameState.end_run` can
+  type its parameter without depending on `RunResult`.
+
+Content ids on a slice are `StringName`, because `RelicData`/`AbilityData` are
+weeks 4 and 5; the swap-in keeps the field names and only replaces the element
+type. Tests: `tests/unit/test_run_state.gd` (20 tests / 154 asserts).
+
+### W3-B1b — the `GameState` run lifecycle (`run-economy`)
+
+`scripts/autoload/game_state.gd` became the real lifecycle. `run: RunState` now
+replaces the week-1 `RefCounted` stub, and three host-only calls drive it:
+
+- `start_run(run_seed, start_floor, party)` — resolves the seed
+  (**`forced_seed` verbatim when non-zero → the explicit caller seed → a host
+  roll**), builds the `RunState` at `start_floor`, makes one `RunPlayerState`
+  per `PlayerSpawnInfo`, and emits `run_started` plus the `Events` mirror. The
+  host roll mixes clock entropy into a **seeded** `RandomNumberGenerator`; there
+  is no global roll call anywhere on this path (decision 23).
+- `next_floor()` — advances through `RunState.advance_floor()`, refuses past
+  floor 30 and while the exit is shut, and emits `floor_changed(floor_index,
+  biome)`.
+- `end_run(reason: RunEndReason.Reason)` — builds the `RunResult` with
+  `empty_table()` `kept`/`lost` placeholders, **clears `run` before emitting**
+  (so a re-entrant listener is refused and `run_ended` fires exactly once), then
+  emits `run_ended` plus the bus mirror.
+
+All three warn and refuse on a client. `scripts/run/biome_placeholder.gd`
+(`BiomePlaceholder`, id 1..6) gives the `Resource`-typed `floor_changed` biome
+argument something real until Dev A's `BiomeData` lands — one line to swap in
+`GameState.biome_for_index()`. `Events.floor_entered` is deliberately **not**
+emitted here: floor-generation owns it, and emitting it too would update the HUD
+twice for one floor. Tests: `tests/unit/test_game_state_run.gd` (18, later 28)
+and `tests/integration/test_run_lifecycle_flow.gd` (2, which drives the real
+`hud.tscn` so the `floor_changed` → HUD seam is checked at runtime). Decisions
+23 and 24.
+
+### W3-B1c — floor advance threshold states and `can_advance_floor()` (`run-economy`)
+
+The rest of the loop: what counts as "this floor is done". `start_run()`
+subscribes the host to `Events.room_cleared(room: Node)` through the named
+handler `_on_room_cleared()` — never a lambda, which GUT never fires and which
+cannot be disconnected — guarded by `is_connected()` so a second `start_run()`
+replacing a live run cannot double-count, and disconnected in `end_run()` so a
+finished run stops counting. The handler guards on `NetworkManager.is_host and
+run != null` rather than being subscribed conditionally, because `Events` is a
+global bus a client's own `Room` nodes will also drive: the counter is
+host-authoritative state. New public API: `can_advance_floor() -> bool`
+(`run != null and run.exit_open`, a pure predicate with **no** host check so the
+HUD can read it on a client) and `last_advance_refusal: StringName` with the
+`ADVANCE_REFUSAL_{NONE,NOT_HOST,NO_RUN,EXIT_SHUT,LAST_FLOOR}` constants, so
+"refused, and why" is a readable value instead of only a log line. `next_floor()`
+clears the refusal on every call, distinguishes its four branches, and the
+`exit_shut` message carries the live `rooms_cleared of required_rooms_cleared`
+ratio. `required_rooms_cleared` keeps its default of `0` = "no requirement
+declared yet", which is deliberate: the real determinant is Dev A's Exit rule
+(**blocked on Dev A (W3-A2)**), and `0` must not wedge an advanceable run.
+Tests: `test_game_state_run.gd` 18 → 28 (10 new, written red first). Decision 25.
+
 ### W3-B2a — `Rope` interactable and the ROPE room populator (`run-economy`)
 
 `scripts/run/rope.gd` (`class_name Rope extends Area2D`) is the extraction rope
@@ -585,8 +671,10 @@ worse than failing. This task closes both.
   / addons change.
 - **Not claimed**: the smoke still runs its pairs sequentially on one port, so a
   parallel smoke is untested; the default port remains 7777 and nothing else in
-  the project reads `--port`. `net_lag` and the rest of W3-B5's console work are
-  untouched here — this task owns only the two tooling findings.
+  the project reads `--port`. `net_lag` and the rest of W3-B5's console work were
+  untouched **by this task** — it owns only the two tooling findings. (Both
+  landed afterwards: `skip`/`floor <n>` at W3-B5a and `seed`/`net_lag` at
+  W3-B5b, 2026-10-20.)
 
 ### W3-B3b — layout hash assertion with the host-layout fallback (`networking`)
 
@@ -662,6 +750,42 @@ generated a different floor would have played it.
   `--host` instance has no exit timer by design, so this is expected behaviour of
   a manual/two-instance run, not a defect — but it does mean a stray host can
   make a *default-port* smoke fail confusingly, and `PORT=<free>` is the fix.
+
+### W3-B3c — the lane-B floor determinism soak (`networking`)
+
+*Written retrospectively at the Week 3 close-out (2026-10-20); the soak shipped
+2026-10-20 as `2bd4cd1` and this is the per-task writeup.*
+
+Week 3's checkpoint asks for a 500-seed floor soak. Dev A's
+`scripts/generation/floor_generator.gd` does not exist, so the only soak that can
+actually run is over the layout the game genuinely generates today: the lane-B
+`FloorLayoutPlaceholder` that `FloorGeneratorSeam` hands **every** peer. That is
+not a consolation prize — it is the exact class the two-process `layout_hash`
+comparison compares, so the soak covers the production path rather than a double
+that could agree with itself.
+
+`tests/integration/test_floor_generation_seeds.gd` — 8 tests / **41 069 asserts**
+/ 1.9 s, well under SPEC-floor-generation's 60 s headless budget. It soaks 500
+seeds across floors 1..30 and all six biomes and asserts: the same
+`(run_seed, floor_index, biome_id, modifiers)` rebuilds the same `layout_hash`,
+rooms and `room_count`; 500 different seeds give **500 distinct** hashes with 0
+neighbouring collisions; `to_wire()` → `from_wire()` keeps the identical hash,
+rooms, count, seed, floor and biome; every room rect lies inside the 96×96 grid;
+`room_count` stays in the spec's 8..14; and a one-input-changed negative control
+(floor_index, biome_id, a modifier) moves the hash, so the equality assertions
+cannot pass vacuously.
+
+Written red first, and it found a real defect: `FloorLayoutPlaceholder.for_floor`
+drew room origins from a flat 0..95, so a room could run up to 16 tiles past the
+grid edge. Origins are now bounded by `GRID_TILES - size`. That fix changes every
+placeholder `layout_hash`, which is why the smoke's numbers moved from the
+G7b/G8 values — the smoke compares its two peers **to each other**, not to a
+recorded constant, so it stayed green. The spec's own soak (over
+`FloorGenerator.generate()`, with flood-fill reachability, Exit reachable, exactly
+one `ROPE` on floor 2, no overlapping rooms, 3-wide corridors) is still unstruck
+and is **blocked on Dev A (W3-A3)**; the soak's last case asserts the *seam's
+source*, so the moment the real generator lands the test tells the next author
+that the loops above now soak the wrong class instead of silently passing.
 
 ### W3-B4a — `player_downed` / `player_revived` broadcast and downed-flag sync (`networking`)
 
@@ -763,7 +887,9 @@ state had existed.
   PLAN **G11a** (smoke driver + launch arg) and **G11b** (step-5 green run) —
   reserved for those goals rather than faked here. Also, nothing yet *causes* a
   real down: Dev A's `Downed`/`Dead` states and bleed-out timer (W3-A5) are the
-  emitters, and `Player.request_revive` is still a `pass` stub. What this task
+  emitters, and `Player.request_revive` was still a `pass` stub **at this
+  writeup** — W3-B4b filled it in on 2026-10-20 (see the section below), so the
+  only remaining gap is the states that emit the down. What this task
   proves is that when those land, the flag and the two signals already have a
   host-owned broadcast and a replicated path behind them.
 
@@ -1180,6 +1306,11 @@ already recorded in a spec or a comment, the location is given.
     done" — shows the human expects milestone tags gated on the whole
     checkpoint.
 
+    **Resolved 2026-10-20 by decision 37:** Dev A's W3-A1 .. W3-A7 did not land
+    during this run, so the gap is stated in `WEEKLY.md`, in decision 37 and in
+    `.goals/LOG.md`, and `week-3` is **not** created — exactly as this decision
+    said it would be.
+
 23. **`GameState` run lifecycle (W3-B1b) — seed precedence, `end_run`
     signature, and emit order.**
     - `end_run(reason: RunEndReason.Reason)` replaces the week-1 `int`
@@ -1274,13 +1405,18 @@ already recorded in a spec or a comment, the location is given.
       carries the live `rooms_cleared of required_rooms_cleared` ratio.
     - Nothing on this path touches a base stat or a time scale: it reads one
       `Events` signal and increments one integer.
-    - **Handle for G12:** `next_floor()` is now gated, so the debug console's
-      `floor <n>` jump cannot go through it. There is no production call site
-      to break today (nothing but the tests calls `next_floor` yet), but W3-B5
-      must jump via `RunState.floor_index` directly — or set
-      `required_rooms_cleared` to 0 first — rather than expect the gate to let
-      a debug jump through. Recorded here so the gate is not "fixed" by
-      weakening it later.
+    - ~~**Handle for G12:** `next_floor()` is now gated, so the debug console's
+      `floor <n>` jump cannot go through it … W3-B5 must jump via
+      `RunState.floor_index` directly — or set `required_rooms_cleared` to 0
+      first — rather than expect the gate to let a debug jump through.~~
+      **Superseded 2026-10-20 by W3-B5a (decision 35).** The prediction was
+      wrong and the code is better for it: `floor <n>` **walks** one
+      `next_floor()` call per floor rather than assigning `floor_index`, so a
+      debug jump is subject to exactly the rules a real walk to the Exit is —
+      it cannot teleport over a shut exit, it announces every floor it passes on
+      `floor_changed`, and `floors_cleared` stays honest. No second write path
+      onto run state was invented, and the gate was not weakened. The stale
+      prescription is struck rather than left to contradict the tree.
 
 26. **The rope and its ROPE populator (W3-B2a).** Six calls the specs leave
     open, all taken in the direction the specs already point:
@@ -1783,6 +1919,80 @@ already recorded in a spec or a comment, the location is given.
       public API, `scripts/data/` Resource, `Events` signal, save schema, CI or
       addon was touched.
 
+37. **Week 3 gate verdict and the withheld `week-3` tag (2026-10-20).**
+    Verdict: **partial**. Re-verified from the tree at `84395b4` rather than from
+    memory, as this decision is written:
+
+    - The design doc's Week 3 "Done when" line — "Procedural floors with Start,
+      Combat, Elite Combat, Treasure, Rope, Exit rooms, locking combat rooms,
+      seed sync for co-op, downed/revive" — is **unmet**, and the reason is the
+      same one that withheld `week-2`: Dev A's lane. `scripts/generation/` holds
+      only `.gdkeep` (no `FloorGenerator`, no `Floor` scene, no room types, no
+      locking rooms, no populator registry), `scenes/dungeon/` holds only
+      `interactables/rope.tscn`, and `scripts/combat-core/`, `scripts/enemies-ai/`,
+      `scripts/weapons/`, `scripts/abilities/` and `scripts/classes-characters/`
+      do not exist. **W3-A1 .. W3-A7 are all unlanded.**
+    - **Seed sync for co-op is met** — and met the hard way, with a two-process
+      proof rather than a signal count: `tools/smoke_two.sh` launches host/client
+      pairs on a shared `--seed` and compares each peer's `layout_hash` for
+      **equality** (35 `ok` lines, 0 FAIL, exit 0; `20261020` →
+      `3600649381522393848`, `987654321` → `536024383148136417`), plus a
+      different-seed pair so two equal numbers cannot pass by being constant, and
+      a committed negative control showing the helper's FAIL path.
+    - **Downed/revive is met on Dev B's half only**: the replicated `is_downed`
+      flag, the `player_downed`/`player_revived` broadcasts and the host revive
+      rule (`request_revive`, range, eight refusal reasons) are in and tested.
+      The states that *cause* a revive are Dev A's W3-A5, so nothing in a
+      launched game can down a player yet.
+    - Dev B's Week 3 lane is **complete**: W3-B1 (a/b/c), W3-B2 (a/b), W3-B3
+      (a-1/a-2/a-3/b/c), W3-B4 (a/b) and W3-B5 (a/b) are all ticked in
+      `tasks/todo.md` with their evidence. **W3-B6** (`[art-audio]` rope vote
+      prompt, floor label pieces, downed/revive HUD icons, death/extract summary
+      theme, and the rope/revive/downed/menu SFX) is **open and out of this
+      run's scope** — it is an art-audio task, not a systems task, and the raw
+      goal's task list does not include it; the placeholder rule stands
+      (SPEC's "coloured square with the first letter", generated 5×7 font).
+    - Verified on this machine at `84395b4`, logs in `.goals/evidence/g6/`:
+      `--headless --path . --import` exit 0 with 0 error lines
+      (`g6/import.log`); full GUT **35 scripts / 554 tests / 554 passing /
+      54 115 asserts, exit 0** in 9.8 s (`g6/gut-full.log`, up from the 529-test
+      baseline recorded at the last reflect); `tools/smoke_two.sh` **35 `ok`, 0
+      FAIL, exit 0** (`g6/smoke-run.log`).
+    - **`week-3` is NOT created.** A milestone tag claims the whole design-doc
+      "Done when" line, not one lane's task list — that is the precedent this
+      run set at decision 22 for `week-2`, and the raw goal's own `week-4`
+      condition ("once *my* tasks are done and all tests are green") is the
+      Week 4 line's wording, not a licence to tag a Week 3 whose headline
+      deliverable (procedural floors) does not exist. Creating it would claim a
+      milestone that did not happen. The gap is stated in `specs/WEEKLY.md`, in
+      this decision, and in `.goals/LOG.md` instead.
+
+    **Smoke steps.** Steps 1–3 pass in two processes, plus the floor-sync phase
+    (shared-seed agreement and the client's own layout assertion). Step 4 (client
+    picks a relic at a Shrine) has **no driver** — the Shrine is week 4's W4-B5
+    and no Shrine exists to walk to. Step 5 (client goes down, host revives) has
+    **no driver and no emitter** — Dev A's W3-A5 states are what down a player.
+    Both are recorded as blocked rather than skipped, and their drivers are the
+    post-week-3 smoke goals.
+
+    **Stale-claim sweep performed as part of this verdict.** Every "still a
+    stub" / "not yet landed" / "lands in week N" sentence in the files a reader
+    consults for the *current* state was checked against the tree and corrected
+    or dated: `HANDOFF.md`'s `Player.request_revive`-is-still-a-stub note in the
+    downed-sync manual check (G3 filled it in), the same claim inside the W3-B4a
+    writeup, the W3-B3a-3 note calling W3-B5's console work untouched, decision
+    25's "Handle for G12" prescription that W3-B5 must jump through
+    `RunState.floor_index` (W3-B5a deliberately walks through `next_floor()`
+    instead), the header/edit bar's test and smoke counts, and the footer. The
+    retrospective writeups for W3-B1a/b/c and W3-B3c — recorded as owed when
+    W3-B3b shipped — are written in this pass.
+
+    **What this does not change.** Nothing in `scripts/`, `scenes/`, `data/`,
+    `tests/` or `tools/` is touched by this goal: it is the checkpoint's records.
+    Week 4 proceeds on the standing premise that every Dev A dependency is
+    unlanded, with each cross-lane seam built against the spec interface plus a
+    `tests/helpers/` double and recorded `blocked on Dev A (W4-Ax)`.
+
 ---
 
 ## Running the game
@@ -1828,7 +2038,7 @@ godot --path . -- --join=127.0.0.1
 GODOT=/c/Users/Dsedg/Downloads/Godot_v4.7.2-stable_win64.exe/Godot_v4.7.2-stable_win64_console.exe bash tools/smoke_two.sh
 ```
 
-Expect 33 `ok` lines (steps 1 + 2 + 3, then the floor-sync phase) and exit 0. On
+Expect 35 `ok` lines (steps 1 + 2 + 3, then the floor-sync phase) and exit 0. On
 Linux/macOS, `tools/run_two.sh` is the
 windowed launcher and `smoke_two.sh` needs `GODOT` pointing at a 4.7.2 binary.
 The floor-sync phase launches two extra host/client pairs on `--seed=20261020`
@@ -1847,7 +2057,7 @@ than a one-player host on 7777 that nobody can join.
 
 ```powershell
 godot --headless --path . --import                                                         # must exit 0, no errors
-godot --headless --path . -s addons/gut/gut_cmdln.gd -gdir=res://tests -ginclude_subdirs -gexit   # 479 tests, exit 0
+godot --headless --path . -s addons/gut/gut_cmdln.gd -gdir=res://tests -ginclude_subdirs -gexit   # 554 tests, exit 0
 ```
 
 ---
@@ -1855,7 +2065,7 @@ godot --headless --path . -s addons/gut/gut_cmdln.gd -gdir=res://tests -ginclude
 ## Manual checks still open (non-blocking)
 
 These were not blockable from a headless run or from this machine. They are a
-short checklist for Dev A and the human; none of them block week 2.
+short checklist for Dev A and the human; none of them block week 4.
 
 - **Viewport / integer scaling** — run the game windowed at 1920x1080 and
   confirm the 960x540 base renders crisp nearest-neighbor pixels with no
@@ -1896,16 +2106,41 @@ short checklist for Dev A and the human; none of them block week 2.
   broadcast and the replicated `is_downed` are proved in one process through the
   fake-client seam (W3-B4a, decision 33). The two-instance proof — down a player
   on one peer and observe the flag and the HUD on the other — needs a smoke
-  driver and a launch arg, which are PLAN G11a, with the green run at G11b.
-  Nothing emits a real down yet in any case (Dev A W3-A5), and
-  `Player.request_revive` is still a stub (W3-B4b).
+  driver and a launch arg, which are the post-week-3 smoke goals, with the green
+  run after them. Nothing emits a real down yet in any case (Dev A W3-A5). The
+  client half is no longer missing: **`Player.request_revive` was filled in by
+  W3-B4b on 2026-10-20** (decision 34) and the host revive rule behind it is
+  tested; what remains open is only the hold-to-revive input and the
+  `Downed`/`Dead` states that start the sequence, both Dev A's W3-A5.
+- **Floor-sync smoke steps 4 and 5** — step 4 (a client picks a relic at a
+  Shrine) needs the Shrine of W4-B5, and step 5 (a client goes down and the host
+  revives) needs Dev A's W3-A5 down/emitter path. Both are recorded as blocked
+  rather than skipped in decision 37; `tools/smoke_two.sh` drives steps 1–3 and
+  the floor-sync phase today.
+- **Advanced-floor two-process proof** — only floor 1 is proven across two
+  processes (the driver starts the run once the client is in, which is the
+  `run_started` broadcast). The `floor_changed` re-broadcast is unit-tested;
+  walking a floor advance through the smoke needs a driver that presses `skip`,
+  which now exists as a real command (W3-B5a) but is not yet wired into the
+  smoke.
+- **The real-generator floor soak** — `tests/integration/test_floor_generation_seeds.gd`
+  soaks the lane-B `FloorLayoutPlaceholder` (the layout every peer generates
+  today) over 500 seeds, but SPEC-floor-generation's own soak — over
+  `FloorGenerator.generate()`, with flood-fill reachability, Exit reachable,
+  exactly one `ROPE` on floor 2, no overlapping rooms and 3-wide corridors — is
+  **blocked on Dev A (W3-A3)**. The soak's last case asserts the seam's source so
+  it cannot silently keep soaking the placeholder once the real generator lands.
 
 ---
 
-Everything above was verified on this machine on 2026-10-18 (week 1) and
-2026-10-19 (week 2): import exit 0 with no errors, 338/338 GUT tests green
-(~14 s), 28/28 smoke checks green, on `main` @ `ee62cb7`. The week-1 close-out
-(WEEKLY entry, SPEC-foundation write-backs, CI confirmation, `week-1` tag) and
-the week-2 checkpoint (smoke steps 1–3, feel-pass checklist, WEEKLY entry, the
-`week-2` tag once Dev A's tasks land) are tracked in `.goals/PLAN.md` and
-`specs/WEEKLY.md`.
+Everything above was verified on this machine: week 1 and week 2 on 2026-10-18 /
+2026-10-19 (import exit 0, 338/338 GUT, 28/28 smoke, `main` @ `ee62cb7`), and the
+**Week 3 close-out on 2026-10-20** at `84395b4` — import exit 0 with 0 error
+lines, **35 scripts / 554 tests / 554 passing / 54 115 asserts, exit 0**, and
+`tools/smoke_two.sh` **35 `ok` / 0 FAIL / exit 0** (logs in
+`.goals/evidence/g6/`). The week-1 close-out (WEEKLY entry, SPEC-foundation
+write-backs, `week-1` tag) is done. The week-2 checkpoint is **partial** and the
+`week-2` tag is withheld (decision 22); the week-3 checkpoint is **partial** and
+the `week-3` tag is withheld (decision 37) — in both cases because Dev A's lane
+for that week has not landed. Week 4 records, the perf numbers and the `week-4`
+tag decision are tracked in `.goals/PLAN.md` and `specs/WEEKLY.md`.
