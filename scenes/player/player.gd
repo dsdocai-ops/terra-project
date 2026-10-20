@@ -405,6 +405,15 @@ func _replay_directional() -> void:
 		play_directional(current_anim)
 
 
-## Client asks the host to revive `target`. Filled in by networking week 3.
-func request_revive(_target: Player) -> void:
-	pass
+## Client asks the host to revive `target` (SPEC-player-controller's
+## `request_revive`, client -> host). Networking owns the rule: the request
+## travels through NetworkManager, the host validates the distance, the downed
+## flag and the sender, and applies it. A client never revives on its own
+## authority (SPEC-run-economy), so calling this on a client or in solo changes
+## nothing locally — with no remote host the request is reported, not applied.
+## The 3 s hold and the 40% restore are the host's numbers; this is only the ask.
+func request_revive(target: Player) -> void:
+	if target == null:
+		push_warning("Player.request_revive: no target named")
+		return
+	NetworkManager.send_revive_request(target.peer_id)

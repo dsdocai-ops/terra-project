@@ -220,6 +220,22 @@ func _on_player_died(player: Player) -> void:
 	_check_run_defeat()
 
 
+## Host only. A downed teammate stood back up (W3-B4b's revive). Clears the
+## slice's downed flag, so `is_standing()` is true again and the all-downed rule
+## counts this player as living once more. The route is the same one a down
+## takes: the host applies the revive and `Events.player_revived` reaches here on
+## every peer. A dead slice is left dead — SPEC-player-controller's "Dead for the
+## rest of the floor", with the next-floor revive in week 5 — and only the
+## `is_downed` half is written, so nothing here can resurrect one.
+func _on_player_revived(player: Player, _by: Player) -> void:
+	if not _is_tracking_run():
+		return
+	var slice: RunPlayerState = _slice_for(player)
+	if slice == null:
+		return
+	slice.is_downed = false
+
+
 ## True when a player event belongs to a live run owned by this peer: nobody
 ## else may move the run's downed flags.
 func _is_tracking_run() -> bool:
@@ -345,6 +361,8 @@ func _subscribe_player_events() -> void:
 		Events.player_downed.connect(_on_player_downed)
 	if not Events.player_died.is_connected(_on_player_died):
 		Events.player_died.connect(_on_player_died)
+	if not Events.player_revived.is_connected(_on_player_revived):
+		Events.player_revived.connect(_on_player_revived)
 
 
 ## Stops listening for player events. Safe to call when nothing is connected.
@@ -354,6 +372,8 @@ func _unsubscribe_player_events() -> void:
 		Events.player_downed.disconnect(_on_player_downed)
 	if Events.player_died.is_connected(_on_player_died):
 		Events.player_died.disconnect(_on_player_died)
+	if Events.player_revived.is_connected(_on_player_revived):
+		Events.player_revived.disconnect(_on_player_revived)
 
 
 ## Host only. The seed a run starts with: --seed (GameState.forced_seed) wins,

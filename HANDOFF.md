@@ -765,6 +765,126 @@ state had existed.
 
 ---
 
+### W3-B4b — `request_revive` and the host revive rule (`networking`)
+
+W3-B4a left the flag and the two signals with a host-owned broadcast behind
+them; the third deliverable on the same task line — `request_revive`, and the
+rule the host applies when a client asks — was still missing, and
+`Player.request_revive` was a `pass` stub. This is that half: a client asks, the
+host decides, and a refused ask is a readable reason rather than a silence.
+
+- **The client asks, the host decides.** `NetworkManager.request_revive(target_peer_id)`
+  is `@rpc("any_peer","call_remote","reliable")` — the same shape as
+  `request_vote_rope` / `request_floor_layout`, with one named argument
+  (`target_peer_id`) — and the host resolves the asking peer from
+  `multiplayer.get_remote_sender_id()`, never from the payload. The player's own
+  `Player.request_revive(target)` now forwards to the new
+  `NetworkManager.send_revive_request(target.peer_id)`, which emits a
+  `revive_requested` signal *before* it sends, so a single-process test can see
+  the ask even when there is nobody to ask (`can_send_request()` is false in a
+  faked client, and the RPC is deliberately not sent — the same trick
+  `floor_layout_requested` uses at W3-B3b).
+- **The seam and the rule are two functions.** `can_apply_revive_request(sender,
+  target)` is the yes/no seam the plan asked for; `apply_revive_request(sender,
+  target)` is the body, which re-derives the reason through
+  `revive_refusal_reason(sender, target)` and records it in
+  `last_revive_refusal`. The split is deliberate: a boolean is what a caller
+  branches on, and the `StringName` is what the debug console (W3-B5) and the
+  refusal log line need to say *why*.
+- **Eight reasons, all of them refusals a real session can produce.** Not the
+  host; not a request (sender 0 — a local call); no such target; the target is
+  not downed; the target is dead this floor; the sender is not a player in this
+  session; the sender *is* the target; out of range. The order matters and is
+  checked: "not downed" is tested before the reviver is even looked up, so a
+  request naming a stranger and a standing player reads as `target_not_downed`
+  rather than as a spurious `no_reviver`. Every refusal is a `push_warning`, not
+  a `push_error` — a refusal is the system working, and GUT counts engine errors
+  as failures (LESSONS).
+- **The distance is local `position`, deliberately.** `revive_distance` reads
+  `reviver.position.distance_to(target.position)`, not the global transform. In
+  the running game every player is a direct child of `World/Players`, so local
+  positions are comparable; outside the tree a player double has no global
+  transform to read, and reading one raises an engine error that GUT would score
+  as a failure. The boundary is exact: a teammate standing at exactly
+  `REVIVE_RANGE` revives.
+- **The numbers live on `NetworkManager`, and the swap point is named.**
+  `REVIVE_RANGE = 48.0` (1.5 tiles at 32 px), `REVIVE_SECONDS = 3.0`,
+  `REVIVE_HP_FRACTION = 0.4`, plus `REVIVE_SPEED_MULT_MIN = 0.1` as the floor
+  under `revive_speed_mult`. `revive_seconds_for(reviver)` and
+  `revive_hp_for(max_hp)` turn them into values other modules and tests can
+  read: the first divides by the reviver's `revive_speed_mult` (clamped at the
+  minimum, so a 0.0 or negative multiplier cannot produce an infinite or
+  backwards hold), and the second rounds to a whole number of HP and never
+  returns less than 1, so a revive of a 0-max-HP player still leaves them alive.
+  `revive_hp_for` is the read half only — **writing** the restored HP is Dev A's
+  `Health` (blocked on Dev A W2-A1) and is not done here.
+- **A revive stands the player up through the existing path.** The host apply
+  calls the same `apply_player_revived(target.peer_id, sender)` W3-B4a wrote for
+  the receiving half of a broadcast, so host-apply and client-broadcast converge
+  on one body: `is_downed` is cleared, the bus event `Events.player_revived`
+  fires, and the host's `route_player_revived` takes it from there. That also
+  honours G2's deferred promise — `apply_player_revived` now resolves the reviver
+  once and emits the player's own `revived(by)` signal first, which is the one
+  emitter decision 33 reserved for the revive path.
+- **`GameState` needed a revive handler, and that was the real gap.**
+  `RunPlayerState.is_downed` could be set by `_on_player_downed` but nothing ever
+  cleared it, so "the revived slice leaves the downed state and `is_standing()`
+  becomes true again" was unsatisfiable before this task. The new host-only
+  `_on_player_revived(player, by)` clears `is_downed` through the existing
+  `_is_tracking_run()` / `_slice_for()` seam and is connected in
+  `_subscribe_player_events()` / disconnected in `_unsubscribe_player_events()`,
+  so an ended run cannot be resurrected by a late event. It writes `is_downed`
+  only: `is_dead` is untouched, which is how SPEC-player-controller's "Dead for
+  the rest of the floor" (and the week-5 next-floor revive) stays true.
+- **The `player.gd` edit is a cross-lane change, flagged.** `Player.request_revive`
+  is Dev A's signature and its body was a stub carrying the comment "Filled in
+  by networking week 3" — so filling it is this task, but the file is Dev A's and
+  it is recorded here for Dev A's review rather than assumed. It is two lines
+  (a null guard and the forward) plus the doc comment stating that networking
+  owns the rule; no other member of `player.gd` was touched.
+- **Verified, red first.** `tests/unit/test_revive.gd` is new: **24 tests /
+  108 asserts**, written before the implementation and confirmed failing for the
+  right reason — `Invalid call. Nonexistent function 'apply_revive_request' in
+  base 'Node (network_manager.gd)'` on all 24, kept at
+  `.goals/evidence/g3/red-test-revive.log`. It covers the three constants and
+  both derived numbers (including the `revive_speed_mult` scaling and its floor,
+  and `revive_hp_for` at 100 → 40, 250 → 100, 7 → 3, 1 → 1, 0 → 1); the RPC
+  contract (`any_peer`, `call_remote`, reliable, argument name `target_peer_id`,
+  and that a *local* call is not a client's request); each refusal reason in
+  turn, with the exact-range boundary passing where just-outside does not; a
+  valid request standing the teammate up with the bus event emitted exactly once
+  and `[target, holder]` as its arguments, the target's own `revived` signal
+  naming the reviver exactly once, and a repeated request reviving nothing; the
+  client-authority cases; and the run slice's downed flag clearing so
+  `is_standing()` is true again while `is_dead` is left alone. Full GUT
+  **35 scripts / 529 tests / 529 passing / 54014 asserts, exit 0**
+  (`.goals/evidence/g3/gut-full.log`, up from 505); headless `--import` exit 0
+  with 0 error lines (`g3/import.log`); headless `-- --host --smoke=6` exit 0
+  with 0 script/parse errors (`g3/launch-host.log`); `tools/smoke_two.sh` exit 0
+  with **35 `ok` lines and 0 FAIL** (`g3-smoke/run-smoke.log`, logs in
+  `g3-smoke/run/`) — run **before** the commit, as sync commits require — with
+  the floor hashes unchanged from G1/G2 (`3600649381522393848` for seed
+  `20261020`, `536024383148136417` for `987654321`). `Engine.time_scale` and
+  global-RNG greps over `scripts/` and `scenes/` are empty, and no base stat is
+  written anywhere in the three changed files.
+- **The negative control was forced, and is kept.** With `REVIVE_RANGE`
+  temporarily widened to `480.0`, exactly one test failed —
+  `test_the_reviver_must_stand_within_revive_range` — and nothing else, which is
+  what makes the range criterion a check rather than an assumption
+  (`.goals/evidence/g3/negative-control-revive-range.log`). The constant was
+  restored and the suite re-run green.
+- **Not claimed: a real revive in a real session.** Nothing in the game calls
+  `request_revive` yet — the hold-to-revive input, the `Downed`/`Dead` states
+  and the 30 s bleed-out are Dev A's **W3-A5** (the swap point PLAN G3 names),
+  and a live revive is driven end-to-end by that input. The 3 s is a number the
+  host and the UI can both read; the timer that counts a hold is not built here,
+  and `revive_hp_for`'s result is not written to `Health` (blocked on Dev A
+  W2-A1). A two-process revive needs the smoke driver of PLAN **G11a/G11b**.
+  What this task proves is that when the input lands, the ask, the host's rule,
+  the refusal reasons and the slice-clearing all exist and are checked.
+
+---
+
 ## Decisions made without a human
 
 These are the judgment calls taken during weeks 1 and 2 that were not dictated
@@ -1424,6 +1544,60 @@ already recorded in a spec or a comment, the location is given.
       ownership ("PR into player.tscn, Dev A reviews") — so it is recorded here
       for review instead of being skipped. Three lines inside the `StateSync`
       sub-resource; no node, no `InputSync` field, and no other `.tscn` changed.
+
+34. **Revive: who owns the rule, where the numbers live, and what a refusal says
+    (W3-B4b/G3).** SPEC-player-controller declares `request_revive` (client → host)
+    and SPEC-run-economy says a client never revives on its own authority, but
+    neither says where the validation lives, what the host checks, or how a
+    refused ask is reported. Six calls:
+    - *The rule lives on `NetworkManager`, and `Player.request_revive` only
+      forwards.* Distance, the downed flag and the sender are all facts about the
+      session — which peer is where, and who is allowed to ask — so they belong
+      with the rest of the session rules rather than on the player object. The
+      player keeps the spec's entry point (`request_revive(target)`) and adds two
+      lines that hand it to `send_revive_request(target.peer_id)`; a client that
+      calls it in solo changes nothing locally and is *told* so, rather than
+      appearing to revive.
+    - *Validation is two functions, not one.* `can_apply_revive_request(sender,
+      target)` is the boolean seam PLAN G3 asked for (the shape `can_apply_*` has
+      everywhere else in the autoload); `revive_refusal_reason(sender, target)`
+      is the reason behind it, kept in `last_revive_refusal`. Collapsing them
+      would have made "it was refused" the only thing a caller could ever know —
+      and the debug console (W3-B5) and the refusal log line both need the why.
+    - *Every refusal is a `push_warning`.* A refused request is the authority
+      doing its job, not a fault, and GUT scores engine errors as failures — so
+      a refusal that used `push_error` would make the refusal tests fail for the
+      wrong reason (LESSONS, the same call the Rope and floor paths made).
+    - *The range check reads local `position`.* In the running game every player
+      is a direct child of `World/Players`, so local positions are comparable and
+      a global transform is not needed; outside the tree a player double has no
+      global transform, and reading `global_position` on one raises an engine
+      error. The rule is `<= REVIVE_RANGE`, asserted with a teammate standing at
+      exactly the range (revives) and just outside it (does not).
+    - *The revive constants live on `NetworkManager` with the swap point named.*
+      `REVIVE_RANGE` / `REVIVE_SECONDS` / `REVIVE_HP_FRACTION` /
+      `REVIVE_SPEED_MULT_MIN` are the host's numbers, and PLAN G3 places them
+      here. What uses them is Dev A's: the hold-to-revive input, the `Downed` /
+      `Dead` states and the bleed-out timer are **blocked on Dev A (W3-A5)**, and
+      `revive_hp_for`'s result is written to `Health`, **blocked on Dev A
+      (W2-A1)**. `revive_seconds_for` clamps `revive_speed_mult` at
+      `REVIVE_SPEED_MULT_MIN` so a zero or negative multiplier cannot make the
+      hold infinite or backwards, and `revive_hp_for` floors at 1 HP so a revive
+      never leaves a player standing with 0.
+    - *New public API beyond the declared signatures* (recorded here per the
+      BRIEF's rule): `NetworkManager.request_revive`, `send_revive_request`,
+      `can_apply_revive_request`, `apply_revive_request`, `revive_refusal_reason`,
+      `revive_distance`, `revive_seconds_for`, `revive_hp_for`, the
+      `revive_requested` signal, `last_revive_refusal` and the `REVIVE_*` /
+      `REVIVE_REFUSAL_*` constants; plus `GameState._on_player_revived` (private,
+      the slice-clearing route) and the two-line body of the existing
+      `Player.request_revive`. Additions only — nothing renamed or removed, and
+      no existing signature changed. The cross-lane edit is `scenes/player/player.gd`
+      (Dev A's module, the stub's own comment reads "Filled in by networking week
+      3"); it is flagged for Dev A's review rather than asked about, because the
+      stub is this task's deliverable. No `.tscn`, no `project.godot`, no Input
+      Map, no `Events` signal, no `scripts/data/` Resource, no save schema, no CI
+      and no addon was touched.
 
 ---
 
