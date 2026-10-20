@@ -609,6 +609,13 @@ already recorded in a spec or a comment, the location is given.
       carries the live `rooms_cleared of required_rooms_cleared` ratio.
     - Nothing on this path touches a base stat or a time scale: it reads one
       `Events` signal and increments one integer.
+    - **Handle for G12:** `next_floor()` is now gated, so the debug console's
+      `floor <n>` jump cannot go through it. There is no production call site
+      to break today (nothing but the tests calls `next_floor` yet), but W3-B5
+      must jump via `RunState.floor_index` directly — or set
+      `required_rooms_cleared` to 0 first — rather than expect the gate to let
+      a debug jump through. Recorded here so the gate is not "fixed" by
+      weakening it later.
 
 ---
 
