@@ -52,6 +52,19 @@ const BLIGHT_TOXIN_STACKS: int = 3
 const NEAR_BURST: Vector2 = Vector2(32.0, 0.0)
 const FAR_AWAY: Vector2 = Vector2(300.0, 0.0)
 
+## The applier side of the combo-damage hook: a real player carrying one effect
+## on its `EffectHost`, which is where `combo_damage_multiplier()` reads the
+## consumers from. The two systems that multiply combo damage — the week-7
+## Reactive skill node and the week-8 Elementalist synergy — do not exist yet, so
+## the cases attach `ComboConsumerStub` under each system's id. The marker script
+## is the negative half: the hook is the method an effect exposes, so an effect
+## under the same id without it multiplies nothing.
+const PLAYER_SCENE: String = "res://scenes/player/player.tscn"
+const CONSUMER_SCRIPT: String = "res://tests/helpers/combo_consumer_stub.gd"
+const MARKER_SCRIPT: String = "res://tests/helpers/relic_marker_effect.gd"
+const ELEMENTALIST: StringName = &"elementalist"
+const REACTIVE: StringName = &"reactive"
+
 ## The enemy doubles this file built, autofreed with the root they hang under.
 var _root: Node
 var _target: StatusEnemyStub
@@ -114,6 +127,39 @@ func _spawn_target() -> void:
 ## and returns it.
 func _spawn_enemy(at: Vector2, max_hp: int = 100) -> StatusEnemyStub:
 	return StatusEnemyStub.make(_root, at, max_hp)
+
+
+## A real player carrying one effect under `id` on its `EffectHost`, built from
+## `script_path`: the applier a case passes to `apply_status` as its `source`, so
+## the combo-damage hook has a host to read. A `host` argument attaches to an
+## existing player's host instead of building a new one, which is how the compose
+## case puts two consumers on one player. `multiplier` only applies to a
+## `ComboConsumerStub` — the marker script has no such field, which is the
+## negative half. Returns the attached `Effect` itself.
+func _applier_with(script_path: String, id: StringName, multiplier: float = 1.0, host: EffectHost = null) -> Effect:
+	var target_host := host
+	if target_host == null:
+		var player: Player = (load(PLAYER_SCENE) as PackedScene).instantiate() as Player
+		player.name = &"ComboApplier"
+		add_child_autofree(player)
+		target_host = EffectHostPlayer.install(player)
+	var source := ContentData.new()
+	source.id = id
+	source.display_name = String(id)
+	source.effect_script = load(script_path) as GDScript
+	var effect := target_host.add(source)
+	if effect is ComboConsumerStub:
+		(effect as ComboConsumerStub).multiplier = multiplier
+	return effect
+
+
+## The SHATTER a single Fire application fires on this target, with `source` as
+## the applier. Two Chill stacks are laid down first, so the burst has frost to
+## consume and the only thing a case varies is who applied the Fire.
+func _shatter_with(source: Node) -> Combo:
+	_status.apply_status(StatusEffects.Status.CHILL, 2)
+	_status.apply_status(StatusEffects.Status.BURN, 1, source, TRIGGER_DAMAGE)
+	return _assert_fired_once(Combo.Kind.SHATTER)
 
 
 ## The statuses present on the *target* — the "read off the target" half of the
@@ -417,3 +463,82 @@ class StatusClientStub extends StatusEffects:
 
 	func _resolves_statuses() -> bool:
 		return resolves
+
+
+# --- the two combo-damage multipliers (G25) -----------------------------------
+#
+# SPEC-stats-status, "Element combos", last line: "Reactive skill node (+40%) and
+# Elementalist synergy (x2) multiply combo damage." The hook is
+# `StatusEffects.combo_damage_multiplier()`, which reads a factor off every
+# effect the **applying** entity carries that exposes
+# `StatusEffects.COMBO_MULTIPLIER_METHOD` — so the two systems attach as effects
+# and are never a relic id the component knows. The numbers themselves are the
+# spec's (2.0 and +0.40) and are pinned against the component's own constants, so
+# a balance change fails here.
+
+func test_an_elementalist_consumer_doubles_the_combo_damage() -> void:
+	var elementalist := _applier_with(CONSUMER_SCRIPT, ELEMENTALIST, StatusEffects.COMBO_ELEMENTALIST_MULTIPLIER)
+	assert_eq(StatusEffects.COMBO_ELEMENTALIST_MULTIPLIER, 2.0, "the spec's Elementalist synergy is x2")
+	assert_eq(_status.combo_damage_multiplier(elementalist), 2.0, "read through the hook")
+
+	var combo: Combo = _shatter_with(elementalist)
+	assert_not_null(combo)
+	if combo == null:
+		return
+	assert_eq(combo.damage, SHATTER_BURST * 2, "the 200% burst is doubled")
+	assert_eq(_health.total_damage(), SHATTER_BURST * 2, "and the doubled number is what lands")
+
+
+func test_a_reactive_consumer_adds_forty_percent() -> void:
+	var reactive := _applier_with(CONSUMER_SCRIPT, REACTIVE, 1.0 + StatusEffects.COMBO_REACTIVE_BONUS)
+	assert_eq(StatusEffects.COMBO_REACTIVE_BONUS, 0.40, "the spec's Reactive skill node is +40%")
+	assert_almost_eq(_status.combo_damage_multiplier(reactive), 1.4, 1.0e-9, "read through the hook")
+
+	var combo: Combo = _shatter_with(reactive)
+	assert_not_null(combo)
+	if combo == null:
+		return
+	assert_eq(combo.damage, roundi(float(SHATTER_BURST) * 1.4), "the burst carries the extra 40%")
+	assert_eq(_health.total_damage(), roundi(float(SHATTER_BURST) * 1.4), "and that is what lands")
+
+
+func test_the_two_multipliers_compose() -> void:
+	# One player holding both, which is the only way the two ever meet: they
+	# multiply, so 2.0 x 1.4 rather than 2.0 + 1.4.
+	var elementalist := _applier_with(CONSUMER_SCRIPT, ELEMENTALIST, StatusEffects.COMBO_ELEMENTALIST_MULTIPLIER)
+	var reactive := _applier_with(CONSUMER_SCRIPT, REACTIVE, 1.0 + StatusEffects.COMBO_REACTIVE_BONUS, elementalist.host)
+	assert_almost_eq(_status.combo_damage_multiplier(reactive), 2.8, 1.0e-9, "the two factors multiply")
+
+	var combo: Combo = _shatter_with(reactive)
+	assert_not_null(combo)
+	if combo == null:
+		return
+	assert_eq(combo.damage, roundi(float(SHATTER_BURST) * 2.8), "and the burst carries the product")
+	assert_eq(_health.total_damage(), roundi(float(SHATTER_BURST) * 2.8), "which is what lands")
+
+
+func test_with_no_consumer_the_multiplier_is_exactly_one() -> void:
+	assert_eq(_status.combo_damage_multiplier(null), 1.0, "an application with no source multiplies nothing")
+	assert_eq(_status.combo_damage_multiplier(_target), 1.0, "and neither does a source that is not an effect")
+
+	var combo: Combo = _shatter_with(null)
+	assert_not_null(combo)
+	if combo == null:
+		return
+	assert_eq(combo.damage, SHATTER_BURST, "so the burst is the row's own number")
+	assert_eq(_health.total_damage(), SHATTER_BURST, "and that is what lands")
+
+
+func test_the_multiplier_comes_from_the_hook_and_not_from_a_relic_id() -> void:
+	# A marker effect attached under the Elementalist id contributes nothing: what
+	# the hook reads is the method an effect exposes, not a name this component
+	# knows. Pinned so a later "just check the id" shortcut fails here.
+	var marker := _applier_with(MARKER_SCRIPT, ELEMENTALIST)
+	assert_false(marker is ComboConsumerStub, "the marker carries no multiplier")
+	assert_eq(_status.combo_damage_multiplier(marker), 1.0, "the id alone multiplies nothing")
+
+	var combo: Combo = _shatter_with(marker)
+	assert_not_null(combo)
+	if combo == null:
+		return
+	assert_eq(combo.damage, SHATTER_BURST, "so the burst is unscaled")
