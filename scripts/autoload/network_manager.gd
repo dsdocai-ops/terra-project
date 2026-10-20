@@ -63,6 +63,12 @@ func _ready() -> void:
 	# every floor change sends floor_ready so each peer generates it locally.
 	GameState.run_started.connect(_on_run_started)
 	GameState.floor_changed.connect(_on_floor_changed)
+	# Downed and revive sync (SPEC-networking week 3: "downed and revive
+	# synced"). The host owns downed state, so its own bus events are what it
+	# announces to the other peers; a client's emit is the broadcast landing on
+	# this peer, and its handler stops at the host guard.
+	Events.player_downed.connect(_on_player_downed)
+	Events.player_revived.connect(_on_player_revived)
 
 
 ## Opens an ENet server. Refused while a session is active (call
@@ -202,6 +208,15 @@ func can_accept_floor_ready(sender: int) -> bool:
 ## a client accepts only the host's (peer 1). The host is the floor of record,
 ## so a client's call is never accepted anywhere.
 func can_accept_floor_broadcast(sender: int) -> bool:
+	return can_accept_host_broadcast(sender)
+
+
+## True when a host -> everyone broadcast may be applied on this peer. The host
+## accepts only its own local call — Godot reports sender 0 for a call_local
+## invocation — and a client accepts only the host's, so a client's call is
+## never accepted anywhere. One rule for every authority broadcast, the floor
+## ones and the player-state ones alike.
+func can_accept_host_broadcast(sender: int) -> bool:
 	if is_host:
 		return sender == 0
 	return sender == HOST_PEER_ID
@@ -397,6 +412,150 @@ func can_apply_rope_request(sender: int) -> bool:
 ## ask itself for its own layout — so it is refused like every other request_*.
 func can_serve_floor_layout_request(sender: int) -> bool:
 	return is_host and sender != 0
+
+
+# --- downed and revive sync (W3-B4a) ----------------------------------------
+
+## Host -> every peer: peer `peer_id` went down (SPEC-player-controller's downed
+## state; SPEC-networking's week 3 row "downed and revive synced"). The downed
+## flag also replicates through StateSync, but a flag flip tells a client nothing
+## about *when* it happened — this broadcast is what puts the down on a client's
+## Events bus, so its HUD marks the teammate downed and run-economy's all-downed
+## rule sees it.
+## Sync: host-authoritative. A client never announces a down; the sender is
+## validated first, so a client's own local call applies nothing.
+@rpc("authority", "call_local", "reliable")
+func broadcast_player_downed(peer_id: int) -> void:
+	var sender: int = multiplayer.get_remote_sender_id()
+	if not can_accept_host_broadcast(sender):
+		push_warning("[net] broadcast_player_downed refused: sender %d may not be applied on this peer" % sender)
+		return
+	apply_player_downed(peer_id)
+
+
+## Host -> every peer: peer `peer_id` stood back up, revived by `by_peer_id`.
+## `by_peer_id` is 0 when nobody is named (a self-revive, a Second Wind, a
+## next-floor revive), which is why it travels as an id rather than as an
+## argument a client could not resolve.
+## Sync: host-authoritative, validated exactly like the down above.
+@rpc("authority", "call_local", "reliable")
+func broadcast_player_revived(peer_id: int, by_peer_id: int) -> void:
+	var sender: int = multiplayer.get_remote_sender_id()
+	if not can_accept_host_broadcast(sender):
+		push_warning("[net] broadcast_player_revived refused: sender %d may not be applied on this peer" % sender)
+		return
+	apply_player_revived(peer_id, by_peer_id)
+
+
+## The receiving half of a down: sets the downed flag on this peer's copy of the
+## player and emits Events.player_downed, so this peer reacts to the host's
+## decision through the same bus signal the host reacted to. Returns false when
+## this peer knows no such player.
+func apply_player_downed(peer_id: int) -> bool:
+	var player: Player = get_player(peer_id)
+	if player == null:
+		push_warning("[net] player_downed for peer %d: no such player on this peer" % peer_id)
+		return false
+	player.is_downed = true
+	Events.player_downed.emit(player)
+	print("[net] peer %d is downed" % peer_id)
+	return true
+
+
+## The receiving half of a revive. `by_peer_id` 0 means no reviver is named, and
+## the event then carries no `by` player.
+func apply_player_revived(peer_id: int, by_peer_id: int) -> bool:
+	var player: Player = get_player(peer_id)
+	if player == null:
+		push_warning("[net] player_revived for peer %d: no such player on this peer" % peer_id)
+		return false
+	player.is_downed = false
+	Events.player_revived.emit(player, get_player(by_peer_id))
+	if by_peer_id == 0:
+		print("[net] peer %d is standing again" % peer_id)
+	else:
+		print("[net] peer %d is standing again, revived by peer %d" % [peer_id, by_peer_id])
+	return true
+
+
+## Host only. Announces `player`'s down to every remote peer. The host's own copy
+## is already down — it is where the event came from — so the broadcast targets
+## the remotes only, one rpc_id per peer exactly like broadcast_floor_ready, and
+## the host never applies its own down twice. Returns true when it went out; a
+## solo host has nobody to tell and sends nothing, silently.
+func route_player_downed(player: Player) -> bool:
+	if not _can_route_player_state(player):
+		return false
+	var targets: Array[int] = remote_peer_ids()
+	if targets.is_empty():
+		return false  # solo host: the peer that went down is the only one there
+	for peer_id: int in targets:
+		broadcast_player_downed.rpc_id(peer_id, player.peer_id)
+	return true
+
+
+## Host only. The revive's route to every remote peer, the same shape as the
+## down's. `by` is the player that did the reviving, or null when nobody is
+## named.
+func route_player_revived(player: Player, by: Player) -> bool:
+	if not _can_route_player_state(player):
+		return false
+	var by_peer_id: int = 0
+	if by != null:
+		by_peer_id = by.peer_id
+	var targets: Array[int] = remote_peer_ids()
+	if targets.is_empty():
+		return false
+	for peer_id: int in targets:
+		broadcast_player_revived.rpc_id(peer_id, player.peer_id, by_peer_id)
+	return true
+
+
+## Every known peer except this one: exactly the peers a host broadcast has to
+## reach. Solo and an inactive session both give an empty list, which is what
+## makes "nobody to tell" one code path across every session shape.
+func remote_peer_ids() -> Array[int]:
+	var targets: Array[int] = []
+	for peer_id: int in peer_ids:
+		if peer_id != local_peer_id:
+			targets.append(peer_id)
+	return targets
+
+
+## True when this peer announces player state to the others: the host role and
+## the transport behind it both have to say so (an authority RPC sent from
+## anywhere else is refused by every receiver).
+func _announces_player_state() -> bool:
+	return is_host and multiplayer.is_server()
+
+
+## True when this peer may announce a player's downed state: this peer is the
+## host (SPEC-player-controller "Multiplayer ownership"), and the event has to
+## name a player. A refusal warns, because a silent no-op here would look like a
+## broadcast that nobody received.
+func _can_route_player_state(player: Player) -> bool:
+	if not _announces_player_state():
+		push_warning("[net] player state not broadcast: the host owns downed state")
+		return false
+	if player == null:
+		push_warning("[net] player state not broadcast: the event named no player")
+		return false
+	return true
+
+
+## The host's own downed event. Only the host announces one: on a client this
+## signal is the broadcast landing here, and echoing it back up would loop. The
+## guard is silent for that reason — the refusal warning belongs to the public
+## route, which a direct caller uses.
+func _on_player_downed(player: Player) -> void:
+	if _announces_player_state():
+		route_player_downed(player)
+
+
+## The host's own revived event, routed like the down above.
+func _on_player_revived(player: Player, by: Player) -> void:
+	if _announces_player_state():
+		route_player_revived(player, by)
 
 
 ## 1.0 + 0.5 per player beyond the first; never below solo.

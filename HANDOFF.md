@@ -659,6 +659,110 @@ generated a different floor would have played it.
   a manual/two-instance run, not a defect — but it does mean a stray host can
   make a *default-port* smoke fail confusingly, and `PORT=<free>` is the fix.
 
+### W3-B4a — `player_downed` / `player_revived` broadcast and downed-flag sync (`networking`)
+
+`SPEC-networking`'s week-3 row reads "downed and revive synced", and the plan
+line (G2) names three things: the downed flag travels in StateSync, and the two
+`Events` signals have a host broadcast behind them. Until now the downed flag
+belonged to nobody: `Player.is_downed` was a bare field that no peer ever wrote,
+so a client could not have known a teammate was down even if Dev A's `Downed`
+state had existed.
+
+- **The flag is `is_downed`, not `downed`.** The plan line says "add a `downed`
+  replicated property", but the field already existed under the name the rest of
+  the code reads — SPEC-player-controller's `Downed`, `HudModel.local_is_downed`,
+  `GameState`'s defeat check — and `downed` on its own is already the player's
+  *signal*. Renaming the field to match the plan's prose would have meant a
+  second name for one fact (or a signal and a property with the same name, which
+  GDScript does not allow). A test asserts the downed-named replicated set is
+  exactly `[.:is_downed]`, so the divergence from the plan's wording is checked,
+  not incidental.
+- **`is_downed` moves from a bare field to the replicated one.** In
+  `player.tscn`'s `StateSync` `SceneReplicationConfig` it is
+  `NodePath(".:is_downed")`, `replication_mode = 2` (`ON_CHANGE` — a down is an
+  edge, not a per-frame value) and `spawn = true`, so a peer joining mid-run is
+  told at once that someone is already down. In `player.gd` the field gained a
+  setter so that *either* route — the replicated value or a broadcast — runs the
+  same reaction.
+- **The reaction is one method, `_apply_downed_state()`.** It re-runs
+  `refresh_authority()` and, going down, emits the player's own `downed` signal.
+  `refresh_authority` and `simulates` now both subtract `is_downed`: a downed
+  player runs no state and takes no input on any peer, and `_process_unhandled_input`
+  is off too. That is the presentation half of `Downed`.
+- **The host announces, the client obeys.** `NetworkManager._ready` connects
+  `Events.player_downed` / `Events.player_revived` to `_on_player_downed` /
+  `_on_player_revived`. On the announced host those call
+  `route_player_downed` / `route_player_revived`, which `rpc_id` the new
+  `@rpc("authority","call_local","reliable") broadcast_player_downed(peer_id)` /
+  `broadcast_player_revived(peer_id, by_peer_id)` to every **remote** peer. On a
+  client, the event *is* the broadcast landing, and the handler stops at the host
+  guard — so the bus event is not re-broadcast in a loop.
+- **The broadcast applies to the registry, not to a node.** `apply_player_downed`
+  / `apply_player_revived` are the plain, directly-testable bodies (the split
+  W3-B3a/B3b established, because a single process cannot fake a client's sender
+  id — LESSONS): they look the peer up in `NetworkManager.players`, write
+  `is_downed`, and emit the bus event for the rest of the game to read
+  (`GameState`'s defeat check, the HUD). An unknown peer is a `push_warning` and
+  `false`, not a crash. A revive also carries **who** did it; `by_peer_id == 0`
+  means "no reviver", which is how the wipe path revives.
+- **One sender rule, shared.** The new `can_accept_host_broadcast(sender)` is the
+  general form of the existing `can_accept_floor_broadcast`, which now forwards
+  to it: the host accepts only its own local call (sender 0), a client accepts
+  only `HOST_PEER_ID`. No existing signature changed.
+- **`remote_peer_ids()` is the target list.** New public helper, host or not: the
+  reverse of `local_peer_id` in `peer_ids`. Both routers check it first and
+  return `false` when it is empty — which is the solo case, and the one real bug
+  this task found (the first version returned `true` unconditionally after the
+  loop and so reported a send that never happened).
+- **Verified, red first.** `tests/unit/test_player_sync.gd` 19 → 37 tests
+  (113 asserts), written first and confirmed failing for the right reasons
+  (`.goals/evidence/g2/red-player-sync.log`: the core criterion fails with
+  `ARRAY([]) != ARRAY([^".:is_downed"])`, i.e. the property was genuinely not in
+  the replication config). New tests cover: the replicated path exists, is
+  `ON_CHANGE`, is in the spawn state, and is the *only* downed-named path (a
+  typo like `is_downned` would not resolve, and a test asserts that it does not);
+  every replicated path resolves on the player; the flag reaching the HUD model a
+  client actually renders from, and clearing again on revive; a downed player
+  stops simulating on a client while a live one still does; `downed` emitted
+  exactly once, and not on a redundant write; a client taking the flag from the
+  host's broadcast; both broadcasts emitting the bus event on the client; an
+  unknown peer applying nothing and returning `false`; both RPCs' `@rpc`
+  configuration (`authority`, `call_local`, `reliable`) and both argument names;
+  the sender rule on host and client, including a client's local call to the
+  broadcast body being refused; the auto-connect between the bus and the router;
+  the router targeting remote peers only, returning `false` with nobody to tell,
+  refusing on a client, and refusing an event that names no player. Full GUT
+  **34 scripts / 505 tests / 505 passing / 53906 asserts, exit 0**
+  (`.goals/evidence/g2/gut-full.log`, up from 487); headless `--import` exit 0
+  with 0 error lines (`g2/import.log`); headless `-- --host --smoke=6` exit 0
+  with 0 script/parse errors (`g2/launch-host.log`); `tools/smoke_two.sh` exit 0
+  with 35 `ok` lines and 0 FAIL (`g2-smoke/run-smoke.log`) — run **before** the
+  commit, as the sync rule requires.
+- **The `player.tscn` edit is a judgment call, recorded.** `player.tscn` is
+  nominally Dev A's file, but `tests/unit/test_player_sync.gd`'s own header
+  already says "Owned by networking (PR into player.tscn, Dev A reviews)", and
+  PLAN G2 sanctions registering this property. The change is three lines inside
+  the `StateSync` sub-resource and nothing else: no new node, no change to
+  `InputSync`, and the input/position fields are untouched. It is the one place
+  where the flag can be replicated at all, so it was not possible to meet the
+  goal without it; it is flagged here for review rather than asked about,
+  because it is the plan's own stated deliverable. No other `.tscn`, no
+  `project.godot` / Input Map / `Events` signal / `scripts/data/` Resource / save
+  schema / CI / addon was touched, and no Dev A logic.
+- **Not claimed: a two-process downed sync.** Everything above is proved in one
+  process, with the client side driven through the `_become_client()` seam
+  (`is_host = false`, `local_peer_id = 2`, `peer_ids = [1, 2]`) and the
+  broadcast body called directly, because the offline multiplayer peer always
+  reports `is_server == true` and a single process cannot forge a remote sender
+  (LESSONS). The two-instance proof of a downed flag crossing the wire needs a
+  driver that downs a player on one peer and an assertion on the other, which is
+  PLAN **G11a** (smoke driver + launch arg) and **G11b** (step-5 green run) —
+  reserved for those goals rather than faked here. Also, nothing yet *causes* a
+  real down: Dev A's `Downed`/`Dead` states and bleed-out timer (W3-A5) are the
+  emitters, and `Player.request_revive` is still a `pass` stub. What this task
+  proves is that when those land, the flag and the two signals already have a
+  host-owned broadcast and a replicated path behind them.
+
 ---
 
 ## Decisions made without a human
@@ -1258,6 +1362,69 @@ already recorded in a spec or a comment, the location is given.
       is false in a fake client, so the RPC is deliberately not sent), and it
       mirrors `Rope.interaction_forwarded`'s role at W3-B2a.
 
+33. **Downed sync: where the flag is registered, and how a broadcast differs from
+    a replicated value (W3-B4a/G2).** SPEC-networking says "downed and revive
+    synced" and lists the downed state among what StateSync carries; it does not
+    say which of the two mechanisms is authoritative, how the two `Events`
+    signals reach the other peers, or what a client does with a downed player it
+    did not simulate. Six calls:
+    - *The flag is replicated **and** broadcast, and the replicated flag is the
+      one of record.* StateSync already carries the host's per-player state
+      (`synced_position`, `acked_input_tick`), so `is_downed` joins it: the host
+      is the authority either way, and `ON_CHANGE` + `spawn` means a late joiner
+      is told without a special case. The broadcast is what makes the *event*
+      reliable and immediate — a `MultiplayerSynchronizer` replicates a value,
+      not a moment — which is what `Events.player_downed` /
+      `player_revived` are for, and what `GameState`'s defeat check already
+      listens to. Wiring only the broadcast would have left a joining peer with
+      no idea anyone was down; wiring only the synchronizer would have made the
+      defeat check wait for a state poll.
+    - *Both routes converge on one setter.* The replicated write and
+      `apply_player_downed` both go through `is_downed`'s setter, so
+      `refresh_authority()` and the player's own `downed` signal happen once,
+      whichever way the news arrived — and a redundant write (the broadcast
+      landing after the synchronizer already moved it) is a no-op rather than a
+      second emission. The alternative, applying the two routes separately, is
+      how a client ends up with a downed player that is still simulating.
+    - *A downed player stops simulating everywhere, not just on the host.*
+      `simulates` and `refresh_authority` now both subtract `is_downed`, so a
+      client's remote copy of a downed player does not run states either. A
+      downed player cannot move, so predicting or interpolating one is work that
+      can only produce a wrong pose.
+    - *`revived(by)` is not emitted by `_apply_downed_state`.* The setter knows
+      only that the flag flipped; who did the reviving is a fact of the revive
+      path (`request_revive`, W3-B4b, blocked on Dev A W3-A5), so the player's
+      own `revived(by: Player)` signal keeps its one emitter. The bus event
+      `Events.player_revived(player, by)` is emitted by `apply_player_revived`,
+      which carries the reviver's peer id — `0` meaning "nobody", which is the
+      wipe path.
+    - *The host guard is `is_host and multiplayer.is_server()`, not
+      `multiplayer.is_server()`.* In a single process the offline peer reports
+      `is_server() == true` however the test fakes a client, so guarding on that
+      alone made `_become_client()`'s router call `rpc_id` back to itself
+      (`call_local`) → `apply_player_downed` → `Events.player_downed` → the same
+      handler → an unbounded recursion, which GUT reported as a stack overflow.
+      `_announces_player_state()` is the guard the router and both handlers read,
+      and it is the same shape `TimeManager` already uses. This is a test-seam
+      bug that would have been a real echo in a two-process run where the client
+      is also `call_local` for its own call.
+    - *New public API beyond the declared signatures* (recorded here per the
+      BRIEF's rule): `NetworkManager.broadcast_player_downed`,
+      `broadcast_player_revived`, `apply_player_downed`, `apply_player_revived`,
+      `route_player_downed`, `route_player_revived`, `remote_peer_ids`,
+      `can_accept_host_broadcast`. Additions only — nothing renamed or removed,
+      `can_accept_floor_broadcast` keeps its signature, and `Player.is_downed`
+      keeps its name and its meaning (it now has a setter, which no existing
+      call site can observe).
+    - *The `player.tscn` StateSync registration is a cross-lane edit taken
+      deliberately.* `player.tscn` is nominally Dev A's, and the BRIEF's ask-first
+      rule names `.tscn` files owned by the other lane. It was still the only
+      place the flag can be replicated, PLAN G2 names it as this task's
+      deliverable, and the test file's own header already declares this
+      ownership ("PR into player.tscn, Dev A reviews") — so it is recorded here
+      for review instead of being skipped. Three lines inside the `StateSync`
+      sub-resource; no node, no `InputSync` field, and no other `.tscn` changed.
+
 ---
 
 ## Running the game
@@ -1367,6 +1534,13 @@ short checklist for Dev A and the human; none of them block week 2.
   `Hurtbox.receive` lands, thread the run's generator into `compute` and
   confirm two instances on the same `--seed` roll the same crit sequence
   (G13a, decision 28).
+- **Downed flag crossing the wire, two processes** — the downed/revived
+  broadcast and the replicated `is_downed` are proved in one process through the
+  fake-client seam (W3-B4a, decision 33). The two-instance proof — down a player
+  on one peer and observe the flag and the HUD on the other — needs a smoke
+  driver and a launch arg, which are PLAN G11a, with the green run at G11b.
+  Nothing emits a real down yet in any case (Dev A W3-A5), and
+  `Player.request_revive` is still a stub (W3-B4b).
 
 ---
 

@@ -95,17 +95,17 @@ var move_input: Vector2 = Vector2.ZERO
 var input_tick: int = 0
 ## World position of the owning peer's cursor.
 var aim_position: Vector2 = Vector2.ZERO
-var is_downed: bool = false
 var is_local: bool:
 	get:
 		return is_inside_tree() and peer_id == multiplayer.get_unique_id()
 
 ## True where this player's state machine should run: on the host for every
 ## player, and on the owning client for its own player (prediction). Remote
-## copies on a client only present what StateSync replicates.
+## copies on a client only present what StateSync replicates. A downed player
+## simulates nowhere: it cannot move, so no peer runs its states.
 var simulates: bool:
 	get:
-		return is_inside_tree() and (multiplayer.is_server() or is_local)
+		return is_inside_tree() and not is_downed and (multiplayer.is_server() or is_local)
 
 var dodge_charges: int = 1
 var dodge_distance_mult: float = 1.0
@@ -118,6 +118,19 @@ var synced_velocity: Vector2 = Vector2.ZERO
 ## The owner's input_tick that synced_position includes. The owning client
 ## compares synced_position with its own prediction for this tick.
 var acked_input_tick: int = 0
+## Downed state, owned by the host (SPEC-player-controller's `Downed`;
+## SPEC-networking lists the downed state among what StateSync carries).
+## Replicated: StateSync `.:is_downed`, mode ON_CHANGE, and part of the spawn
+## state so a peer joining mid-run learns a player is already down. Either the
+## replicated value or a downed/revived broadcast (W3-B4a) moves it, and this
+## copy reacts the same way whichever route it took: a downed player stops
+## simulating and announces itself.
+var is_downed: bool = false:
+	set(value):
+		if value == is_downed:
+			return
+		is_downed = value
+		_apply_downed_state()
 ## Base animation name ("idle", "walk") without the facing suffix. Replicated
 ## by StateSync so remote copies play what the host plays.
 var current_anim: String = "":
@@ -174,15 +187,29 @@ func _apply_slot_color() -> void:
 
 ## Applies `simulates` and `is_local` to the state machine: only simulating
 ## copies step states, and only the owning peer's copy reacts to hardware
-## input. Called when peer_id changes and on ready; networking calls it
-## again if authority ever moves.
+## input. A downed player takes neither: it is not simulating and it is not
+## taking input. Called when peer_id or the downed flag changes, and on ready;
+## networking calls it again if authority ever moves.
 func refresh_authority() -> void:
 	if state_machine == null:
 		return
 	state_machine.set_physics_process(simulates)
-	state_machine.set_process_unhandled_input(is_local)
+	state_machine.set_process_unhandled_input(is_local and not is_downed)
 	if is_inside_tree():
 		physics_interpolation_mode = interpolation_mode_for(sync_role())
+
+
+## Applies a downed-state change to this copy, whichever route it arrived by:
+## the host's replicated StateSync value or a downed/revived broadcast
+## (W3-B4a). A down stops the player simulating and announces it on the
+## player's own `downed` signal; standing back up resumes it. Presentation and
+## authority only — HP, the 30 s bleed-out timer and the `Downed` state itself
+## are player-controller's (blocked on Dev A W3-A5), and `revived(by)` names who
+## did the reviving, so it is emitted by the revive path (W3-B4b) instead.
+func _apply_downed_state() -> void:
+	refresh_authority()
+	if is_downed:
+		downed.emit()
 
 
 ## Simulating copies move on physics ticks and are drawn interpolated
