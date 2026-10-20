@@ -34,12 +34,16 @@ const TYPE_MAP: Dictionary[String, String] = {
 	# the week-2 mirror of combat-core's `HitInfo`: field names match, so the
 	# swap-in is mechanical when W2-A1 lands
 	"HitInfo": "HitData",
+	# `RelicData` is a real class — `relic_picked` and `relic_removed` carry it
+	# and the TODO line that used to pin the swap is gone. `SynergyData` is a
+	# different resource of the same module and keeps its placeholder until the
+	# synergy goals land.
+	"RelicData": "RelicData",
 	# placeholders until their owner lands (see the TODO lines in events.gd)
 	"Projectile": "Node",
 	"Enemy": "Node",
 	"Room": "Node",
 	"Pickup": "Node",
-	"RelicData": "Resource",
 	"SynergyData": "Resource",
 	"WeaponData": "Resource",
 	"MutationData": "Resource",
@@ -359,7 +363,6 @@ func test_the_placeholder_pins_are_specific_about_who_unblocks_them() -> void:
 		"Enemy": "enemies-ai",
 		"Room": "floor-generation",
 		"Pickup": "run-economy",
-		"RelicData": "relics",
 		"SynergyData": "relics",
 		"WeaponData": "weapons",
 		"MutationData": "weapons",
