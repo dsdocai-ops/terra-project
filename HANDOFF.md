@@ -1992,11 +1992,106 @@ not a fault, and the suite must stay engine-error free. (4) The cap is checked
 otherwise have spawned are counted as capped-drops, and an unwired seam (Dev A
 W4-A4) still shows up as its own refusal rather than as cap pressure.
 
-**Not claimed.** The trigger-test harness `tests/helpers/effect_harness.gd` and
-the Mimic Crown duplication rule (G19a/G19b) are not implemented; `data/relics/`
-still holds only `.gdkeep`. The chain still advances through `ProcHurtboxStub`,
-**blocked on Dev A (W2-A2)** for combat-core's real `Hurtbox`, and the FX spawner
-the cap guards is **blocked on Dev A (W4-A4)**.
+**Not claimed (at G18).** The trigger-test harness `tests/helpers/effect_harness.gd`
+and the Mimic Crown duplication rule (G19a/G19b) were not implemented at that
+commit — **the harness landed as G19a on 2026-10-20 (see below); the Mimic Crown
+rule is still G19b's, and `data/relics/` still holds only `.gdkeep`.** The chain
+still advances through `ProcHurtboxStub`, **blocked on Dev A (W2-A2)** for
+combat-core's real `Hurtbox`, and the FX spawner the cap guards is **blocked on
+Dev A (W4-A4)**.
+
+#### G19a — the trigger-test harness and its template test (2026-10-20)
+
+SPEC-effect-system, "Interfaces provided": the module ships "Trigger test harness
+`tests/helpers/effect_harness.gd`: creates a headless player with `EffectHost`,
+attaches an effect, fires any `Events` signal with fake arguments, asserts
+spawns, stat changes, statuses, and damage via a `SpyWorld`." This goal is that
+instrument plus the template case a content author copies; the Mimic Crown
+duplication rule was split off to G19b because it is a production rule rather
+than a test instrument.
+
+**What shipped.** Four files under `tests/helpers/` and one under `tests/unit/`
+— **no production file changed at all**:
+
+- `tests/helpers/effect_harness.gd` (`class_name EffectHarness`) — the
+  instrument. `setup()` builds one autofreed root; `make_player()` gives that
+  root the real `player.tscn` with a `StatBlock` component, a `StatusEffects`
+  double, a `SpyHurtbox` and an `EffectHost`; `make_target()` builds a node with
+  the same two components for damage and statuses to land on; `attach()` goes
+  through the real `EffectHost.add()`; `detach()` through the real `remove()`;
+  `fire(sig, args)` emits any `Events` signal by its own signal object after
+  checking the name is on the bus and the argument count matches; `source()`
+  builds a `ContentData` in memory and `marker_scene()` a one-node scene, so a
+  case needs neither content nor art to exist yet.
+- `tests/helpers/spy_world.gd` (`class_name SpyWorld`) — the recorder the spec
+  names. It **extends `EffectSpawnerSpy`** rather than duplicating it, so the
+  spawn half is the shipped double (which records *and* runs the real
+  `EffectSpawner` base) and this class adds the damage half plus
+  `spawn_count`/`spawns_for`/`damage_count`/`damage_hits`/`damage_total`.
+- `tests/helpers/spy_hurtbox.gd` (`class_name SpyHurtbox`) — the target's
+  hurtbox double: it reports every `receive(hit)` to the world and, when the
+  world asks, announces it on `Events.hit_landed` exactly as the real hurtbox
+  does (off by default, so a case asserting a relic's damage is not surprised by
+  its own hit echoing back; `ProcHurtboxStub` is the announce-always shape the
+  proc-limit tests use).
+- `tests/helpers/harness_sample_effect.gd` (`class_name HarnessSampleEffect`) —
+  the sample relic the template drives: on `player_dodged` it spawns, modifies
+  `MOVE_SPEED`, applies a status and deals a hit, each part switched off until
+  the case sets its field, so one double also serves as the deliberately broken
+  relic.
+- `tests/unit/test_effect_template.gd` — the template and its self-test.
+
+**Two ways to assert, and why.** Every one of the four categories has a pure
+predicate (`check_spawned`, `check_stat`, `check_status`, `check_damage`, plus
+`check_attached`/`check_no_spawns`) and a GUT-reporting wrapper
+(`assert_spawned`, `assert_stat`, `assert_status`, `assert_damage`,
+`assert_attached`, `assert_no_spawns`). The predicates exist so a case can assert
+the **negative** — that is how the self-test proves the harness's own assertion
+would have caught a broken relic, which `assert_*` alone cannot express without
+failing the run it is trying to test.
+
+**Accept.** `-gtest=res://tests/unit/test_effect_template.gd` exit 0, **7/7, 49
+asserts** (`g19a/test-effect-template.log`), written and run red first — the file
+was authored before any helper existed and the red is the parse error, "Identifier
+`EffectHarness` not declared in the current scope"
+(`g19a/red-test-effect-template.log`). Full suite **45 scripts / 728 tests / 728
+passing / 55 768 asserts** exit 0 (`g19a/gut-full.log`, up from 44 / 721 / 55 719
+at `799646c`), the delta being exactly this file's 7 tests and 49 asserts.
+`--headless --path . --import` exit 0 with **zero error lines**
+(`g19a/import.log`); the seven effect test files re-run in one loop, the six
+pre-existing counts byte-for-byte unchanged so no depth, self-tag, spawn-cap or
+cleanup case moved (`g19a/effect-files.log`); `git status --porcelain` clean
+apart from `.goals/`/`.claude/`. No smoke run: this commit touches no RPC,
+replication or spawner wiring (BRIEF C17) — it adds test-only files.
+
+**Judgment calls (HANDOFF decision 48).** (1) The failing path was forced once
+and kept: with the self-test's `assert_false(check_spawned(1))` flipped to
+`assert_true`, **exactly that case fails** (6 passing / 1 failing) and nothing
+else moves (`g19a/negative-control.log`), then reverted and `grep`-confirmed —
+so `check_spawned` is proven able to report "the relic did not fire" rather than
+merely observed to be true. (2) `fire()` takes the bus's own `Signal`
+(`Events.player_dodged`) rather than a `StringName`, so the compiler catches a
+signal that does not exist and the name is still read back off the object to
+check the bus's own declaration — the guard is asserted in three ways (unknown
+name, one argument, three arguments). (3) A refusal in `fire()`/`attach()` is a
+`push_warning` returning `false`/`null`, never a GUT failure: a harness that
+kills the run it is diagnosing is worse than one whose case then fails on the
+consequence in its own words. (4) `attach()` defaults to the **first** player
+made (`primary_player`), not the most recent, so a case that builds a second
+player to prove the player filter still attaches to the one it means. (5)
+`SpyWorld` announces hits only when asked, because the real hurtbox always
+announces and a content case asserting a relic's damage should not silently run
+the relic again. (6) The harness is typed against `GutTest` and is
+`tests/`-only; nothing under `scripts/` imports it, so the game is untouched.
+
+**Not claimed.** The Mimic Crown duplication rule (G19b) is not implemented, and
+`tasks/todo.md`'s W4-B3 stays **open** for exactly that reason — G19a is half of
+the task, and the tick belongs to G19b. No relic or mutation case exists yet:
+`data/relics/` still holds only `.gdkeep`, and the 20 relics of W4-B6 are the
+harness's first real users (G32 onward). The player composition the harness
+assembles by hand is **blocked on Dev A (W2-A1, player.tscn)**; the harness
+returns the scene's existing host when that composition lands, so the swap-in is
+mechanical.
 
 ---
 
@@ -3382,6 +3477,46 @@ already recorded in a spec or a comment, the location is given.
       (Dev A's W4-A4), is not a capped-drop and must not inflate
       `spawns_dropped` — otherwise the debug stat would report cap pressure that
       the cap did not cause.
+
+48. **The trigger-test harness is test-only, takes the bus's own `Signal`, and
+    reports refusals as warnings rather than failures (2026-10-20, W4-B3 /
+    G19a).** SPEC-effect-system "Interfaces provided" specifies
+    `tests/helpers/effect_harness.gd`: "creates a headless player with
+    `EffectHost`, attaches an effect, fires any `Events` signal with fake
+    arguments, asserts spawns, stat changes, statuses, and damage via a
+    `SpyWorld`." Every file this goal added lives under `tests/`, so nothing on
+    the project's Ask-first list moved and the game is untouched; it is recorded
+    here because the instrument's shape is a choice every content module inherits
+    (G32 onward, and weeks 8, 11 and 12 after them).
+    - **`fire()` takes the bus's own `Signal` object, not a `StringName`.** The
+      caller writes `_harness.fire(Events.player_dodged, [_player, false])`, so
+      a signal that does not exist is a compile-time error and not a test that
+      silently fires nothing; the harness still reads the name back off the
+      object and checks it against `Events`' own script, so an argument count
+      that does not match the declaration is refused at run time too.
+    - **A refusal is a `push_warning` returning `false`/`null`, never a GUT
+      failure.** `fire()` and `attach()` are the harness's own plumbing; if a
+      case misuses them, the case's own `assert_*` reports the consequence in the
+      case's own words, which is more useful than an assertion failure raised
+      from inside the fixture. The guard is itself asserted (unknown signal,
+      one argument, three arguments), so the warning path is not dead code.
+    - **Every assertion exists twice: a pure `check_*` predicate and a
+      GUT-reporting `assert_*` wrapper.** The predicates are what make the
+      *negative* expressible — the self-test proves the harness's own assertion
+      would have failed for a relic wired to the wrong player without failing the
+      run that proves it, which is BRIEF C13's "force the failing path once and
+      keep it" done inside the suite rather than in a throwaway run.
+    - **`attach()` defaults to the first player made, not the most recent.** A
+      case that builds a second player to prove the player filter must not have
+      its `attach()` silently follow that player; `primary_player` is set on the
+      first `make_player()` and stays.
+    - **`SpyWorld` extends `EffectSpawnerSpy` and announces hits only on
+      request.** Extending reuses the shipped spawn double (which records *and*
+      runs the real `EffectSpawner` base, so the production path is exercised);
+      `announce_hits` is off by default because a content case asserting a
+      relic's damage should not have that damage re-fed to the relic that
+      produced it. `ProcHurtboxStub` remains the announce-always shape for the
+      proc-limit tests.
 
 ---
 
