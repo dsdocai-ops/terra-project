@@ -4078,6 +4078,68 @@ is proved in-process on `apply_activate_request(sender, slot)`, the same `apply_
 seam the revive and pick contracts use. Nothing is added to `player.tscn`
 (**blocked on Dev A, W2-A1**); `for_player()` installs the node at run time.
 
+### G12 — the `Pickup` scene and its magnet (W4-B8, raw goal G39) (`run-economy`)
+
+**What shipped.** `scripts/run/pickup.gd` (`class_name Pickup extends Area2D`:
+the six `KIND_*` + `KINDS`, `magnet_step`, `nearest_player_in_range`,
+`magnet_radius`, `holds_room_wide_relic`, `collect`, `apply_visibility`,
+`is_visible_to`, `state_sync`, `synced_position`, `collected`),
+`scenes/pickups/pickup.tscn` (Area2D root, `TouchShape`, placeholder `Body`, a
+`StateSync` `MultiplayerSynchronizer`), `tests/unit/test_pickup.gd` (24 cases,
+129 asserts), and the `Events` retype: `pickup_collected(player: Player, pickup:
+Pickup)` with its `TODO(run-economy)` placeholder line deleted (decision 88).
+`tests/unit/test_events_bus.gd`'s `TYPE_MAP` and its placeholder-owner map moved
+with it, and `tests/helpers/event_emitter.gd` now builds a real `Pickup` rather
+than a `Node` stub. No Dev A file, no `.tscn` the other lane owns, no autoload
+API, no `scripts/data/` Resource, no save schema.
+
+**The magnet is a distance test, not a physics overlap.** SPEC-run-economy's own
+word is "within `pickup_radius`", so `nearest_player_in_range()` measures to the
+`player` group and `magnet_step()` accelerates toward the nearest living one
+(capped, so a coin crosses a room without blurring); a downed player is skipped
+rather than vacuuming loot. `PICKUP_LAYER` is 0 — a coin must not answer
+SPEC-player-controller's interact scan — and the scene carries no `prompt_text`
+or `interact`, both asserted. The step is scaled by `TimeManager.scale_for(self)`
+and never by the engine's global scale: a pickup is not an enemy, so an enemy
+time stop leaves it at normal speed (asserted).
+
+**Ore Magnet is an id read.** `magnet_radius(player)` returns the scene's
+`pickup_radius`, or `ROOM_WIDE_RADIUS` when the holder's `EffectHost`
+`has_effect(&"ore_magnet")` — the same cross-module id read the Wren and Echo
+payouts use, never a flag on the player and never a relic class. A host holding a
+different relic, and a player with no host at all, both keep the scene radius
+(both asserted).
+
+**Per-player drops.** `visible_to_peer` (`VISIBLE_TO_ALL = 0`) drives
+`apply_visibility()`, which sets the synchronizer's `public_visibility` and
+`set_visibility_for(peer, true)` — the exact pair `PlayerSpawner` already uses
+for `InputSync` — and clears the previous override when a drop goes back to
+shared. `is_visible_to(peer)` reads the synchronizer's own two properties rather
+than re-deriving the rule, so the answer cannot drift from what the engine sends.
+
+**Evidence** (`.goals/evidence/r1792508947701/g12/`): red first — a parse error
+naming `Pickup`; `--import` exit 0; **24/24 / 129 asserts**; the touched suites
+(`test_events_bus`, `test_events_emitters`, `test_scenes_load`, `test_autoloads`,
+`test_effect_template`) each exit 0; full suite **56 scripts / 1014 tests / 1014
+passing / 58 673 asserts, exit 0** (74.3 s) against the step-14 baseline 55 / 990
+/ 58 545; negative control — the radius compare in `nearest_player_in_range()`
+inverted (`>` → `<`) — fails **exactly the ten magnet cases** (14/24, 112/127,
+exit 1), reverted byte-exact (`diff` empty, marker count 1 → 1);
+`tools/smoke_two.sh` exit 0, 35 checks `ok`, 0 `FAIL` (this commit adds a
+synchronizer to a scene, so the smoke ran before it).
+
+**Not claimed.** Nothing places a pickup in a live scene yet: the pickup spawner
+and the `EnemyData.loot_table` drop path are the rest of W4-B8, and the death
+that feeds them is Dev A's W4-A4. The per-peer visibility cases drive the
+synchronizer on a **detached** node, because a single-process suite has no second
+connected peer and the engine refuses `set_visibility_for()` for a peer the
+synchronizer does not know; the real two-peer path is the smoke. W4-B8 stays
+`[ ]` — this is its first item. One finding left standing: `grep -rn
+"Engine.time_scale" scripts/ scenes/` is **not** empty — two doc comments in
+`scripts/relics/active_relic_controller.gd` (G11) name it in prose. Not this
+goal's file and not this goal's criterion (G17 owns that grep), so it is recorded
+rather than silently edited.
+
 ---
 
 ## Decisions made without a human
@@ -6643,6 +6705,24 @@ already recorded in a spec or a comment, the location is given.
     extras (`test_events_bus.gd`), so the use is announced with the controller's
     own `slot_activated` node signal plus the `relic_activated_received` broadcast
     signal — the same choice decisions 85a and 86 made for the shrine's offer.
+
+88. **`Events.pickup_collected`'s second parameter is retyped to the real
+    `Pickup` class (2026-10-20).** G12. The bus declared `pickup: Node` and
+    pinned it with `## TODO(run-economy): Pickup <- Node (blocked on Dev B,
+    W4-B8)`; SPEC-effect-system's own Events-bus table already writes `signal
+    pickup_collected(player: Player, pickup: Pickup)`. W4-B8's first item
+    declares that class, so the placeholder is retired: the signal is retyped,
+    the TODO line deleted, `tests/unit/test_events_bus.gd`'s `TYPE_MAP` and its
+    placeholder-owner map moved with it (that test fails if a placeholder loses
+    its line *or* if a line outlives its placeholder, so this is a checked claim
+    and not a hope), and `tests/helpers/event_emitter.gd` builds a real `Pickup`
+    instead of the `Node` stub. Sanctioned by SPEC-effect-system "Events bus"
+    (the table is the spec) and SPEC-run-economy "Interfaces provided", which
+    lists `Pickup` among the classes the module provides and `pickup_collected`
+    among the events it emits. The change is additive in shape: no signal name,
+    parameter name, order or count moves, so no call site changes — the only
+    edit is the declared type. Recorded here because `Events` signal signatures
+    are on the project's ask-first list.
 
 ---
 
