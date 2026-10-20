@@ -34,3 +34,17 @@ func stacks(status: int) -> int:
 		if int(applications[i]["status"]) == status:
 			return int(applications[i]["stacks"])
 	return 0
+
+
+## The statuses this double has been asked for, in the component's own enum order
+## and with a zero-stack application left out — the real `active_statuses()`
+## contract, which is what a relic reading a corpse's statuses (Domino, W4-B6/G8a)
+## asks for. Derived from the recorded applications because the double records
+## calls rather than state: the read is "which statuses were applied", and the
+## stacks stay `stacks()`'s own read, which is the most recent application's.
+func active_statuses() -> Array[int]:
+	var found: Array[int] = []
+	for status: int in StatusEffects.Status.values():
+		if stacks(status) > 0:
+			found.append(status)
+	return found

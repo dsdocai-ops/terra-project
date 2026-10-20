@@ -79,6 +79,25 @@ extends GutTest
 ## Owned by relics. Sync: none under test — relics are host-only content
 ## (SPEC-relics "Multiplayer ownership") and the harness is one process.
 ##
+## The fourth and last instalment — design doc 9.1 nos. 17 to 20, relics,
+## W4-B6 (PLAN G8a / raw goal G35) — is the batch that closes the week's twenty:
+## Bloodthirst, Corpse Bloom, Domino and Trophy Belt, all on `enemy_killed`'s
+## trigger. Three of the four act on a provider this lane does not own and each
+## case says which: Bloodthirst's buff and Trophy Belt's accumulation are the
+## player's own `StatBlock` (this lane's), Corpse Bloom's flower is a spawned FX
+## root whose healing is its own body (**blocked on Dev A (W4-A4)** /
+## art-audio), and Domino's spread reads and writes the enemy-side `StatusEffects`
+## component stats-status ships and Dev A's enemy scene composes
+## (**blocked on Dev A (W4-A1)**). Trophy Belt listens on `elite_killed` because
+## SPEC-enemies-ai names that signal for it — "Elite death emits
+## `Events.elite_killed` for `run-economy` (loot, Echo Shards) and Trophy Belt" —
+## and the other three on `enemy_killed`, which SPEC-relics names as one of the
+## three events the Week 4 relics exercise.
+##
+## The batch's four stack cases live here too: Hungry Steel's per-enemy step
+## (G6), Bloodthirst's five-stack buff and Trophy Belt's run-long accumulation
+## (this batch), and Soul Jar's jar (G7).
+##
 
 ## The six ids, in design doc 9.1 order. `RelicData.WEEK_4_IDS`' first six, and
 ## the file names under `data/relics/` (SPEC-project: the id is the file name).
@@ -213,6 +232,43 @@ const LATE_BATCH_NUMBER_LINKS: Array[Dictionary] = [
 	{"id": &"soul_jar", "constant": &"GHOST_ARMY_SECONDS", "text": "10s", "value": 10.0},
 ]
 
+## The last "On Kill" batch — design doc 9.1 nos. 17 to 20 in that order, which
+## are `RelicData.WEEK_4_IDS`' seventeenth to twentieth: Bloodthirst, Corpse
+## Bloom, Domino, Trophy Belt. The batch that closes the week's twenty.
+const FINAL_BATCH_IDS: Array[StringName] = [
+	&"bloodthirst",
+	&"corpse_bloom",
+	&"domino",
+	&"trophy_belt",
+]
+## Where the batch starts in 9.1 and how many it holds.
+const FINAL_BATCH_FIRST_NUMBER: int = 17
+const FINAL_BATCH_COUNT: int = 4
+## What each `.tres` of the batch must hold. Bloodthirst is the one whose
+## `(stacks 5x)` the design doc states, so its data file allows five copies —
+## the cap is the doc's number and the buff's own cap is the same number.
+const FINAL_BATCH_MAX_STACKS: Dictionary[StringName, int] = {
+	&"bloodthirst": 5,
+	&"corpse_bloom": 1,
+	&"domino": 1,
+	&"trophy_belt": 1,
+}
+## The batch carries no element tag, so this table is empty: the design doc gives
+## none of the four any elemental language. Their only tag is their trigger's —
+## the same read `_check_clause_relic` takes for the other three batches, with an
+## empty element table instead of omitting the argument.
+const FINAL_BATCH_ELEMENT_TAGS: Dictionary[StringName, StringName] = {}
+## The numbers the batch's descriptions state, and the effect-script constant
+## each one is — the same read the other three batches get (SPEC-relics: "balance
+## numbers in the description are the source of truth for the effect script's
+## constants"). Corpse Bloom and Domino state no number.
+const FINAL_BATCH_NUMBER_LINKS: Array[Dictionary] = [
+	{"id": &"bloodthirst", "constant": &"PER_KILL_BONUS", "text": "10%", "value": 0.10},
+	{"id": &"bloodthirst", "constant": &"BLOODTHIRST_SECONDS", "text": "3s", "value": 3.0},
+	{"id": &"bloodthirst", "constant": &"MAX_STACKS", "text": "5x", "value": 5.0},
+	{"id": &"trophy_belt", "constant": &"PER_ELITE_BONUS", "text": "3%", "value": 0.03},
+]
+
 ## Where the two batches' neighbours stand: one inside Gravity Stone's pull
 ## reach and Volatile Core's blast, one well outside both. Both are measured
 ## from the enemy the hit landed on, which is the centre of each.
@@ -232,6 +288,13 @@ const HEALTH_START: int = 50
 ## in for combat-core's (Dev A, W2-A1) heal half.
 const HEALTH_NODE: NodePath = ^"Health"
 const HEALTH_STUB_PATH: String = "res://tests/helpers/status_health_stub.gd"
+## The attack-speed base the Bloodthirst cases seed onto the harness player's
+## `StatBlock`. `EffectHarness` fills MOVE_SPEED, ATTACK and LUCK only, and a
+## percentage modifier reads `(base + flat) * (1 + percent)` — 0.0 for a stat
+## with no base — so the case seeds the spawn-time base itself. The real value
+## comes from `CharacterData`/`ClassData` on Dev A's player scene (**blocked on
+## Dev A (W2-A1)**); 1.0 is the neutral multiplier the buff multiplies.
+const ATTACK_SPEED_BASE: float = 1.0
 
 var _harness: EffectHarness
 var _player: Player
@@ -260,6 +323,8 @@ func before_each() -> void:
 	for relic_id: StringName in ON_HIT_TAIL_IDS:
 		_sources[relic_id] = load(_relic_path(relic_id)) as ContentData
 	for relic_id: StringName in ON_KILL_IDS:
+		_sources[relic_id] = load(_relic_path(relic_id)) as ContentData
+	for relic_id: StringName in FINAL_BATCH_IDS:
 		_sources[relic_id] = load(_relic_path(relic_id)) as ContentData
 
 
@@ -312,10 +377,24 @@ func _spawned(relic_id: StringName) -> Node:
 ## applied to it is recorded rather than warned away.
 func _enemy(at: Vector2) -> StatusEnemyStub:
 	var enemy: StatusEnemyStub = StatusEnemyStub.make(_harness.root, at)
+	_install_statuses(enemy)
+	return enemy
+
+
+## The `StatusEffects` double on `entity`, added if it carries none — the
+## component Domino reads the corpse's statuses off and applies the spread
+## through. The real component is stats-status's (`scripts/components/
+## status_effects.gd`, W4-B4) and the enemy scene it rides on is Dev A's
+## (**blocked on Dev A (W4-A1)**); the double records every `apply_status`, so a
+## spread can be read back without a live component on a double's node.
+func _install_statuses(entity: Node) -> StatusEffectsStub:
+	var existing: Node = entity.get_node_or_null(EffectHarness.STATUS_NODE)
+	if existing is StatusEffectsStub:
+		return existing as StatusEffectsStub
 	var component := StatusEffectsStub.new()
 	component.name = EffectHarness.STATUS_NAME
-	enemy.add_child(component)
-	return enemy
+	entity.add_child(component)
+	return component
 
 
 ## The one-shot `Timer` an effect parented, or null.
@@ -445,6 +524,51 @@ func _on_hit_tail_clauses() -> Dictionary:
 ## Design doc 9.1 nos. 15 and 16 — the On Kill pair — the same read.
 func _on_kill_clauses() -> Dictionary:
 	return _clauses_in_range(ON_KILL_FIRST_NUMBER, ON_KILL_FIRST_NUMBER + ON_KILL_COUNT - 1)
+
+
+## Design doc 9.1 nos. 17 to 20 — the last On Kill batch — the same read.
+func _final_batch_clauses() -> Dictionary:
+	return _clauses_in_range(FINAL_BATCH_FIRST_NUMBER, FINAL_BATCH_FIRST_NUMBER + FINAL_BATCH_COUNT - 1)
+
+
+## One `elite_killed` for `enemy`, credited to `owner`. SPEC-enemies-ai is the
+## sentence that makes this the elitist batch's signal rather than this lane's
+## guess: "Elite death emits `Events.elite_killed` for `run-economy` (loot, Echo
+## Shards) and Trophy Belt". The payload is the same shape `_kill()` fires —
+## `elite_killed(enemy, hit)` and no `Player` argument — so the filter is the
+## killing hit's `owner_player`.
+func _elite_kill(enemy: Node, owner: Player) -> bool:
+	var hit: HitData = _hit(enemy, owner)
+	hit.final_damage = LEECH_DAMAGE
+	return _harness.fire(Events.elite_killed, [enemy, hit])
+
+
+## The harness player's own `StatBlock`, so a case can seed the spawn-time bases
+## `EffectHarness` leaves unset for the stats it does not assert on.
+func _player_stat_block() -> StatBlock:
+	var node: Node = _player.get_node_or_null(EffectHarness.STAT_BLOCK_NODE)
+	return node as StatBlock
+
+
+## Seeds the harness player's attack-speed base — spawn setup, which is the one
+## time `StatBlock.set_base()` is ever the right call. See `ATTACK_SPEED_BASE`.
+func _seed_attack_speed() -> void:
+	var block: StatBlock = _player_stat_block()
+	assert_not_null(block, "the harness player carries a StatBlock")
+	if block != null:
+		block.set_base(StatBlock.Stat.ATTACK_SPEED, ATTACK_SPEED_BASE)
+
+
+## The harness player's attack speed right now, through `StatBlock.get_value()`:
+## the number Bloodthirst's percentage modifier moves.
+func _attack_speed() -> float:
+	return _harness.stat_of(_player, StatBlock.Stat.ATTACK_SPEED)
+
+
+## The harness player's attack right now: the number Trophy Belt's percentage
+## modifier moves.
+func _attack() -> float:
+	return _harness.stat_of(_player, StatBlock.Stat.ATTACK)
 
 
 # --- the six relics: one case each -----------------------------------------
@@ -1314,6 +1438,306 @@ func test_soul_jar_more_copies_charge_the_jar_faster() -> void:
 	assert_eq(_harness.spawn_count(&"soul_jar"), 1, "with one ghost army")
 
 
+# --- the last "On Kill" batch: one case each --------------------------------
+
+## Design doc 9.1 no. 17 — "Bloodthirst: kills give +10% attack speed for 3s
+## (stacks 5x)". The relic's own `StatBlock` modifier, on the player, for the
+## doc's three seconds, and the doc's five stacks.
+func test_bloodthirst_grants_ten_percent_attack_speed_for_three_seconds() -> void:
+	var source: RelicData = _source(&"bloodthirst")
+	assert_not_null(source, "data/relics/bloodthirst.tres exists and loads")
+	if source == null:
+		return
+	var blood: BloodthirstEffect = _harness.attach(source) as BloodthirstEffect
+	assert_not_null(blood, "the Bloodthirst effect attaches through the host")
+	if blood == null:
+		return
+	_seed_attack_speed()
+	var base_speed: float = _attack_speed()
+	var victim: StatusEnemyStub = _enemy_at(HIT_AT)
+
+	# A kill nobody attributes — a team-mate's, a hazard's — is not this player's.
+	_emitter.emit_enemy_killed()
+	assert_eq(blood.buff_stacks(), 0, "a kill nobody attributes grants no stack")
+	assert_almost_eq(_attack_speed(), base_speed, EPSILON, "and no attack speed")
+
+	assert_true(_kill(victim, _player), "the holder's kill is announced")
+	assert_eq(blood.buff_stacks(), 1, "one kill is one stack")
+	assert_almost_eq(_attack_speed(), base_speed * (1.0 + BloodthirstEffect.PER_KILL_BONUS), EPSILON,
+		"and the kill grants the doc's +10% attack speed")
+
+	var clock: Timer = _timer_for(blood)
+	assert_not_null(clock, "the bonus runs on a clock")
+	if clock == null:
+		return
+	assert_almost_eq(clock.wait_time, BloodthirstEffect.BLOODTHIRST_SECONDS, EPSILON,
+		"armed with the relic's own three seconds")
+
+	for n: int in BloodthirstEffect.MAX_STACKS - 1:
+		assert_true(_kill(victim, _player), "kill %d is announced" % (n + 2))
+	assert_eq(blood.buff_stacks(), BloodthirstEffect.MAX_STACKS, "five kills fill the doc's five stacks")
+	assert_almost_eq(_attack_speed(), base_speed * (1.0 + BloodthirstEffect.PER_KILL_BONUS * 5.0), EPSILON,
+		"which is +50% attack speed")
+
+	assert_true(_kill(victim, _player), "a sixth kill is announced")
+	assert_eq(blood.buff_stacks(), BloodthirstEffect.MAX_STACKS, "and the stacks stop at five")
+	assert_eq(BloodthirstEffect.MAX_STACKS, 5, "the cap is the design doc's `5x`")
+
+	clock.timeout.emit()
+	assert_eq(blood.buff_stacks(), 0, "when the clock runs out the stacks are gone")
+	assert_almost_eq(_attack_speed(), base_speed, EPSILON, "and so is the attack speed")
+
+	assert_true(_kill(victim, _player), "a kill after the window lapses is announced")
+	assert_eq(blood.buff_stacks(), 1, "and the buff starts again from one stack")
+
+
+## The batch's third stack case: Bloodthirst's `max_stacks = 5` is what makes a
+## second copy of the relic worth holding — each copy adds a stack per kill, so
+## five copies fill the doc's five-stack cap in one kill rather than five.
+func test_bloodthirst_stacks_five_deep_and_more_copies_fill_it_faster() -> void:
+	var source: RelicData = _source(&"bloodthirst")
+	assert_not_null(source, "data/relics/bloodthirst.tres exists and loads")
+	if source == null:
+		return
+	assert_eq(source.max_stacks, int(FINAL_BATCH_MAX_STACKS.get(&"bloodthirst", 0)),
+		"the data file allows the five copies this case holds")
+	var blood: BloodthirstEffect = _harness.attach(source, BloodthirstEffect.MAX_STACKS) as BloodthirstEffect
+	assert_not_null(blood, "the Bloodthirst effect attaches through the host")
+	if blood == null:
+		return
+	_seed_attack_speed()
+	var base_speed: float = _attack_speed()
+	var victim: StatusEnemyStub = _enemy_at(HIT_AT)
+
+	assert_eq(blood.stacks, BloodthirstEffect.MAX_STACKS, "the effect is held five times")
+	assert_eq(blood.stacks_per_kill(), BloodthirstEffect.MAX_STACKS, "and each kill grants one stack per copy")
+
+	assert_true(_kill(victim, _player), "one kill is announced")
+	assert_eq(blood.buff_stacks(), BloodthirstEffect.MAX_STACKS,
+		"which fills the five-stack cap in a single kill")
+	assert_almost_eq(_attack_speed(), base_speed * (1.0 + BloodthirstEffect.PER_KILL_BONUS * 5.0), EPSILON,
+		"with the doc's +50% at the cap")
+
+	assert_true(_harness.detach(source), "the relic detaches")
+	assert_almost_eq(_attack_speed(), base_speed, EPSILON, "and its buff leaves with it")
+
+
+## Design doc 9.1 no. 18 — "Corpse Bloom: dead enemies sprout healing flowers".
+## The flower is a spawned FX-with-gameplay root, so the case asserts the spawn,
+## where it lands and that the corpse sprouts exactly one — the flower's healing
+## is the root's own body (**blocked on Dev A (W4-A4)** / art-audio).
+func test_corpse_bloom_sprouts_a_flower_where_the_enemy_died() -> void:
+	var source: RelicData = _source(&"corpse_bloom")
+	assert_not_null(source, "data/relics/corpse_bloom.tres exists and loads")
+	if source == null:
+		return
+	var bloom: CorpseBloomEffect = _harness.attach(source) as CorpseBloomEffect
+	assert_not_null(bloom, "the Corpse Bloom effect attaches through the host")
+	if bloom == null:
+		return
+	bloom.fx_scene = _fx_root_scene()
+	var victim: StatusEnemyStub = _enemy_at(HIT_AT)
+
+	_emitter.emit_enemy_killed()
+	assert_eq(bloom.flowers_planted(), 0, "a kill nobody attributes sprouts nothing")
+	assert_eq(_harness.spawn_count(&"corpse_bloom"), 0, "and spawns nothing")
+
+	assert_true(_kill(victim, _player), "the holder's kill is announced")
+	assert_eq(bloom.flowers_planted(), 1, "the corpse sprouts one flower")
+	assert_eq(_harness.spawn_count(&"corpse_bloom"), 1, "which is one spawn, attributed to the relic")
+	var flower: Node = _spawned(&"corpse_bloom")
+	assert_not_null(flower, "and the seam handed it back")
+	if flower is Node2D:
+		assert_eq((flower as Node2D).global_position, victim.global_position, "where the enemy died")
+	var root: RelicFxRootStub = flower as RelicFxRootStub
+	assert_not_null(root, "the flower is the FX root the seam instantiated")
+	if root != null:
+		# The doc states no number for what a flower heals, so this lane asks the
+		# root for no contract it has not chosen a shape for: the flower is
+		# spawned, and the healing inside it is the root's own body
+		# (**blocked on Dev A (W4-A4)**).
+		assert_false(root.armed, "the flower is spawned, not armed by this relic")
+
+	assert_true(_kill(victim, _player), "a second kill is announced")
+	assert_eq(bloom.flowers_planted(), 2, "and a second corpse sprouts its own flower")
+	assert_eq(_harness.spawn_count(&"corpse_bloom"), 2, "one flower per death, not one for the batch")
+
+
+## Design doc 9.1 no. 19 — "Domino: killing an enemy with a status effect spreads
+## it to nearby enemies". The corpse's own statuses, with the stacks they were
+## held at, reach every enemy inside `SPREAD_RADIUS` and nothing outside it. The
+## read is the enemy's `StatusEffects` component — stats-status's own, composed
+## onto the enemy by Dev A's enemy scene (**blocked on Dev A (W4-A1)**) — driven
+## here through the recording double.
+func test_domino_spreads_the_corpses_statuses_to_the_enemies_beside_it() -> void:
+	var source: RelicData = _source(&"domino")
+	assert_not_null(source, "data/relics/domino.tres exists and loads")
+	if source == null:
+		return
+	var domino: DominoEffect = _harness.attach(source) as DominoEffect
+	assert_not_null(domino, "the Domino effect attaches through the host")
+	if domino == null:
+		return
+	var victim: StatusEnemyStub = _enemy_at(HIT_AT)
+	var near: StatusEnemyStub = _enemy_at(HIT_AT + NEARBY_AT)
+	var far: StatusEnemyStub = _enemy_at(OUT_OF_REACH_AT)
+	var victim_statuses: StatusEffectsStub = _install_statuses(victim)
+	var near_statuses: StatusEffectsStub = _install_statuses(near)
+	var far_statuses: StatusEffectsStub = _install_statuses(far)
+
+	# A corpse with nothing on it spreads nothing: the doc's trigger is "killing
+	# an enemy *with a status effect*".
+	assert_true(_kill(victim, _player), "the holder's unattributed-status kill is announced")
+	assert_eq(domino.spread_count(), 0, "a corpse with no status spreads nothing")
+	assert_eq(near_statuses.applications.size(), 0, "and nothing arrives at the enemy beside it")
+
+	victim_statuses.apply_status(int(StatusEffects.Status.BURN), 3, _player)
+	victim_statuses.apply_status(int(StatusEffects.Status.TOXIN), 1, _player)
+	assert_true(_kill(victim, _player), "the holder's kill of the burning, toxined enemy is announced")
+
+	assert_eq(domino.spread_count(), 2, "both of the corpse's statuses are spread")
+	assert_eq(near_statuses.applications.size(), 2, "and both arrive at the enemy beside it")
+	assert_eq(near_statuses.stacks(int(StatusEffects.Status.BURN)), 3,
+		"the burn arrives with the stacks the corpse held it at")
+	assert_eq(near_statuses.stacks(int(StatusEffects.Status.TOXIN)), 1, "and so does the toxin")
+	assert_eq(far_statuses.applications.size(), 0, "an enemy outside the spread is untouched")
+	assert_eq(DominoEffect.SPREAD_RADIUS, 96.0, "the spread reaches SHOCK's own chain radius")
+
+	# A kill attributed to nobody is not this player's kill.
+	_emitter.emit_enemy_killed()
+	assert_eq(domino.spread_count(), 2, "a kill nobody attributes spreads nothing")
+
+
+## Design doc 9.1 no. 20 — "Trophy Belt: every elite killed gives +3% damage for
+## the rest of the run". SPEC-enemies-ai names the signal this relic hangs off:
+## "Elite death emits `Events.elite_killed` … and Trophy Belt".
+func test_trophy_belt_grants_damage_for_every_elite_its_holder_kills() -> void:
+	var source: RelicData = _source(&"trophy_belt")
+	assert_not_null(source, "data/relics/trophy_belt.tres exists and loads")
+	if source == null:
+		return
+	var belt: TrophyBeltEffect = _harness.attach(source) as TrophyBeltEffect
+	assert_not_null(belt, "the Trophy Belt effect attaches through the host")
+	if belt == null:
+		return
+	var base_damage: float = _attack()
+	var elite: StatusEnemyStub = _enemy_at(HIT_AT)
+	var teammate: Player = _harness.make_player()
+
+	# The bus's own emitter: an unattributed elite death and a team-mate's, the
+	# two shapes that must not count for this player.
+	_emitter.emit_elite_killed()
+	assert_eq(belt.elites_killed(), 0, "an elite nobody attributes gives nothing")
+	assert_almost_eq(_attack(), base_damage, EPSILON, "and no damage")
+
+	assert_true(_elite_kill(elite, teammate), "a team-mate's elite kill is announced")
+	assert_eq(belt.elites_killed(), 0, "which is not this player's either")
+
+	assert_true(_elite_kill(elite, _player), "the holder's elite kill is announced")
+	assert_eq(belt.elites_killed(), 1, "the belt counts it")
+	assert_almost_eq(_attack(), base_damage * (1.0 + TrophyBeltEffect.PER_ELITE_BONUS), EPSILON,
+		"and gives the doc's +3% damage")
+
+	# A plain kill is not an elite kill: only the elites the doc names count.
+	assert_true(_kill(elite, _player), "an ordinary kill is announced")
+	assert_eq(belt.elites_killed(), 1, "and the belt does not count it")
+
+
+## The batch's fourth stack case: Trophy Belt's bonus is an accumulation, one
+## +3% per elite for the **rest of the run** — it survives the rooms and floors
+## that follow and is only taken back with the relic itself.
+func test_trophy_belt_stacks_its_damage_bonus_for_the_rest_of_the_run() -> void:
+	var source: RelicData = _source(&"trophy_belt")
+	assert_not_null(source, "data/relics/trophy_belt.tres exists and loads")
+	if source == null:
+		return
+	var belt: TrophyBeltEffect = _harness.attach(source) as TrophyBeltEffect
+	assert_not_null(belt, "the Trophy Belt effect attaches through the host")
+	if belt == null:
+		return
+	var base_damage: float = _attack()
+	var first: StatusEnemyStub = _enemy_at(HIT_AT)
+	var second: StatusEnemyStub = _enemy_at(HIT_AT + NEARBY_AT)
+	var third: StatusEnemyStub = _enemy_at(OUT_OF_REACH_AT)
+
+	assert_true(_elite_kill(first, _player), "the first elite kill is announced")
+	assert_true(_elite_kill(second, _player), "a second elite kill is announced")
+	assert_eq(belt.elites_killed(), 2, "two elites are counted")
+	assert_almost_eq(belt.damage_bonus(), 2.0 * TrophyBeltEffect.PER_ELITE_BONUS, EPSILON,
+		"and the two are +6% damage")
+
+	# The rest of the run, not the room: the next room and the next floor leave
+	# the accumulation alone (nothing here is `once_per_room`).
+	_emitter.emit_room_entered()
+	_emitter.emit_floor_entered()
+	assert_almost_eq(_attack(), base_damage * (1.0 + 2.0 * TrophyBeltEffect.PER_ELITE_BONUS), EPSILON,
+		"and it stands across rooms and floors within the run")
+
+	assert_true(_elite_kill(third, _player), "a third elite kill is announced")
+	assert_eq(belt.elites_killed(), 3, "three elites are counted")
+	assert_almost_eq(_attack(), base_damage * (1.0 + 3.0 * TrophyBeltEffect.PER_ELITE_BONUS), EPSILON,
+		"which is +9% damage and no cap")
+
+	assert_true(_harness.detach(source), "the relic detaches")
+	assert_almost_eq(_attack(), base_damage, EPSILON, "and the run's accumulated bonus goes with it")
+
+
+## The four are On Kill relics, and the batch's signal rule is one signal each:
+## Bloodthirst, Corpse Bloom and Domino hang off `enemy_killed` (every death is
+## announced there — SPEC-enemies-ai's "Events emitted" list carries it), and
+## Trophy Belt alone off the `elite_killed` the same spec names it for. So one
+## kill the holder made moves all four, a kill attributed to nobody moves none,
+## and a death announced on *both* signals — which is what an elite's is — is
+## still one death: the case fires `_kill()` and `_elite_kill()` for the same
+## corpse and asserts each relic counted it exactly once. `EventEmitterHelper` is
+## the bus's own emitter, whose hits carry no `owner_player`.
+func test_the_four_final_on_kill_relics_fire_for_their_holders_kill_and_not_a_teammates() -> void:
+	var blood: BloodthirstEffect = _harness.attach(_source(&"bloodthirst")) as BloodthirstEffect
+	assert_not_null(blood, "Bloodthirst attaches")
+	if blood == null:
+		return
+	var bloom: CorpseBloomEffect = _harness.attach(_source(&"corpse_bloom")) as CorpseBloomEffect
+	assert_not_null(bloom, "Corpse Bloom attaches")
+	if bloom == null:
+		return
+	var domino: DominoEffect = _harness.attach(_source(&"domino")) as DominoEffect
+	assert_not_null(domino, "Domino attaches")
+	if domino == null:
+		return
+	var belt: TrophyBeltEffect = _harness.attach(_source(&"trophy_belt")) as TrophyBeltEffect
+	assert_not_null(belt, "Trophy Belt attaches")
+	if belt == null:
+		return
+	bloom.fx_scene = _fx_root_scene()
+	_seed_attack_speed()
+	var base_speed: float = _attack_speed()
+	var base_damage: float = _attack()
+	var victim: StatusEnemyStub = _enemy_at(HIT_AT)
+	var near: StatusEnemyStub = _enemy_at(HIT_AT + NEARBY_AT)
+	_install_statuses(victim)
+	_install_statuses(near)
+	var victim_statuses: StatusEffectsStub = _install_statuses(victim)
+	victim_statuses.apply_status(int(StatusEffects.Status.BURN), 1, _player)
+
+	_emitter.emit_enemy_killed()
+	_emitter.emit_elite_killed()
+	assert_eq(blood.buff_stacks(), 0, "a kill nobody attributes grants Bloodthirst nothing")
+	assert_eq(bloom.flowers_planted(), 0, "sprouts Corpse Bloom nothing")
+	assert_eq(domino.spread_count(), 0, "spreads Domino nothing")
+	assert_eq(belt.elites_killed(), 0, "and counts Trophy Belt nothing")
+
+	assert_true(_kill(victim, _player), "the holder's kill is announced")
+	assert_true(_elite_kill(victim, _player), "and the holder's elite kill is announced")
+	assert_eq(blood.buff_stacks(), 1, "Bloodthirst counts that death once, on the kill signal")
+	assert_eq(bloom.flowers_planted(), 1, "Corpse Bloom plants one flower for it")
+	assert_eq(domino.spread_count(), 1, "Domino spreads the corpse's status once")
+	assert_eq(belt.elites_killed(), 1, "and Trophy Belt counts the elite, on its own signal")
+	assert_almost_eq(_attack_speed(), base_speed * (1.0 + BloodthirstEffect.PER_KILL_BONUS), EPSILON,
+		"the buff landed on the player's own StatBlock")
+	assert_almost_eq(_attack(), base_damage * (1.0 + TrophyBeltEffect.PER_ELITE_BONUS), EPSILON,
+		"and so did the belt's damage")
+
+
 ## The three are On Hit relics like G6's five: one hit the holder landed moves all
 ## three, and the same hit attributed to anybody else moves none. The negative
 ## control is `EventEmitterHelper` again — the bus's own emitter, whose hit carries
@@ -1424,6 +1848,50 @@ func test_the_two_on_kill_data_files_are_the_design_docs_own_text() -> void:
 		assert_eq(ON_KILL_IDS[number - ON_KILL_FIRST_NUMBER], relic_id,
 			"no. %d is %s in the batch order" % [number, relic_id])
 		_check_clause_relic(relic_id, expected, LATE_BATCH_MAX_STACKS, LATE_BATCH_ELEMENT_TAGS, Tags.ON_KILL)
+
+
+## The same read for the last On Kill batch, design doc 9.1 nos. 17 to 20 — the
+## four relics that close the week's twenty, all of them on `enemy_killed`'s
+## trigger (the `on_kill` tag on every one of them).
+func test_the_final_batch_data_files_are_the_design_docs_own_text() -> void:
+	var clauses: Dictionary = _final_batch_clauses()
+	assert_eq(clauses.size(), FINAL_BATCH_COUNT, "design doc 9.1 nos. 17 to 20 parse out of the document")
+
+	for number: int in range(FINAL_BATCH_FIRST_NUMBER, FINAL_BATCH_FIRST_NUMBER + FINAL_BATCH_COUNT):
+		var expected: Dictionary = clauses.get(number, {}) as Dictionary
+		assert_false(expected.is_empty(), "design doc 9.1 no. %d was read" % number)
+		if expected.is_empty():
+			continue
+		var relic_id: StringName = _id_from_display_name(String(expected["name"]))
+		assert_eq(FINAL_BATCH_IDS[number - FINAL_BATCH_FIRST_NUMBER], relic_id,
+			"no. %d is %s in the batch order" % [number, relic_id])
+		_check_clause_relic(relic_id, expected, FINAL_BATCH_MAX_STACKS, FINAL_BATCH_ELEMENT_TAGS, Tags.ON_KILL)
+
+
+## The numbers the last batch's descriptions state are the effect scripts'
+## constants, read out of the scripts rather than restated here — Bloodthirst's
+## "10%", "3s" and "5x" and Trophy Belt's "3%".
+func test_the_final_batch_descriptions_numbers_are_the_effect_scripts_constants() -> void:
+	for link: Dictionary in FINAL_BATCH_NUMBER_LINKS:
+		var relic_id: StringName = link["id"]
+		var data: RelicData = _source(relic_id)
+		assert_not_null(data, "%s.tres loads" % relic_id)
+		if data == null:
+			continue
+		var script: GDScript = data.effect_script
+		assert_not_null(script, "%s's effect_script is set" % relic_id)
+		if script == null:
+			continue
+		var constants: Dictionary = script.get_script_constant_map()
+		var name: StringName = link["constant"]
+		assert_true(constants.has(name), "%s's script declares %s" % [relic_id, name])
+		if not constants.has(name):
+			continue
+		assert_almost_eq(float(constants[name]), float(link["value"]), EPSILON,
+			"%s's %s is the design doc's number" % [relic_id, name])
+		assert_true(String(data.description).to_lower().contains(String(link["text"])),
+			"%s's description states it as `%s` (grep it in both: %s and %s.tres)" % [
+				relic_id, link["text"], script.resource_path, relic_id])
 
 
 ## The numbers these five descriptions state are the effect scripts' constants,
