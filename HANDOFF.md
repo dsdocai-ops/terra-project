@@ -241,6 +241,21 @@ in-between chance band is covered by a seeded 400-roll test.
 > none. No formula number changed: the 12 golden rows are byte-identical and
 > every week-2 test still passes. See decision 28 for the seam choice.
 
+> **G23 (2026-10-20) — the two literals in the paragraph above are both gone.**
+> `status_mult` is no longer "a literal 1.0", and the target's MARK is no longer
+> reached through "a `force_crit` flag on HitData that StatusEffects sets in week
+> 4" — `StatusEffects` landed in G20/G21 and `Damage.compute` now reads
+> `mark_forces_crit()` off the target's own component, consuming it on the one
+> hit it forces. `status_mult` is one call —
+> `StatusEffects.incoming_damage_multiplier(attacker_host)` — which composes the
+> formula's whole term: `1.0 + 0.25 Kindling on BURN + 1.0 Permafrost on FREEZE
+> (once, or every hit with the relic) + UNRAVEL stacks * 0.1`. The
+> `hit.force_crit` flag stays, for a caller that decides on its own (a
+> guaranteed-crit ability); it is no longer the MARK seam. The golden table is
+> now 18 rows — the 12 week-2 rows unchanged and 6 status rows added — and
+> `scripts/components/status_effects.gd` gained the `status_resistance` field
+> `BossData` will set. See the `#### G23` section and decision 53.
+
 ### W2-B3 — Enemy/projectile spawners + enemy StateSync (`networking`)
 
 `EnemySpawner` and `ProjectileSpawner` (`scripts/network/`, `MultiplayerSpawner`
@@ -2407,10 +2422,15 @@ be chilled *again* while frozen. `_release_modifiers()` drops the freeze's
 modifier and an unspent double however the status leaves — expiry, `clear`,
 `clear_all` or a conversion. Permafrost's "always" is documented here as the
 attacker-side `status_mult` term G23 owns, not a second flag in this component.
+*(Landed 2026-10-20 as `_freeze_damage_bonus()`: the relic makes the +1.0 land on
+every hit by never letting the spent double be the end of it, and still spends
+the double so a later attacker with no Permafrost cannot bank it.)*
 
 **MARK** — a single stack, re-application neither stacks nor re-arms, read by
 `mark_forces_crit()` and spent by `consume_mark()`, so G23's `Damage.compute`
 can force the crit without this component computing damage.
+*(Landed 2026-10-20: `Damage.compute` calls both — reading and consuming the mark
+immediately before the crit roll, so the forced crit draws nothing.)*
 
 **Accept.** `-gtest=res://tests/unit/test_status_effects.gd` exit 0, **40/40,
 249 asserts** (`g21/test-status.log`, up from 26/192 at `1216c11`). Full suite
@@ -2469,6 +2489,9 @@ MARK's forced crit, `status_resistance`) and G24-G26 (the six combos, the two
 multiplier hooks, `Scaling`) are unlanded too, so `mark_forces_crit()` and
 `consume_freeze_double()` have no production caller yet and "next hit double
 damage" is armed and spendable but read by nothing.
+*(Both later halves landed on 2026-10-20: G22's four rows in `eb2d0a3`, and G23's
+formula terms — which is what gives `mark_forces_crit()` and
+`consume_freeze_double()` their production caller, `Damage.compute`.)*
 
 ---
 
@@ -2634,6 +2657,135 @@ between them and no producer of a status at all.
 
 ---
 
+#### G23 — `Damage.compute`'s status terms, the marked crit, and `status_resistance` (2026-10-20)
+
+The last three literals of week 2's formula, plus the field that keeps a boss
+from being status-locked. SPEC-stats-status's formula is now the code, literally:
+`status_mult = 1.0 (+0.25 Kindling on BURN) (+1.0 Permafrost on FREEZE, once)
+(+UNRAVEL stacks * 0.1)`, and the spec's own closing paragraph — "Bosses have
+`status_resistance` in `BossData` (duration multiplier, Freeze becomes heavy
+Chill)" — has the component-side field for both halves of it.
+
+**What changed.** Four existing files, no new ones:
+
+- `scripts/components/status_effects.gd` (+190 / −6) — `status_resistance`, the
+  one place the formula's target-side term is composed, and the downgrade branch.
+- `scripts/components/damage.gd` (+62 / −14) — the marked crit before the roll,
+  the term read through the component, and the attacker's `EffectHost` lookup.
+- `scripts/components/hit_data.gd` (doc only) — `force_crit`'s week-2 "StatusEffects
+  has not landed" claim was stale; it is now documented as the caller's own
+  forced-crit flag, with the MARK route described where it actually is.
+- `tests/unit/test_damage.gd` (+7 cases), `tests/unit/test_status_effects.gd` (+11
+  cases and 2 fixtures), `tests/unit/damage_table.json` (12 rows → 18, the 12
+  unchanged).
+
+**The formula, term by term.** `raw` and `crit_mult` are untouched. The three
+`status_mult` parts are read from **two different entities** and are therefore
+composed on the target, where both are in scope:
+
+- **UNRAVEL** (`+0.1` per stack, capped at 5) is the target's own status —
+  `damage_taken_multiplier()`, landed in G22.
+- **Kindling** (`+0.25`) fires when the target has BURN *and the attacker holds
+  the relic*.
+- **Permafrost** (`+1.0`) fires on a FREEZE target, once — the "once" is the
+  freeze double already spent by `consume_freeze_double()`, and the relic makes it
+  land on every hit instead.
+
+`incoming_damage_multiplier(attacker_host)` sums them, and `Damage.compute` calls
+it with the attacker's `EffectHost` — looked up as `attacker.get_parent() /
+"EffectHost"`, the same node `StatusEffects` already reads a relic off, so no
+signature grew and no relic id is known to `Damage`. A null component still
+leaves `status_mult` at 1.0, which is why the twelve week-2 golden rows are
+byte-identical: they name neither relics nor statuses, so they take the same call
+they always did.
+
+**The marked crit.** `Damage.compute` now reads `mark_forces_crit()` off the
+target's component and calls `consume_mark()` in the same breath, *before* the
+crit roll. Two things follow: a marked hit consumes no draw (W3-B1's rule,
+preserved — proven by two generators seeded alike, one of which had a marked hit
+computed against it first, then four paired draws compared), and the flag the crit
+is decided from cannot disagree with the consumption, because it is one read.
+`HitData.force_crit` remains for a hit that forces a crit on its own, and either
+route short-circuits the roll.
+
+**`status_resistance`.** An `@export var ... : float` on `StatusEffects`,
+defaulting to `DEFAULT_STATUS_RESISTANCE` (1.0 = the table's own durations), which
+`resisted_duration(status)` multiplies into every applied duration — including the
+freeze a Chill-cap conversion produces. Above 1.0 it lengthens them: it is a
+multiplier, not a cap. `BossData.status_resistance` (SPEC-bosses) is the number's
+intended source and the resource is bosses' to build; this is the field it will be
+set on, and setting it is what makes a boss resistant — no code path branches on
+"is a boss".
+
+**The degradation branch.** At or below `NO_STATUS_RESISTANCE` (0.0), FREEZE is
+downgraded instead of applied: `_heavy_chill()` lands CHILL at
+`HEAVY_CHILL_STACKS` (the Chill cap, 5 — the −60 % slow that makes it "heavy"),
+announced on both signals as the Chill it is, with `can_act()` true. The Chill
+cap's conversion to FREEZE is skipped for the same reason — it is the one other
+route to a freeze — so a fully resistant entity simply sits at the Chill cap
+rather than being frozen by a road the downgrade forgot to close. And the degraded
+Chill keeps the **Chill table's own duration**, deliberately *not* multiplied by
+the 0.0 that triggered it: SPEC-stats-status's clause is that Freeze becomes heavy
+Chill "rather than doing nothing", and a 0-second Chill is exactly the
+doing-nothing the clause exists to avoid. Every *other* row does take the 0.0 —
+`resisted_duration()` is honest about that and the next frame's tick expires it —
+which is why the downgrade is a clause about FREEZE rather than about the
+multiplier.
+
+**Judgment calls worth recording** (numbers are decisions 53's):
+
+1. **The three terms are summed on the target, in one method**, rather than
+   multiplied at the call site. Two of the three need the attacker's relics and
+   one needs the target's statuses; the only place with both in scope is the
+   target's component with the attacker's host handed to it. It also means a term
+   cannot be counted twice or dropped by a caller, and the golden table's composed
+   row and the unit case assert the same sum.
+2. **The DOUBLE is spent by the read that uses it, even when the reader has
+   Permafrost.** Not spending it would let a Permafrost holder leave a one-shot
+   charge armed for the next attacker, who has neither relic and would get a free
+   +1.0. The relic's own +1.0 needs no charge to be armed.
+3. **`degrades_freeze()` is `<= 0.0`, not `== 0.0`**, so a malformed negative
+   multiplier cannot smuggle a real freeze past the branch. The default is 1.0;
+   nothing in the game sets a negative.
+4. **The downgrade is a transformation, not a refusal.** `allows(FREEZE)` stays
+   true for a fully resistant entity and `apply_status()` returns true: the
+   application lands, as a Chill. Refusing it would have made the bus event and
+   the HUD icon disagree with what the entity received, and would have made the
+   "rather than doing nothing" clause a lie in the one place it is reachable.
+5. **`status_resistance` lives on the component, not on `BossData`.** The
+   resource is `scripts/data/` and bosses' to define; the component is what
+   applies statuses to any entity. The field is the seam between them: a boss's
+   spawn path copies the number in, and nothing here needs to know a boss from a
+   trash mob.
+6. **The week-12 balance pass owns the numbers.** No number added here is a
+   balance claim: `0.25`, `1.0` and `0.1` are SPEC-stats-status's formula
+   verbatim, `HEAVY_CHILL_STACKS` is the Chill cap, and the 1.0 default is
+   "resists nothing". SPEC-stats-status's "Open questions" already assigns the
+   final tuning to that pass.
+
+**Accept.** `-gtest=res://tests/unit/test_damage.gd` exit 0, **22/22, 78 asserts**
+(the file's own run in `.goals/evidence/g23/test-damage.log`); `-gtest=res://tests/unit/test_status_effects.gd`
+exit 0, **65/65, 371 asserts** (54/314 at `eb2d0a3`); the whole suite exit 0,
+**47 scripts / 814 tests / 814 passing / 56 281 asserts** (796/796/56 191 at
+`eb2d0a3` — exactly this goal's +18 tests and +90 asserts); `--import` exit 0. The
+six new golden rows assert `25, 26, 40, 40, 30, 55` by hand; the red run
+(`red-damage.log`, 14/22) shows all six failing at `20, 20, 20, 20, 20, 30` before
+the implementation, and the forced negative control (`KINDLING_BURN_BONUS` 0.25 →
+0.5) fails exactly the four cases that assert that number and nothing else.
+
+**Not claimed.** No status is produced in a running build (the 20 relics are
+W4-B6, no weapon applies one) and `StatusEffects` is still not composed onto
+`player.tscn` — **blocked on Dev A (W2-A1)** — so every number above is asserted
+through the component's own tests and the formula's golden table, not from play.
+`BossData` does not exist yet (**bosses' lane**), so `status_resistance` has no
+setter in a running build: the field, the multiplier and the downgrade are proven
+by unit cases and the field's default is what every other entity keeps. Nothing
+reads `resisted_duration()` outside `apply_status()` and `_freeze_from_chill()`,
+and `incoming_damage_multiplier()` has exactly one production caller,
+`Damage.compute`.
+
+---
+
 ## Decisions made without a human
 
 These are the judgment calls taken during weeks 1 and 2 that were not dictated
@@ -2761,6 +2913,12 @@ already recorded in a spec or a comment, the location is given.
     formula's doc comment; `current_hp_ratio` lives on `StatBlock` so MAX_HP
     base changes keep the fill fraction. Dev A's `HitInfo` (W2-A1) is mirrored
     by `HitData` with matching field names — blocked on Dev A, mechanical swap.
+    *Superseded in part (2026-10-20, G23):* the mark is no longer routed through
+    `HitData.force_crit` — `Damage.compute` reads `mark_forces_crit()` off the
+    target's own `StatusEffects` and consumes it on the hit it forces, and
+    `status_mult` is `StatusEffects.incoming_damage_multiplier()` composed of
+    all three terms rather than a 1.0 literal. `force_crit` stays for a caller
+    that forces a crit on its own; see decision 53.
 20. **W2-B3 placeholders and the host-only seam** — `EnemySpawner` /
     `ProjectileSpawner` live under `World/Entities` (y-sorted, `spawn_path = ..`)
     as `MultiplayerSpawner` subclasses; clients are refused via an overridable
@@ -4301,6 +4459,12 @@ already recorded in a spec or a comment, the location is given.
       BURN bonus, Permafrost's FREEZE bonus) can be added beside it without a
       second signature change. Only the UNRAVEL term is landed here; the doc
       header names the two G23 owns.
+      *(G23 landed without a second signature change, as predicted: the argument
+      is unchanged and still optional, and the multiply now goes through
+      `incoming_damage_multiplier(attacker_host)`, which composes all three terms
+      and reads the two relics off the attacker's `EffectHost` — looked up
+      inside `Damage` from the attacker's parent, so the signature did not have
+      to grow a host parameter.)*
     - **The heal path the TOXIN penalty is asserted through is the
       `StatusHealthStub` double — blocked on Dev A (W2-A1, combat-core
       `Health`).** The real `Health.heal()` is host-authoritative and emits
@@ -4318,6 +4482,82 @@ already recorded in a spec or a comment, the location is given.
       that carries no `Health` is a **silent skip** rather than a warning: a chain
       lands on whatever the group put in range, and a missing `Health` is W2-A1's
       gap to report, not this component's.
+53. **The three `status_mult` terms are summed on the target, the freeze double is
+    spent even through Permafrost, and the 0.0 downgrade is a transformation
+    (2026-10-20, W4-B4 / G23).** SPEC-stats-status fixes the formula's terms and
+    the closing sentence about bosses, but not where the sum is computed, who
+    spends the one-shot double, or what "rather than doing nothing" means
+    numerically; those are choices, so they are recorded here. `StatusEffects`
+    gains `KINDLING_ID`, `KINDLING_BURN_BONUS`, `PERMAFROST_ID`,
+    `FREEZE_DAMAGE_BONUS`, `DEFAULT_STATUS_RESISTANCE`, `NO_STATUS_RESISTANCE`,
+    `HEAVY_CHILL_STACKS`, the `@export var status_resistance`, `degrades_freeze()`,
+    `resisted_duration()`, `incoming_damage_multiplier()`, `_freeze_damage_bonus()`,
+    `_attacker_holds()`, `_heavy_chill()`, and `Damage` gains `EFFECT_HOST_NODE`
+    and `_attacker_host()` — all new surface on the two modules' own scripts, and
+    one new `@export` on a component **that no scene has saved an instance of
+    yet** (the player scene's `StatusEffects` node is still bare, W2-A1), so no
+    `.tscn`, no `Events` signal, no autoload, no `scripts/data/` Resource, no
+    input map, no save schema and no CI moved.
+    - **The sum lives on the target's component, and `Damage.compute` hands it
+      the attacker's `EffectHost`.** Kindling and Permafrost need the attacker's
+      relics; UNRAVEL needs the target's statuses. The target's component is the
+      only place with both in scope, so `incoming_damage_multiplier(attacker_host)`
+      is the formula's whole term and `Damage.compute` calls it once. The
+      alternative — three multiplies at the call site — would have needed the
+      caller to know two relic ids and would have made a dropped term invisible;
+      this way the golden table's composed row and the component's unit case
+      assert the same number.
+    - **The attacker's relic is read as `parent/EffectHost`, deliberately the
+      same node name `StatusEffects` already uses for an entity's own host.** No
+      relic id is known to `Damage`, no fifth parameter was added to `compute()`,
+      and an attacker that is a bare `StatBlock` (a hazard, a status tick, a
+      fixture) simply has no relics. The option of passing `EffectHost` in as a
+      sixth argument was rejected: it would push the attacker's component layout
+      onto every caller, and the lookup is one `get_node_or_null` on a node path
+      the project already fixes.
+    - **Reading the multiplier spends the freeze double, and Permafrost still
+      spends it.** `incoming_damage_multiplier()` is the formula's read, so it is
+      what consumes the one-shot — the spec's "once" — and it consumes it even
+      when the reader holds Permafrost. Not spending it would let a Permafrost
+      holder leave a charge armed for the next attacker, who has neither relic and
+      would collect a free +1.0; Permafrost's own +1.0 needs no charge to be
+      armed. Consequence worth knowing: the method is a **state-changing read**,
+      documented as such, and it must be called exactly once per connecting hit —
+      a "preview" call would spend a real double.
+    - **`degrades_freeze()` is `<= NO_STATUS_RESISTANCE`, and the downgrade is a
+      `_heavy_chill()`, not a refusal.** `apply_status(FREEZE)` on such an entity
+      returns true and emits CHILL at the Chill cap — the −60 % slow the word
+      "heavy" names — because a refusal would have made the bus event and the HUD
+      icon disagree with what the entity received, and would have turned the
+      spec's "rather than doing nothing" into exactly nothing. `allows(FREEZE)`
+      stays true: it answers the player gate, and a resistance is not a
+      permission. The comparison is `<=` so a malformed negative multiplier cannot
+      smuggle a real freeze through.
+    - **The Chill cap's conversion is skipped for a fully resistant entity.**
+      `_freeze_from_chill()` is the one other route to a freeze, so leaving it
+      ungated would have let five Chill stacks walk the downgrade back to the
+      freeze it just refused. Such an entity sits at the Chill cap, slowed for as
+      long as the Chill lasts, and `can_act()` stays true.
+    - **The degraded heavy Chill takes the Chill table's own duration, while every
+      other row takes the multiplied one.** This is the one place the multiplier
+      is deliberately not applied, and the reason is the spec's clause: at 0.0
+      `resisted_duration()` is 0 for every row, so a downgraded Chill that also
+      used it would last no time at all — the doing-nothing the clause exists to
+      avoid. A CHILL *application* on the same entity is multiplied like any other
+      row (it lands with a zero clock and the next tick expires it); only the
+      FREEZE row's downgrade is exempt, and the case for it (`test_a_fully_resistant_entity_takes_heavy_chill_instead_of_a_freeze`) asserts the full clock
+      explicitly so the exception is pinned rather than incidental.
+    - **`status_resistance` is the component's field, not `BossData`'s.** SPEC-
+      bosses declares the number on the resource and the resource is bosses' lane
+      (it does not exist yet): this is the field a boss's spawn path sets it on,
+      the same way a class's data is copied into `StatBlock` at spawn. Nothing
+      branches on "is a boss", the default 1.0 means every non-boss entity gets
+      the table's own durations, and no `scripts/data/` definition was touched.
+    - **The numbers are SPEC's, and the week-12 balance pass owns them.**
+      `0.25`, `1.0` and `0.1` are the formula's own text; `HEAVY_CHILL_STACKS` is
+      `CHILL_MAX_STACKS`; the 1.0 default is "resists nothing". Nothing here is a
+      balance claim, and SPEC-stats-status's "Open questions" already assigns the
+      final tuning to that pass.
 
 ---
 
