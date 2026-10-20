@@ -1120,6 +1120,76 @@ and no traffic reads the two fields. The per-peer routing gap above is open.
 LineEdit — the unit tests drive the real `DebugConsole.run()`, real `GameState`
 and real `NetworkManager`.
 
+### W4-B1 — `Events` conformance test, real parameter types, pinned placeholders (`effect-system`)
+
+W4-B1 is "the full signal set from the spec, emitted by owning modules". The bus
+already declared all 37 signals, so this goal made that declaration *checkable*
+and closed the two drifts the check found; the emitter half is G8, the next goal.
+
+**`tests/unit/test_events_bus.gd` (10 tests / 330 asserts) reads the spec rather
+than transcribing it.** It parses the `signal …` lines out of the fenced block
+under `### Events bus` in `specs/SPEC-effect-system.md` at run time and compares
+them against `Events.get_script().get_script_signal_list()` — deliberately the
+script's *own* signals, because `get_signal_list()` also returns Node's inherited
+ones (`ready`, `renamed`, …). It asserts the name set is equal with no extras and
+none missing, and for every signal the exact parameter names, order, count and
+declared type. Type comparison runs through a `TYPE_MAP` from the spec's type
+name to the declaration expected today: a built-in (`int`, `float`, `bool`,
+`StringName`, `Dictionary`, plus the bare `Node`/`Resource` the spec itself
+writes) is compared against `type_string()`, anything else against the argument's
+`class_name`. A spec type with no `TYPE_MAP` entry fails, so a new signal in the
+spec cannot slip past the map unnoticed.
+
+**The two drifts it found, both fixed:**
+
+1. `run_started(run_seed: int)` → `run_started(seed: int)`. The spec writes
+   `seed`. Every emit and connect site is positional, so this is a pure rename;
+   `GameState.run_started(run_seed)` is the autoload's own, separate signal and
+   keeps its name.
+2. Five signals still declared their hit payload as `RefCounted` and `run_ended`
+   still declared `RefCounted`, though both real classes exist in this repo now.
+   `hit_landed`, `crit_landed`, `player_damaged`, `enemy_killed` and
+   `elite_killed` declare `hit: HitData`; `run_ended` declares `result: RunResult`.
+   `HitData` is stats-status's week-2 mirror of combat-core's `HitInfo`, matching
+   field-for-field; the test pins that mapping in one place, so the week the real
+   `HitInfo` lands the swap is a rename in the bus plus one line of `TYPE_MAP`.
+
+**The placeholders are pinned rather than described.** Every parameter still
+waiting on a real class has exactly one line in `events.gd` of the form
+`## TODO(<module>): <SpecType> <- <Placeholder> (blocked on Dev X, <task-id>)`.
+The test asserts one such line per placeholder type, that each names the class
+which replaces it, and that the owner set matches a hard-coded map: `HitInfo` and
+`Projectile` → combat-core, `Enemy` → enemies-ai, `Room` → floor-generation,
+`Pickup` → run-economy, `RelicData`/`SynergyData` → relics, `WeaponData`/
+`MutationData` → weapons, `AbilityData` → abilities, `AscensionData` →
+classes-characters, `StatusEffects.Status`/`Combo` → stats-status. The blocker ids
+are the real ones from `tasks/todo.md` (W2-A1, W2-A6, W2-A9, W3-A2, W5-A1, W5-A4,
+W7-A3), so "we retype this when the owner lands" cannot rot into a comment nobody
+re-checks.
+
+Also asserted: the five signals the spec says clients re-emit (`hit_landed`,
+`enemy_killed`, `relic_picked`, `room_cleared`, `currency_gained`) — with that
+list itself parsed out of the spec's sentence, so it cannot drift either — and
+that the bus carries signals only: no script-declared method and no property
+flags `PROPERTY_USAGE_SCRIPT_VARIABLE`.
+
+**Negative controls (BRIEF C13).** The comparison helpers are pure functions, so
+one test drives the failing path directly against mutated tables: a dropped
+signal, an undeclared extra signal, a renamed parameter, an untouched
+placeholder and an invented type each produce a mismatch, while the real bus
+produces none. The red run is kept at `.goals/evidence/g7/red-test-events-bus.log`
+— 9 tests, 4 passing, 5 failing, every failure for the right reason (the
+`run_started` parameter name, the five `RefCounted` hits, the `RefCounted`
+result, and the previous free-text TODO block that did not parse).
+
+**Verified:** `-gtest=res://tests/unit/test_events_bus.gd` 10/10 green
+(`.goals/evidence/g7/test-events-bus.log`); full suite **36 scripts / 564 tests /
+564 passing / 54 445 asserts** exit 0 (`g7/gut-full.log`, up from the 554
+baseline); `--import` exit 0 with **0** error or warning lines
+(`g7/import.log`); headless `-- --host --debug-tools --smoke=6` exit 0 with 0
+script/parse errors (`g7/launch-host.log`); two-instance smoke **35 `ok`, 0
+FAIL**, exit 0 (`g7/g7-smoke/run-smoke.log`), run before the commit.
+
 ---
 
 ## Decisions made without a human
@@ -1357,7 +1427,11 @@ already recorded in a spec or a comment, the location is given.
       something, and the BRIEF's out-of-scope note explicitly says to use a
       `Resource`-typed placeholder plus an integer `biome_id`.
     - `start_run` / `end_run` also emit the **`Events` bus** signals
-      `run_started(run_seed)` / `run_ended(result)`, because
+      `run_started(seed)` / `run_ended(result)` (the bus argument was renamed
+      from `run_seed` to the spec's `seed` by W4-B1/G7 on 2026-10-20, and
+      `run_ended` now takes the real `RunResult` rather than `RefCounted`;
+      `GameState.run_started(run_seed)` is this autoload's own signal and keeps
+      its name), because
       `SPEC-run-economy.md`'s "Interfaces provided" lists them as Events that
       run-economy emits. `Events.floor_entered` is **not** emitted here — that
       one belongs to floor-generation (SPEC-floor-generation), and dual-emitting
@@ -1993,6 +2067,38 @@ already recorded in a spec or a comment, the location is given.
     unlanded, with each cross-lane seam built against the spec interface plus a
     `tests/helpers/` double and recorded `blocked on Dev A (W4-Ax)`.
 
+### Week 4 decisions
+
+38. **`Events` signal arguments move to the spec's own names and types, and the
+    remaining placeholders get a machine-parsed owner line (2026-10-20).**
+    W4-B1's deliverable is the spec's signal set with the exact parameter names
+    and count, so the two drifts the new conformance test found were fixed rather
+    than tolerated. Sanctioned by `SPEC-effect-system.md` "Events bus" — the
+    signal table is that spec's own text — and recorded here because an `Events`
+    signal signature is on the project's Ask-first list (BRIEF C9: such a change
+    is made only where a task or spec clause requires it, and each gets a numbered
+    decision naming the sanctioning clause).
+
+    - `run_started(run_seed: int)` → `run_started(seed: int)`. The spec writes
+      `seed`. A pure parameter rename: every emit and connect site is positional,
+      and `GameState.run_started(run_seed)` is a *different* signal on the
+      autoload, untouched by this.
+    - `hit_landed`, `crit_landed`, `player_damaged`, `enemy_killed`, `elite_killed`:
+      `hit: RefCounted` → `hit: HitData`; `run_ended(result: RefCounted)` →
+      `result: RunResult`. The spec names `HitInfo` and `RunResult`. `RunResult`
+      exists in this repo, and `HitData` is the week-2 mirror of `HitInfo` whose
+      field names match by design (`scripts/components/hit_data.gd`: "When Dev A's
+      `HitInfo` lands, `compute` can be re-pointed at it — the field names match").
+      Retyping to the mirror is exactly what W4-B1 asks for; the eventual swap to
+      `HitInfo` is one rename in the bus plus one line of `TYPE_MAP` in the test.
+    - The remaining placeholders keep their base class and gained a strict,
+      test-parsed `## TODO(<module>): <SpecType> <- <Placeholder> (blocked on
+      Dev X, <task-id>)` line in place of the old free-text TODO block. A comment
+      format change only — no signature moves.
+    - Nothing else on the Ask-first list was touched: no `project.godot`, no Input
+      Map, no autoload public API beyond these signal arguments, no
+      `scripts/data/` Resource, no save schema, no CI, no `addons/`.
+
 ---
 
 ## Running the game
@@ -2057,7 +2163,7 @@ than a one-player host on 7777 that nobody can join.
 
 ```powershell
 godot --headless --path . --import                                                         # must exit 0, no errors
-godot --headless --path . -s addons/gut/gut_cmdln.gd -gdir=res://tests -ginclude_subdirs -gexit   # 554 tests, exit 0
+godot --headless --path . -s addons/gut/gut_cmdln.gd -gdir=res://tests -ginclude_subdirs -gexit   # 564 tests, exit 0 (36 scripts; 554 was the week-3 close-out figure)
 ```
 
 ---
