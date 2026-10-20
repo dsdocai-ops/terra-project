@@ -1477,9 +1477,11 @@ is that the attach/detach cycle is complete when they do. (G11 then added
 
 #### G11 — `listen`, the player filter, and `once_per_room` (2026-10-20)
 
-The two helpers the whole relic batch is written against: `listen` is how every
-one of the 20 Week 4 relics subscribes to the bus, and `once_per_room` is the
-base of every "once per room" relic (Second Wind, Cracked Shell, Panic Button).
+The two helpers the whole relic batch will be written against: `listen` will be
+how every one of the 20 Week 4 relics subscribes to the bus, and `once_per_room`
+will be the base of every "once per room" relic (Second Wind, Cracked Shell,
+Panic Button). None of the 20 exist yet — W4-B6 builds them, and `data/relics/`
+holds only `.gdkeep` at this commit.
 
 **`listen(sig, callable)`** (`scripts/effects/effect.gd`) now filters where the
 signal gives it something to filter on. Where `sig` declares a `Player`
@@ -1908,8 +1910,9 @@ Stamping the source id here was considered and rejected: it would make
 self-triggering chain shape stops being expressible at all), which trades a
 backstop for a single mechanism. An effect that wants rule 2 to protect it
 appends `source_id()` to the tags of every hit it deals; `listen()`'s doc comment
-states this, and W4-B6's relic batch does it (`ember_boots` and friends). The two
-rules therefore compose instead of overlapping: rule 2 catches the tagged
+states this, and W4-B6's relic batch will do it (`ember_boots` and friends) once
+W4-B6 lands — no relic content exists yet, `data/relics/` holds only `.gdkeep`.
+The two rules therefore compose instead of overlapping: rule 2 catches the tagged
 self-reference, rule 1 is the backstop for a chain that carries no id.
 
 **Accept.** `-gtest=res://tests/unit/test_proc_limits.gd` exit 0, **18/18, 111
@@ -3186,8 +3189,9 @@ already recorded in a spec or a comment, the location is given.
 
 40. **`listen` filters by the `Player` argument the signal declares, and
     `once_per_room` resets on any player's room entry (2026-10-20).** W4-B2's
-    `listen`/`once_per_room` are the helpers all 20 Week 4 relics are written
-    against. Sanctioned by `SPEC-effect-system.md` "Effect base class"
+    `listen`/`once_per_room` are the helpers all 20 Week 4 relics will be
+    written against once W4-B6 lands; none of them exists yet at this commit
+    (`data/relics/` holds only `.gdkeep`). Sanctioned by `SPEC-effect-system.md` "Effect base class"
     (`listen … auto-disconnect on detach, filters to this player where the
     signal has one`; `once_per_room(key) # returns true the first time per
     room`) and its unit-test line (`listen` filters by player; `once_per_room`
@@ -3284,8 +3288,9 @@ already recorded in a spec or a comment, the location is given.
 
 42. **`every_seconds` loops on `TimeManager`'s scaled timer, in the player's own
     time group, and `detach()` disarms the pending tick (2026-10-20).** W4-B2's
-    periodic helper is the clock every "every N seconds" relic is written
-    against (Clockwork Heart is the named case). Sanctioned by
+    periodic helper will be the clock every "every N seconds" relic is written
+    against once those relics land (Clockwork Heart is the named case; none of
+    them exists yet at this commit). Sanctioned by
     `SPEC-effect-system.md` "Effect base class" — `func every_seconds(interval:
     float, callable: Callable) -> void # uses TimeManager.timer loop, PLAYER
     group so time stops don't pause it` — read together with
@@ -3542,7 +3547,8 @@ already recorded in a spec or a comment, the location is given.
       rules therefore compose rather than overlap — rule 2 catches the tagged
       self-reference, rule 1 is the backstop for a chain carrying no id — and
       `listen()`'s doc comment plus `deal_damage()`'s state the producer's half
-      of the contract. W4-B6's relics are the first content to exercise it.
+      of the contract. W4-B6's relics will be the first content to exercise it
+      once that batch lands (`data/relics/` holds only `.gdkeep` today).
     - **The check keys on `source_id()`, never on the class name.** Two effects
       built from one script (a Mimic Crown copy, two relics sharing an effect
       script) must be suppressed independently, each by its own id; the suite's
