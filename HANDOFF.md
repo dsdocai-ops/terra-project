@@ -1,10 +1,11 @@
-# HANDOFF — Weeks 1 to 4 (W1-B1 .. W1-B10, W2-B1 .. W2-B6, W3-B1 .. W3-B5, W4-B1 .. W4-B13)
+# HANDOFF — Weeks 1 to 5 (W1-B1 .. W1-B10, W2-B1 .. W2-B6, W3-B1 .. W3-B5, W4-B1 .. W4-B13, W5-B1 .. W5-B6)
 
 A plain-language rundown of what the Dev B (Surface + Systems) lane shipped in
-week 1, week 2, week 3 and week 4, how each piece works, every decision that was made
-without a human in the loop, and how to run the build solo and in co-op. Written
-for Dev A and the human who review this handoff; the task list is
-`tasks/todo.md`.
+week 1, week 2, week 3, week 4 and week 5, how each piece works, every decision
+that was made without a human in the loop, and how to run the build solo and in
+co-op. Written for Dev A and the human who review this handoff; the task list is
+`tasks/todo.md`. Week 5 is in progress: only the goals written up below have
+landed, and each one says what is still open.
 
 **Verified baselines:**
 
@@ -4337,6 +4338,69 @@ Judgment calls are decisions 93–99.
 
 ---
 
+### G2 — `PlayerProfile` and its round-trip test (W5-B1, PLAN G2) (`save-system`)
+
+The object everything else in week 5 writes into. `scripts/autoload/player_profile.gd`
+holds `class_name PlayerProfile extends RefCounted` with **all 30 fields** of
+SPEC-save-system's "What persists" table — the table's names are also the
+`FIELDS` constant, in the table's own order — plus `defaults()`, `to_dict()`,
+`static from_dict(d)`, `merge_run_gains(gains)` and the three accessors the later
+week-5 goals need (`ore_count()`, `building_level()`, `touch_timestamps()`). No
+autoload was added and `project.godot` is untouched (decision 102).
+
+The one rule that shapes the file is the JSON boundary. Godot's parser returns
+**every number as a float** (measured, not assumed), so an `int` field read back
+without coercion silently becomes a float and the save drifts on every restart.
+So `to_dict()` emits only plain `Array`s, `String` keys and `String` values, and
+`from_dict()` coerces every value back into its typed field through one helper per
+shape — ints, bools, `StringName`s, typed `Array[String]`s, int-valued maps, and
+the nested `classes`, `codex`, `potions`, `stats` and `settings` shapes. A
+wrong-typed value falls back to the field's default; an unknown key is dropped.
+
+`merge_run_gains()` is the co-op banking half of the spec: gold, ore and Echo
+Shards add; `class_id` + `class_xp` adds into `classes[class_id].xp` and leaves
+that entry's mastery and tree alone; the eight `UNION_FIELDS` lists and `codex`
+union and never repeat; `stats` counters add, but `deepest_floor` — like
+`map_room_deepest_rope` and each `daily_dive_best` day — is a **best** and takes
+the maximum. A field the gains dict did not name is untouched; an unknown gains
+key is ignored.
+
+**Accept:** new `tests/unit/test_save_round_trip.gd` **25 cases / 218 asserts**,
+exit 0, written and run **red first** (`Could not find type "PlayerProfile"`,
+`Nothing was run`, `red.log`). The field list is **parsed out of the spec's own
+table** rather than retyped, so a field the spec names and the class lacks — or
+the reverse — fails; the round trip runs a real `JSON.stringify` /
+`JSON.parse_string` pair. Full suite **61 scripts / 1 136 tests / 1 136 passing /
+61 914 asserts**, exit 0, 75.509 s, against the step-0 baseline of 60 / 1 111 /
+1 111 / 61 696 — exactly this goal's +1 script, +25 cases, +218 asserts.
+`--import` exit 0 with **0** `ERROR` lines; `grep -rn "Engine.time_scale"
+scripts/ scenes/` and `grep -rn "\.base\[" scripts/` both empty. One forced
+negative control (`_to_int_map()`'s float branch dropped — the rule this goal
+exists for) fails **exactly** the two cases that state it, 23/25, 196/209
+asserts, exit 1, every `merge_run_gains` case still green; reverted from a
+snapshot, `diff -q` clean, anchor back to 1, re-run at the identical tally. No
+two-instance smoke: one `class_name` script and one test file, no RPC, no
+replication, no `.tscn`, no autoload, no `scripts/data/` Resource. Detail in
+`.goals/evidence/r1792536096839/g2/README.md`.
+
+**Blocked on Dev A (W5-A4).** `merge_run_gains()` adds Class XP to
+`classes[class_id].xp` and leaves `mastery` alone, because the thresholds that
+turn XP into a mastery level are `classes-characters`' own table
+(`[0, 100, 250, …]`, SPEC-classes-characters "Mastery"); deriving mastery here
+would be a second copy of another lane's numbers. The content ids in the
+defaults are the ones SPEC-classes-characters and SPEC-weapons state, and `ore`
+and `town` start empty with an "absent means zero" rule (decision 103), so a new
+ore or building needs no change here.
+
+**Not claimed.** `SaveManager` is still its week-1 stub — `profile` is typed
+`RefCounted`, `save()`/`load()` are `pass` — so nothing writes this profile to
+disk yet, `created_at` stays empty until `SaveManager` calls
+`touch_timestamps()`, and the debounce, atomicity, migrations, corrupt recovery
+and the relaunch integration case are the next four goals (G3–G5). W5-B1 stays
+`[ ]` for that reason. Judgment calls are decisions 102–104.
+
+---
+
 ## Decisions made without a human
 
 
@@ -6835,6 +6899,15 @@ already recorded in a spec or a comment, the location is given.
     when `PlayerProfile` lands, `_ensure_profile()` returns it instead and the
     holder stops being used. The alternative — waiting for week 5 — would leave
     the codex half of G10 unbuilt against a spec that already names the field.
+    **2026-10-20 (G2): the type has landed** at
+    `scripts/autoload/player_profile.gd` (decision 102), so the precondition this
+    paragraph waits on is met — but the swap itself is deliberately **not** made
+    here. `_ensure_profile()` returns `SaveManager.profile` when it is non-null,
+    so the holder stops being used the moment G3's `SaveManager` creates a
+    `PlayerProfile` in that slot; doing it in G2 would mean editing a consumer
+    that goal does not name and changing the codex dictionary's shape
+    (`{"relics": []}` → the four categories) underneath the relic codex suite
+    for no gain. G3 owns it, and it is one line.
     (d) **`EffectHost` is resolved by `EffectHost.NODE_NAME`**, the same path
     `EffectHostPlayer` installs and `Effect` uses, so Dev A's W2-A1 swap-in is
     one node in `player.tscn` and nothing here moves; until then a pick is
@@ -7106,6 +7179,46 @@ already recorded in a spec or a comment, the location is given.
     is a comment-only edit, and `tests/unit/test_active_relic.gd` (plus the full
     suite) was re-run green after it. Recorded because two later goals would
     otherwise have had to edit this goal's prose to pass their own gate.
+102. **`PlayerProfile` is a `class_name` script beside the autoload, not the
+    autoload itself (2026-10-20).** G2. SPEC-save-system's "Interfaces provided"
+    line names `PlayerProfile` as the type of the `loaded(profile: PlayerProfile)`
+    signal, and BRIEF A4 places it at `scripts/autoload/player_profile.gd` — but
+    nothing in the spec makes it an autoload, and adding one would change
+    `project.godot` and the autoload set, which C6/C29 require asking about. So
+    it ships as `class_name PlayerProfile extends RefCounted` in the autoload
+    *folder*, reached by name the way `RelicRoller` and `LootTable` are. The
+    week-5 goals that own the singleton (`SaveManager`, G3) can then type their
+    field `PlayerProfile` without a cycle and without an autoload edit. `RefCounted`
+    and not `Resource` because it is JSON, not a `.tres`: SPEC-project's boundary
+    rule keeps `Resource` for content data and this file's only serialization is
+    `to_dict()`/`from_dict()` through `JSON`. A test case pins the base type.
+103. **What "empty" and "starting" mean in `defaults()` (2026-10-20).** G2. The
+    spec's table names the fields but not their initial values, so this goal chose
+    three, each recorded here rather than left to a later reader:
+    - `ore` and `town` start **empty** and an absent key reads as **zero**
+      (`ore_count()`, `building_level()`), so a new ore or building is content
+      data and never a profile migration. The alternative — seeding every known
+      ore — would put `run-economy`'s ids inside `save-system` and make a spec
+      table the second source of truth for content.
+    - The starting unlocks are the ids SPEC-classes-characters and SPEC-weapons
+      state: `warrior`/`ranger`/`mage`, `wren`, `pickaxe`/`crossbow`/
+      `lantern_staff`. These are the only content ids this file knows.
+    - `heat_levels_unlocked` is an **`int`** (a count), parallel to
+      `deep_mode_unlocked: bool`, so it reads as `defaults() → 0` and a run adds
+      one per level. The modifier *ids* behind those levels belong to
+      SPEC-endgame's `HeatModifier` data, not here.
+104. **`from_dict()` is forward-compatible by dropping, not by guessing
+    (2026-10-20).** G2. A save written by another build will not match this
+    table, and the spec only says "missing keys get defaults". So: a key this
+    build does not know is **dropped**; a known key whose value is the **wrong
+    type** falls back to that field's default instead of reaching a typed field;
+    a nested shaped map (`classes`, `codex`, `potions`, `stats`, `settings`) with
+    a missing sub-key gets that sub-key's default; and the three starting classes
+    are **always** overlaid, so a profile that lost one to a bad save gets it
+    back — pinned by
+    `test_a_profile_that_lost_a_starting_class_gets_it_back`. Godot's parser
+    returns every JSON number as a `float`, so every int field is coerced at this
+    boundary; that coercion is the goal's forced negative control.
 
 ---
 
@@ -7266,3 +7379,10 @@ week-4 checkpoints are each **partial** and each tag is withheld (decisions 22,
 The week-4 verdict, the per-task record and the perf-scene gap are written into
 `specs/WEEKLY.md`'s Week 4 entry, `tasks/todo.md`'s Week 4 checkpoint block and
 decision 100; the perf scene itself is still open as W4-B11 / G28.
+
+Week 5 has begun: **G2 (`PlayerProfile`) on 2026-10-20** — import exit 0 with 0
+`ERROR` lines, new `tests/unit/test_save_round_trip.gd` **25/25 / 218 asserts**
+exit 0, full suite **61 scripts / 1 136 tests / 1 136 passing / 61 914 asserts,
+exit 0**, 75.509 s (logs in `.goals/evidence/r1792536096839/g2/`). Week 5 has no
+`specs/WEEKLY.md` entry yet, because the week is in progress and only W5-B1's
+second item has landed.
