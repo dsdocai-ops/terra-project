@@ -3672,6 +3672,87 @@ decision 62 gave G5's six.
 
 ---
 
+### G7 — the rest of the "On Hit" batch and the "On Kill" pair (W4-B6, raw goal G34) (`relics`)
+
+Design doc 9.1 nos. **12 to 16**, shipped 2026-10-20 as the third instalment of
+**W4-B6**: Gravity Stone, Leech Fang, Rune of Ricochet, Volatile Core, Soul Jar.
+Sixteen of the task's twenty relics are now in; On Kill 17 and 18 and On Getting
+Hit 19 and 20 are not.
+
+**What shipped.** `data/relics/<id>.tres` × 5 and `scripts/effects/relics/<id>.gd`
+× 5 — one effect script per relic (decision 59), the same shape G5 and G6 used.
+No new system, no new Resource field, no new signal, no new spawner: two new test
+doubles (`tests/helpers/projectile_seam_stub.gd`, and `arm_lifetime()` on the
+existing `RelicFxRootStub`) are the batch's whole scaffolding, and
+`tests/integration/test_relic_triggers.gd` is still the batch's single suite.
+
+**The first `enemy_killed` relics.** Volatile Core and Soul Jar are the batch's
+first listeners on that signal, and it carries no `Player` argument any more than
+`hit_landed` does — so both read `hit.owner_player` themselves, exactly the device
+G6's decision 64 introduced (decision 69). The negative control is the same one
+the On Hit batch uses: `EventEmitterHelper.emit_enemy_killed()`'s unattributed kill
+moves neither relic, and the holder's own kill moves both.
+
+**Volatile Core is where the G17 self-retrigger rule meets a real relic.** The
+blast kills the enemy beside the victim, that death is announced on the bus, and
+the relic must not explode off its own damage. It does not, for two reasons that
+compose: the blast's `HitData` carries `source_id()` in its tags, so
+`Effect._forward()` drops the event before the handler runs (rule 2), *and* the
+handler's `owner_player` read would also have filtered it. The case asserts the
+pair — it re-emits `enemy_killed` with the blast's own hit and asserts the spawn
+count stays at 1 and the world records exactly one damage call — because either
+half alone would hide a bug in the other.
+
+**Blocked providers stay guarded asks, and the list grew by two.** Gravity Stone
+asks each in-range enemy for `pull_toward(origin, radius)` — the seam
+`StatusEffects.PULL_METHOD` already published for COLLAPSE, not a second name for
+the same gesture — and *blocked on Dev A (W4-A1)* the enemy body's movement is
+what would honour it, so the case asserts the request. Leech Fang asks the
+player's own `Health` node for `heal(amount)` (*blocked on Dev A (W2-A1)*), and
+the case asserts the HP **that landed** rather than the fraction this lane
+computed. Rune of Ricochet asks the projectile on the `projectile_fired` payload
+for `add_bounce(2)` (*blocked on Dev A (W2-A6)*) and publishes `extra_bounces()`
+beside it. Volatile Core and Soul Jar resolve `scenes/vfx/<vfx_id>.tscn` the way
+Ember Boots does (*blocked on art-audio (W4-B12/B13)*) and spawn nothing until the
+library has them — a kill still explodes and a full jar still releases and counts,
+so the missing art does not disarm either relic. `docs`-visible outcome: no relic
+in this batch fakes another lane's work.
+
+**Evidence** (`.goals/evidence/g7/`): `test_relic_triggers.gd` **35/35 / 623
+asserts** exit 0 (`g7-green-relic-triggers.log`; G6: 22/22 / 390);
+`test_relic_data.gd` **10/10 / 153**, reporting **16 relic .tres files** and 16
+checked against the data rules (`g7-relic-data.log`, `-glog=2` so the scan's own
+report is in the log); full suite **52 scripts / 914 tests / 914 passing /
+57 809 asserts** exit 0 (`g7-full-suite.log`; G6: 52/901/57 530); red log first
+(`g7-red-relic-triggers.log` — the parse error for the five classes that did not
+exist yet); `--import` exit 0 with 0 `ERROR` and 0 `SCRIPT ERROR` lines
+(`g7-import.log`); one forced negative control, `SOUL_JAR_KILLS` 20 → 2, failing
+exactly the two cases that state the doc's 20 (`g7-negative-control.log`,
+33/35 pass, 594/596 asserts), reverted byte-exact — `sha256sum -c` OK on both
+halves of `g7-negative-control.sha256` — and re-run green; headless boot
+`-- --host --smoke=6` exit 0 with 0 script errors (`g7-boot-host-smoke.log`).
+
+**Ask-first surfaces: none moved.** No `project.godot`, no Input Map, no autoload,
+no `scripts/data/` Resource definition, no `Events` signal, no `.tscn`, no save
+schema, no CI, no addon. The only tracked file outside this batch's own folders is
+`tests/unit/test_relic_data.gd`, which gains a floor/ceiling assertion on the
+folder scan (decision 75) — not an ask-first file and not a weakening:
+`RelicData.WEEK_4_IDS` is the ceiling, so a relic that lands without its file and
+a stray file that is not a Week-4 relic fail the same check. `tasks/todo.md`'s
+W4-B6 box stays **open** at 16 of 20 — G8 completes that task, and the G5 review
+already flagged a premature tick once.
+
+**Nothing here touches sync, so the two-instance smoke was not run.** The five
+effects are host-only by spec (SPEC-relics: "Rolls, picks, attaches, actives,
+synergy evaluation: host") and every effect reaches clients through a path that
+already replicates — the hurtbox for damage, the entity's own `Health` for a heal,
+the projectile for a bounce, the FX-with-gameplay spawner for a spawned root. This
+commit adds no RPC, no `MultiplayerSynchronizer`, no replication config and no
+`NetworkManager` surface, so there is no sync delta for the two-instance test to
+exercise. Recorded as decision 76.
+
+---
+
 ## Decisions made without a human
 
 These are the judgment calls taken during weeks 1 and 2 that were not dictated
@@ -5904,6 +5985,107 @@ already recorded in a spec or a comment, the location is given.
     was run as the standing launch check, not as a sync check. Stated explicitly
     so the absence of a smoke log in `.goals/evidence/g6/` reads as a decision
     rather than an omission.
+
+69. **The first `enemy_killed` relics read attribution off the payload, the same
+    way the On Hit batch does (2026-10-20).** G7. Volatile Core and Soul Jar hang
+    off `Events.enemy_killed(enemy, hit)`, which declares no `Player` argument —
+    the identical gap decision 64 closed for `hit_landed` — so both handlers test
+    `hit.owner_player == player` themselves (`Effect.listen()`'s player filter has
+    nothing to read) and both therefore need `HitData.owner_player`, already
+    shipped in G6. No signal changed, no field was added, and a kill nothing
+    attributes stays inert rather than being credited to somebody. Volatile Core
+    also appends `source_id()` to its blast's tags, so rule 2 — not attribution
+    alone — stops its own explosion from re-triggering it (see the G7 section).
+
+70. **Volatile Core's four unstated numbers (2026-10-20).** G7. Design doc 9.1
+    no. 15 is "enemies explode on death" and gives no radius, no damage and no
+    element, so this lane chose: `EXPLOSION_RADIUS = 64.0` (SHATTER's own burst
+    size, `StatusEffects.SHATTER_RADIUS`, rather than COLLAPSE's 128 px pull — a
+    death explosion is that kind of burst); `EXPLOSION_DAMAGE = 24.0` (below a
+    typical weapon hit, so a chain of deaths does not out-damage the killing blow
+    — the week-12 balance pass owns the value); and `EXPLOSION_ELEMENT = FIRE`,
+    which is not a choice but a reading: SPEC-relics' Pyromaniac row lists
+    Volatile Core among the fire relics and says "explosions tagged fire", which
+    is why the `.tres` carries `fire` first and its proc id is `relic_proc_fire`.
+    The blast is spawned with **no** `arm_*()` setup callable — an explosion is
+    instantaneous and leaves nothing behind, unlike the trail, the clone and the
+    patch G5's relics arm — and the blast is dealt whether or not the art scene
+    exists, because "enemies explode" is the gameplay and the FX root is cosmetic.
+
+71. **Gravity Stone reuses `StatusEffects.PULL_METHOD` and pulls from 96 px
+    (2026-10-20).** G7. The pull is the enemy body's movement (**blocked on Dev A
+    (W4-A1)**), so the relic asks `pull_toward(origin, radius)` — the seam
+    stats-status already published for COLLAPSE's combo row — rather than
+    inventing a second name for the same gesture; the effect's `PULL_METHOD`
+    constant *is* `StatusEffects.PULL_METHOD`, which the case asserts, so Dev A
+    implements one method for both. The reach is this lane's balance call, 96 px:
+    the doc says "slightly" and gives no number, so 96 is pinned as a constant and
+    asserted, and it is deliberately **less** than `COLLAPSE_RADIUS` (128) because
+    a nudge is not a combo's burst. The origin is the enemy the hit landed on, not
+    the holder ("toward the target"), and the hit's own target is never asked to
+    pull toward itself — COLLAPSE's `_request_pull()` skips its own entity for the
+    same reason.
+
+72. **Soul Jar ships `max_stacks = 2`, and a copy charges the jar faster
+    (2026-10-20).** G7. The design doc gives this relic no stack rule, and PLAN
+    names Soul Jar one of the four stackable relics in the batch, so the cap is
+    this lane's call: 2, and `charge_per_kill()` returns the copy count, so two
+    Jars fill in ten kills instead of twenty. The alternative — `max_stacks = 1`
+    — was rejected because the relic's whole promise is a count and a second copy
+    that changed nothing would be the only relic in the batch with no reason to
+    be picked twice. `charge()` and `armies_released()` are published as reads for
+    the HUD strip (G19) and for the cases; the charge is host state and is not
+    replicated.
+
+73. **Leech Fang heals through the player's own `Health` and does not announce
+    the heal itself (2026-10-20).** G7. The amount is `hit.final_damage` × 2 % —
+    the damage **dealt**, so a crit leeches more and a hit that was computed to
+    nothing leeches nothing — rounded to whole HP, and nothing at all is asked
+    for when that comes to zero (so "the hit dealt nothing" and "the hit dealt
+    something that rounded to no healing" do not read the same). The heal goes to
+    the player's `Health` node by name, guarded by `has_method()` (**blocked on
+    Dev A (W2-A1)**), and the relic does **not** emit `Events.player_healed`: the
+    real component emits it, and the emitters are the owning modules
+    (SPEC-effect-system, "Events bus") — the same rule `Effect.deal_damage()`
+    follows for `hit_landed`. A second emitter here would double every heal on the
+    co-op HUD.
+
+74. **Rune of Ricochet's seam is the projectile node, not the projectile spawner
+    (2026-10-20).** G7. Splitting Shot (G6) *creates* projectiles, so it goes
+    through `Effect.fire_projectile()` → `EffectSpawner.projectiles` and its case
+    reads back the specs it built. Rune of Ricochet *redirects* a projectile
+    somebody else already fired, so the only channel available to it is the node
+    on the `projectile_fired` payload: it calls `add_bounce(2)` on it, guarded by
+    `has_method()` (**blocked on Dev A (W2-A6)**), and publishes
+    `extra_bounces()` so the number is inspectable without a fired shot. A relic
+    could not have re-used Splitting Shot's seam for this: a spawner call would
+    create a *second* projectile rather than changing the one in flight.
+    `tests/helpers/projectile_seam_stub.gd` is the double; the real projectile
+    replaces it name for name.
+
+75. **Rarity for the five, and the folder scan's floor (2026-10-20).** G7.
+    Gravity Stone and Leech Fang ship COMMON (the plain procs), Rune of Ricochet
+    and Volatile Core RARE (the two that compound), Soul Jar EPIC (the
+    build-around), all with `weight = 1.0` — decision 67's rule, applied again.
+    `tests/unit/test_relic_data.gd` gains `WEEK_4_LANDED_MIN = 16` and one
+    `assert_between` in its folder-scan test: the floor is how many of the twenty
+    have landed, the ceiling is `RelicData.WEEK_4_IDS.size()`, so a relic whose
+    file goes missing and a stray `.tres` that is not a Week-4 relic fail the same
+    check. Deliberately a floor and not an equality: G8 raises the constant to 20
+    rather than rewriting the test, and a week-8 relic outside the Week-4 list
+    would still be caught by the ceiling rather than silently accepted.
+
+76. **G7's commit runs no two-instance smoke test, for G6's reason (2026-10-20).**
+    G7. The five effects are host-only by spec (SPEC-relics, "Rolls, picks,
+    attaches, actives, synergy evaluation: host") and each one's output reaches
+    clients through a path that already replicates — the hurtbox for a dealt hit,
+    the entity's own `Health` for a heal, the projectile for a bounce, the
+    FX-with-gameplay spawner for a spawned root. No RPC, no
+    `MultiplayerSynchronizer`, no replication config and no `NetworkManager`
+    surface changed. The headless boot (`-- --host --smoke=6`, exit 0, 0 script
+    errors) was run as the standing launch check, not as a sync check — so the
+    absence of a smoke log in `.goals/evidence/g7/` reads as a decision rather
+    than an omission.
 
 ---
 
