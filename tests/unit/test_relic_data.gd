@@ -18,10 +18,20 @@ extends GutTest
 ## 20 and the Shrine rarity weights against SPEC-relics — so neither can drift
 ## away from its source without this file failing.
 ##
+## The file also carries **the harness-completeness gate** (PLAN G8b, raw goal
+## G35's gate half): the folder must hold exactly the twenty ids and every one of
+## them must have a case of its own in `tests/integration/test_relic_triggers.gd`,
+## so the week's "20 relics" count cannot survive a deleted `.tres` or a deleted
+## case. Both halves fail on their own, and the goal's evidence demonstrates each
+## by removing one file and renaming one case.
+##
 ## Owned by relics. Sync: none (data).
 ##
 
 const RELIC_DIR: String = "res://data/relics"
+## SPEC-relics "Testing" names this file the other half of the pair: one case per
+## relic. The completeness gate reads it rather than restating its contents.
+const HARNESS_PATH: String = "res://tests/integration/test_relic_triggers.gd"
 const SPEC_RELICS_PATH: String = "res://specs/SPEC-relics.md"
 const DESIGN_DOC_PATH: String = "res://SINKHOLE_SPEC.md"
 const EFFECT_SCRIPT_PATH: String = "res://scripts/effects/effect.gd"
@@ -32,12 +42,14 @@ const DESIGN_DOC_HEADING: String = "### 9.1 Passive relics (70 listed)"
 ## Fixtures are written here and removed in `after_each()`; never in `data/`.
 const FIXTURE_DIR: String = "user://_relic_fixtures"
 const WEEK_4_COUNT: int = 20
-## How many of the twenty have a `.tres` on disk right now: the six On Dodge
-## relics (G5), the five On Hit (G6), the three that follow them plus the On Kill
-## pair (G7). It is the scan's floor, raised by the last batch (G8); the ceiling is
-## `WEEK_4_COUNT` itself, so a file that does not belong to the batch fails the
-## same check that a missing one does.
-const WEEK_4_LANDED_MIN: int = 16
+## How many relic `.tres` files `data/relics/` must hold, read off the table G3
+## pinned against design doc 9.1 rather than kept as a second copy of the number
+## (PLAN G8b raises G7's decision-75 floor of 16 to the batch's own size, so a
+## missing file and a stray file now fail the same check). It is spelled as the
+## scan case's own expression and not as a `const`: GDScript refuses a method
+## call in a constant expression, which this goal measured rather than assumed —
+## `Parse Error: Assigned value for constant "WEEK_4_LANDED_MIN" isn't a
+## constant expression` (`.goals/evidence/g8b/…-test-relic-data-first.log`).
 
 var _fixture_paths: Array[String] = []
 
@@ -160,6 +172,40 @@ func _id_from_display_name(display_name: String) -> String:
 	return display_name.strip_edges().to_lower().replace("'", "").replace(" ", "_")
 
 
+## The harness file's test cases as `case name -> case body`. A case runs from
+## its own `func test_...` line to the next `func`, so "this case covers that
+## relic" is read off the case rather than off the file — a batch case that
+## mentions an id in passing cannot stand in for the relic's own case.
+func _harness_cases(path: String) -> Dictionary:
+	var cases: Dictionary = {}
+	var case_name: String = ""
+	var case_body: String = ""
+	for raw: String in _read_lines(path):
+		var line: String = raw
+		if line.begins_with("func "):
+			if case_name != "":
+				cases[case_name] = case_body
+				case_name = ""
+				case_body = ""
+			if line.begins_with("func test_"):
+				case_name = line.substr("func ".length()).split("(")[0].strip_edges()
+				case_body = line
+			continue
+		if case_name != "":
+			case_body += "\n" + line
+	if case_name != "":
+		cases[case_name] = case_body
+	return cases
+
+
+## True when a harness case's name is the relic's own: `test_<id>` or
+## `test_<id>_...`. The trailing separator keeps `test_bloodthirsty` from
+## counting as `bloodthirst`.
+func _is_named_for(case_name: String, relic_id: StringName) -> bool:
+	var exact: String = "test_%s" % relic_id
+	return case_name == exact or case_name.begins_with(exact + "_")
+
+
 # --- the folder scan -------------------------------------------------------
 
 func test_the_relic_folder_exists_and_the_scan_reports_what_it_holds() -> void:
@@ -168,12 +214,11 @@ func test_the_relic_folder_exists_and_the_scan_reports_what_it_holds() -> void:
 	var paths: Array[String] = _collect_tres(RELIC_DIR)
 	for path: String in paths:
 		assert_true(path.ends_with(".tres"), "%s is a relic resource" % path)
-	# The floor is how many of the twenty have landed and the ceiling is the batch
-	# itself, so a relic whose file goes missing and a stray file that is not a
-	# Week-4 relic are both caught here — without freezing the count, which rises
-	# to `WEEK_4_COUNT` as the last batch lands.
-	assert_between(paths.size(), WEEK_4_LANDED_MIN, RelicData.WEEK_4_IDS.size(),
-		"the folder holds every relic that has landed so far")
+	# The floor and the ceiling are now the same number — the batch's own size —
+	# so a relic whose file goes missing and a stray file that is not a Week-4
+	# relic are both caught here, and the gate case below names the id.
+	assert_between(paths.size(), RelicData.WEEK_4_IDS.size(), RelicData.WEEK_4_IDS.size(),
+		"the folder holds every Week 4 relic, and only those")
 	pass_test("%d relic .tres files in %s" % [paths.size(), RELIC_DIR])
 
 
@@ -185,6 +230,106 @@ func test_every_relic_file_satisfies_the_data_rules() -> void:
 		var file_name: String = path.get_file().get_basename()
 		assert_eq(_problems_for(data, file_name), [] as Array[String], "%s satisfies every relic rule" % path)
 	pass_test("%d relics checked against the data rules" % paths.size())
+
+
+# --- the harness-completeness gate ------------------------------------------
+#
+# SPEC-relics "Testing" makes this file and the harness a pair: `data/relics/`
+# holds the content and `test_relic_triggers.gd` holds "one case per relic".
+# Neither half is evidence alone — twenty `.tres` with no case prove nothing
+# runs, and twenty cases with a file missing prove nothing shipped — so the two
+# cases below walk both. Each fails on its own: the first names the missing id,
+# the second names the unharnessed one, and G8b's evidence shows both by
+# removing one `.tres` and renaming one case (PLAN G8b, raw goal G35's gate half).
+
+func test_the_folder_holds_exactly_the_twenty_week_4_relics_by_id() -> void:
+	var found: Array[String] = []
+	for path: String in _collect_tres(RELIC_DIR):
+		var file_name: String = path.get_file().get_basename()
+		var data := load(path) as RelicData
+		assert_not_null(data, "%s loads as a RelicData" % path)
+		if data == null:
+			continue
+		assert_eq(String(data.id), file_name, "%s's id is its file name" % file_name)
+		assert_eq(_problems_for(data, file_name), [] as Array[String],
+			"%s satisfies every relic rule the spec's Testing line lists" % file_name)
+		found.append(file_name)
+
+	var expected: Array[String] = []
+	for relic_id: StringName in RelicData.WEEK_4_IDS:
+		expected.append(String(relic_id))
+	found.sort()
+	expected.sort()
+	assert_eq(found.size(), WEEK_4_COUNT, "the folder holds the batch's twenty, not one fewer")
+	# Sorted whole-list equality rather than a count, and then the two halves of
+	# that list spelled out separately, so the failure names the id that went
+	# missing and the id that does not belong instead of reporting a shift. This
+	# is what makes it a gate rather than a tally.
+	assert_eq(found, expected,
+		"data/relics/ holds design doc 9.1's nos. 1 to 20 by id, nothing missing and nothing extra")
+	var missing: Array[String] = []
+	for relic_id: String in expected:
+		if not found.has(relic_id):
+			missing.append(relic_id)
+	var extra: Array[String] = []
+	for relic_id: String in found:
+		if not expected.has(relic_id):
+			extra.append(relic_id)
+	assert_eq(missing, [] as Array[String], "every design doc 9.1 id has a .tres under data/relics/")
+	assert_eq(extra, [] as Array[String], "no file under data/relics/ falls outside design doc 9.1's twenty")
+
+
+func test_every_week_4_relic_has_its_own_case_in_the_harness() -> void:
+	assert_true(FileAccess.file_exists(HARNESS_PATH), "%s exists" % HARNESS_PATH)
+	var cases: Dictionary = _harness_cases(HARNESS_PATH)
+	assert_gt(cases.size(), WEEK_4_COUNT, "%s parses into its cases" % HARNESS_PATH.get_file())
+
+	for relic_id: StringName in RelicData.WEEK_4_IDS:
+		var covered: String = ""
+		var named: int = 0
+		for case_name: String in cases:
+			if not _is_named_for(case_name, relic_id):
+				continue
+			named += 1
+			# The case names its relic's own id — which is how it loads
+			# `data/relics/<id>.tres` — so a case named for a relic but about
+			# something else does not count as that relic's coverage.
+			if String(cases[case_name]).contains("\"%s\"" % relic_id):
+				covered = case_name
+				break
+		assert_true(named > 0, "%s has a case of its own in %s (none of the %d cases is named `test_%s…`)" % [
+			relic_id, HARNESS_PATH.get_file(), cases.size(), relic_id])
+		assert_ne(covered, "", "%s's own case in %s names it (a case that is not about its relic is not coverage)" % [
+			relic_id, HARNESS_PATH.get_file()])
+
+
+func test_the_gate_credits_only_a_case_that_is_the_relics_own() -> void:
+	# The gate is only as good as what it counts as "a case for this relic", so
+	# the rules it leans on are pinned rather than trusted — the same shape as
+	# `test_the_effect_rule_reads_the_scripts_inheritance_chain`.
+	assert_true(_is_named_for("test_ember_boots_leaves_a_fire_trail_on_a_dodge", &"ember_boots"),
+		"a case named for the relic counts")
+	assert_true(_is_named_for("test_ember_boots", &"ember_boots"),
+		"a case named exactly for the relic counts")
+	assert_false(_is_named_for("test_ember_bootstraps", &"ember_boots"),
+		"a longer name is not the relic's name")
+	assert_false(_is_named_for("test_the_six_fire_for_their_own_players_dodge", &"ember_boots"),
+		"a batch case is not the relic's own case")
+
+	var cases: Dictionary = _harness_cases(HARNESS_PATH)
+	# A case that names a relic without being *about* it: the scene test loads
+	# Ember Boots' own `.tres` to check where its FX comes from, and is nobody's
+	# coverage — which is exactly why coverage is read inside the case and not
+	# across the file (a file-wide search would call this case Ember Boots' and
+	# let the relic's own case be deleted unnoticed).
+	var mentioning_case: String = "test_the_spawning_relics_take_their_scene_from_the_relics_own_vfx_id"
+	assert_true(cases.has(mentioning_case), "%s parses out of the harness file" % mentioning_case)
+	if not cases.has(mentioning_case):
+		return
+	assert_true(String(cases[mentioning_case]).contains("\"ember_boots\""),
+		"that case does name a relic in passing")
+	assert_false(_is_named_for(mentioning_case, &"ember_boots"),
+		"and the gate still refuses it as the relic's own case")
 
 
 # --- the rules, demonstrated on fixtures this test writes itself ------------
