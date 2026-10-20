@@ -5,8 +5,9 @@ extends RefCounted
 ## carries exactly the damage-relevant fields the formula needs
 ## (base_damage, multiplier, bonus_crit_chance, element, is_heavy,
 ## from_behind, tags) plus the two flags Damage.compute consults directly
-## (force_crit for MARK, scales_with_ability_power for the ability-power
-## term). is_crit and final_damage are filled by Damage.compute. When Dev A's
+## (force_crit whether or not the caller forced it, scales_with_ability_power
+## for the ability-power term). is_crit and final_damage are filled by
+## Damage.compute. When Dev A's
 ## HitInfo lands, compute can be re-pointed at it — the field names match.
 ## Sync: none. An ephemeral value object built by the attacker on the host.
 
@@ -36,8 +37,12 @@ var tags: Array[StringName] = []
 ## is still delivered and still damages (W4-B3, goal G16). The per-frame spawn
 ## cap on top of that is goal G18.
 var proc_depth: int = 0
-## True when the target carries MARK (or an effect forces a crit). Week-2
-## seam: StatusEffects has not landed, so the caller sets this flag directly.
+## True when this hit forces a crit without rolling: the hit's own business, for
+## a caller that already decided (a guaranteed-crit ability, a scripted tutorial
+## hit). A MARK on the *target* is no longer a reason to set it — `StatusEffects`
+## landed in G20/G21 and `Damage.compute` reads `mark_forces_crit()` off the
+## target's own component (G23, 2026-10-20), consuming the mark on the one hit it
+## forces. Either route short-circuits before the crit roll, so neither draws.
 var force_crit: bool = false
 ## Abilities set this so their damage scales with ABILITY_POWER. Weapon hits
 ## keep the default (no scaling, multiplier stays 1.0).

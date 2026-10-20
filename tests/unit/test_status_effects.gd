@@ -19,6 +19,14 @@ extends GutTest
 ## its halved healing (driven through the heal path, not read as a number) and
 ## its Plague Doctor's Mask exemption, BLEED's move gate and UNRAVEL's
 ## taken-damage multiplier as `Damage.compute` reads it.
+##
+## The G23 section at the end pins the component's own half of the closing
+## paragraph — "Bosses have `status_resistance` in `BossData` (duration
+## multiplier, Freeze becomes heavy Chill)": the exported field and its 1.0
+## default, the multiplier on every row's applied duration, and the 0.0 branch
+## where a FREEZE lands as heavy Chill instead (with the Chill-to-FREEZE
+## conversion held back so the downgrade cannot be undone) — plus the whole
+## target-side `status_mult` in one place, read by `Damage.compute`.
 
 const STATUS_NODE: NodePath = ^"StatusEffects"
 const STATUS_NAME: StringName = &"StatusEffects"
@@ -43,6 +51,15 @@ const PLAYER_SCENE: String = "res://scenes/player/player.tscn"
 const MARKER_EFFECT_SCRIPT: String = "res://tests/helpers/relic_marker_effect.gd"
 const LIGHTNING_ROD: StringName = &"lightning_rod"
 const PLAGUE_DOCTORS_MASK: StringName = &"plague_doctors_mask"
+## The two attacker-side relics SPEC-stats-status's `status_mult` formula names
+## (G23). Marker effects under the real ids, for the same reason.
+const KINDLING: StringName = &"kindling"
+const PERMAFROST: StringName = &"permafrost"
+
+## A resistance that halves every duration: neither the default 1.0 nor the 0.0
+## that downgrades Freeze, so both the multiplier and the downgrade branches stay
+## distinguishable from "no resistance at all".
+const HALF_RESISTANCE: float = 0.5
 
 ## Where the chain cases put their enemy doubles, relative to the shocked
 ## entity: two inside SHOCK's 96 px radius, one just outside it, and one more
@@ -184,6 +201,16 @@ func _attach_relic(host: EffectHost, id: StringName) -> Effect:
 	relic.display_name = String(id)
 	relic.effect_script = load(MARKER_EFFECT_SCRIPT) as GDScript
 	return host.add(relic)
+
+
+## The attacker side of the formula's two relic terms: a real player carrying
+## every id in `ids` on one `EffectHost`, returned directly because that is what
+## `incoming_damage_multiplier()` reads the attacker-side terms from.
+func _host_with_relics(ids: Array[StringName]) -> EffectHost:
+	var first := _holder_with_relic(ids[0])
+	for i: int in range(1, ids.size()):
+		_attach_relic(first.host, ids[i])
+	return first.host
 
 
 ## The *target* half of the relic lookup: a real player carrying `id`, with this
@@ -822,3 +849,166 @@ func test_damage_compute_reads_the_targets_unravel_multiplier() -> void:
 	assert_eq(Damage.compute(attacker, _block, unravelled, null, _status), 130,
 		"three stacks take 30 % more, folded into status_mult")
 	assert_false(unravelled.is_crit, "and that is the only term the target's statuses contribute so far")
+
+
+# --- G23: the resistance field and the terms `Damage.compute` reads ----------
+#
+# SPEC-stats-status's closing paragraph: "Bosses have `status_resistance` in
+# `BossData` (duration multiplier, Freeze becomes heavy Chill)". The `BossData`
+# resource is bosses' to build; what this component owns is the field a boss
+# hands its number to, so both halves of that sentence — the multiplier and the
+# downgrade — are pinned here. The same section pins the formula's whole
+# target-side term (`incoming_damage_multiplier()`) where the three parts live,
+# so a term that is counted twice or dropped fails here as well as in
+# test_damage.gd's composed golden row.
+
+func test_status_resistance_is_an_exported_float_defaulting_to_full_duration() -> void:
+	assert_almost_eq(StatusEffects.DEFAULT_STATUS_RESISTANCE, 1.0, 0.0001,
+		"the default is a full duration: an entity resists nothing until its data says so")
+	assert_almost_eq(_status.status_resistance, StatusEffects.DEFAULT_STATUS_RESISTANCE, 0.0001,
+		"and a fresh component carries it")
+	_status.status_resistance = HALF_RESISTANCE
+	assert_almost_eq(_status.status_resistance, HALF_RESISTANCE, 0.0001, "it is settable at run time")
+	var named := false
+	for property: Dictionary in _status.get_property_list():
+		if String(property["name"]) != "status_resistance":
+			continue
+		named = true
+		assert_eq(int(property["type"]), TYPE_FLOAT, "the field is a float")
+		assert_ne(int(property["usage"]) & PROPERTY_USAGE_EDITOR, 0,
+			"and exported: a boss resource can set it from data, which is what makes it a boss field")
+		assert_ne(int(property["usage"]) & PROPERTY_USAGE_SCRIPT_VARIABLE, 0, "it is this script's own")
+	assert_true(named, "status_resistance is a property of the component")
+
+
+func test_status_resistance_multiplies_every_applied_duration() -> void:
+	_status.status_resistance = HALF_RESISTANCE
+	var rows: Array[StatusEffects.Status] = [
+		StatusEffects.Status.BURN,
+		StatusEffects.Status.CHILL,
+		StatusEffects.Status.FREEZE,
+		StatusEffects.Status.SHOCK,
+		StatusEffects.Status.TOXIN,
+		StatusEffects.Status.BLEED,
+		StatusEffects.Status.UNRAVEL,
+	]
+	for row: StatusEffects.Status in rows:
+		_status.clear_all()
+		assert_true(_status.apply_status(row, 1), "%s lands on a resistant entity" % _status.status_name(row))
+		assert_almost_eq(_status.remaining(row), _status.duration(row) * HALF_RESISTANCE, 0.001,
+			"%s runs for half its table duration" % _status.status_name(row))
+	_status.clear_all()
+	_status.status_resistance = 2.0
+	_status.apply_status(StatusEffects.Status.BURN, 1)
+	assert_almost_eq(_status.remaining(StatusEffects.Status.BURN),
+		_status.duration(StatusEffects.Status.BURN) * 2.0, 0.001,
+		"above 1.0 it lengthens them: the field is a multiplier, not a cap")
+
+
+func test_the_downgrade_branch_is_resistance_at_or_below_zero() -> void:
+	assert_false(_status.degrades_freeze(), "the default 1.0 is not the downgrade branch")
+	_status.status_resistance = StatusEffects.NO_STATUS_RESISTANCE
+	assert_true(_status.degrades_freeze(), "0.0 is the spec's downgrade branch: 'Freeze becomes heavy Chill'")
+	_status.status_resistance = -1.0
+	assert_true(_status.degrades_freeze(),
+		"and so is anything below 0.0: a malformed resistance cannot smuggle a real freeze through")
+	_status.status_resistance = 0.01
+	assert_false(_status.degrades_freeze(), "while the smallest positive resistance keeps the real freeze")
+	assert_true(_status.allows(StatusEffects.Status.FREEZE),
+		"the downgrade is a transformation, not a refusal: the application is not gated out")
+
+
+func test_a_fully_resistant_entity_takes_heavy_chill_instead_of_a_freeze() -> void:
+	_status.status_resistance = StatusEffects.NO_STATUS_RESISTANCE
+	assert_true(_status.apply_status(StatusEffects.Status.FREEZE, 1),
+		"the application still lands -- 'rather than doing nothing'")
+	assert_false(_status.has(StatusEffects.Status.FREEZE), "it is not a freeze")
+	assert_true(_status.has(StatusEffects.Status.CHILL), "it is heavy Chill instead")
+	assert_eq(_status.stacks(StatusEffects.Status.CHILL), StatusEffects.HEAVY_CHILL_STACKS,
+		"at the heavy stack count, which is the Chill table's cap")
+	assert_almost_eq(float(StatusEffects.HEAVY_CHILL_STACKS) * StatusEffects.CHILL_SLOW_PER_STACK, 0.6, 0.001,
+		"five stacks is the 60 % slow that makes it 'heavy'")
+	assert_almost_eq(_block.get_value(StatBlock.Stat.MOVE_SPEED), BASE_MOVE_SPEED * 0.4, 0.01,
+		"so the entity is slowed, not stopped")
+	assert_true(_status.can_act(), "and it can still act: a downgrade, not the lock a freeze is")
+	assert_almost_eq(_status.remaining(StatusEffects.Status.CHILL),
+		_status.duration(StatusEffects.Status.CHILL), 0.001,
+		"the Chill runs its own full clock, since a 0.0 multiplier on the downgrade would be the doing-nothing the clause exists to avoid")
+
+
+func test_a_fully_resistant_entity_is_never_converted_into_a_freeze_from_chill() -> void:
+	_status.status_resistance = StatusEffects.NO_STATUS_RESISTANCE
+	_status.apply_status(StatusEffects.Status.CHILL, StatusEffects.CHILL_MAX_STACKS)
+	assert_true(_status.has(StatusEffects.Status.CHILL), "five Chill stay Chill on a fully resistant entity")
+	assert_eq(_status.stacks(StatusEffects.Status.CHILL), StatusEffects.CHILL_MAX_STACKS, "at the cap")
+	assert_false(_status.has(StatusEffects.Status.FREEZE),
+		"and never convert: the downgrade must not be undone by the cap's own conversion")
+	assert_true(_status.can_act(), "so the entity is slowed rather than locked")
+	_status.clear_all()
+	_status.status_resistance = HALF_RESISTANCE
+	_status.apply_status(StatusEffects.Status.CHILL, StatusEffects.CHILL_MAX_STACKS)
+	assert_true(_status.has(StatusEffects.Status.FREEZE),
+		"half resistance still converts at the cap -- the skip is about 0.0, not about resistance generally")
+	assert_almost_eq(_status.remaining(StatusEffects.Status.FREEZE),
+		_status.duration(StatusEffects.Status.FREEZE) * HALF_RESISTANCE, 0.001,
+		"and the converted freeze is scaled like any other application")
+
+
+func test_the_other_rows_keep_no_clock_on_a_fully_resistant_entity() -> void:
+	_status.status_resistance = StatusEffects.NO_STATUS_RESISTANCE
+	_status.apply_status(StatusEffects.Status.BURN, 1)
+	assert_almost_eq(_status.remaining(StatusEffects.Status.BURN), StatusEffects.NO_EXPIRY, 0.001,
+		"every other row's duration is multiplied by 0.0, so it has no clock left")
+	await wait_physics_frames(2)
+	assert_false(_status.has(StatusEffects.Status.BURN),
+		"and the next frame expires it: FREEZE's downgrade clause is the exception, not the rule")
+	assert_almost_eq(_status.remaining(StatusEffects.Status.BURN), StatusEffects.NO_EXPIRY, 0.001,
+		"with nothing left to read")
+
+
+func test_the_multiplier_is_a_plain_one_with_neither_statuses_nor_relics() -> void:
+	assert_almost_eq(_status.incoming_damage_multiplier(null), 1.0, 0.001,
+		"no statuses and no attacking host: the formula's literal 1.0")
+	assert_almost_eq(_status.incoming_damage_multiplier(_host_with_relics([KINDLING] as Array[StringName])), 1.0, 0.001,
+		"and Kindling alone changes nothing without a burn to burn brighter")
+
+
+func test_kindling_adds_a_quarter_to_a_burning_target_read_off_the_attacking_host() -> void:
+	var kindling := _host_with_relics([KINDLING] as Array[StringName])
+	_status.apply_status(StatusEffects.Status.BURN, 1)
+	assert_almost_eq(_status.incoming_damage_multiplier(null), 1.0, 0.001,
+		"an attacker with no Kindling gets no quarter for the burn")
+	assert_almost_eq(_status.incoming_damage_multiplier(kindling),
+		1.0 + StatusEffects.KINDLING_BURN_BONUS, 0.001, "with it: 1 + 0.25")
+	assert_almost_eq(_status.damage_taken_multiplier(), 1.0, 0.001,
+		"and UNRAVEL's own read stays independent of it")
+
+
+func test_the_frozen_targets_double_is_spent_by_the_read_that_uses_it() -> void:
+	_status.apply_status(StatusEffects.Status.FREEZE, 1)
+	assert_almost_eq(_status.incoming_damage_multiplier(null), 2.0, 0.001, "the pending double: 1 + 1.0")
+	assert_almost_eq(_status.incoming_damage_multiplier(null), 1.0, 0.001,
+		"spent by that read, so the hit after it is a plain one")
+	assert_true(_status.has(StatusEffects.Status.FREEZE), "the freeze itself is still running")
+
+
+func test_permafrost_makes_the_freeze_bonus_survive_the_spending() -> void:
+	var permafrost := _host_with_relics([PERMAFROST] as Array[StringName])
+	_status.apply_status(StatusEffects.Status.FREEZE, 1)
+	assert_almost_eq(_status.incoming_damage_multiplier(permafrost), 2.0, 0.001, "the first hit")
+	assert_almost_eq(_status.incoming_damage_multiplier(permafrost), 2.0, 0.001,
+		"and every hit after it: the relic's whole point")
+	assert_almost_eq(_status.incoming_damage_multiplier(null), 1.0, 0.001,
+		"while an attacker without it gets nothing -- the one-shot double was spent, not banked")
+
+
+func test_the_three_terms_compose_on_the_target_side() -> void:
+	var both := _host_with_relics([KINDLING, PERMAFROST] as Array[StringName])
+	_status.apply_status(StatusEffects.Status.BURN, 1)
+	_status.apply_status(StatusEffects.Status.FREEZE, 1)
+	_status.apply_status(StatusEffects.Status.UNRAVEL, 5)
+	assert_almost_eq(_status.incoming_damage_multiplier(both), 2.75, 0.001,
+		"1 + 0.25 Kindling + 1.0 Permafrost + 0.5 for five UNRAVEL stacks")
+	var kindling_only := _host_with_relics([KINDLING] as Array[StringName])
+	assert_almost_eq(_status.incoming_damage_multiplier(kindling_only), 1.75, 0.001,
+		"and with Kindling alone the double is gone: 1 + 0.25 + 0.5, each term read exactly once")

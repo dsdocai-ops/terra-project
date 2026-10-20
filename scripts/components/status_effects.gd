@@ -22,6 +22,14 @@ extends Node
 ## entity's kind is never guessed from a script class — `is_player()` reads the
 ## `PLAYER_TAG` group the entity joined (networking's `PlayerSpawner` tags every
 ## player it spawns).
+##
+## Boss resists are data, not a code path: `status_resistance` is the field
+## SPEC-bosses' `BossData` hands its "duration multiplier, Freeze downgraded to
+## Chill" to, and every application goes through `resisted_duration()` or the
+## `degrades_freeze()` branch, so a boss's number changes durations and nothing
+## else. The formula's whole target-side term is likewise one read —
+## `incoming_damage_multiplier()`, which `Damage.compute` calls — so Kindling,
+## Permafrost and UNRAVEL are composed in one place rather than at the call site.
 
 enum Status {
 	BURN,
@@ -153,6 +161,30 @@ const PLAGUE_DOCTORS_MASK_ID: StringName = &"plague_doctors_mask"
 ## folded into the formula's `status_mult` term.
 const UNRAVEL_DAMAGE_TAKEN_PER_STACK: float = 0.10
 
+## Kindling's bonus, from SPEC-stats-status's formula: "+0.25 Kindling on BURN".
+## An *attacker*-side term: it is added when the entity that dealt the hit holds
+## the relic, which is why `Damage.compute` hands this component the attacking
+## entity's `EffectHost` to read it from.
+const KINDLING_ID: StringName = &"kindling"
+const KINDLING_BURN_BONUS: float = 0.25
+## Permafrost's bonus, from the same line: "+1.0 Permafrost on FREEZE, once".
+## The one-shot half of "once" is the pending freeze double; the relic is what
+## makes the bonus land on *every* hit against a frozen target.
+const PERMAFROST_ID: StringName = &"permafrost"
+const FREEZE_DAMAGE_BONUS: float = 1.0
+
+## What `status_resistance` means at its default: a duration multiplier of 1.0 is
+## "no resistance", so every entity that is not a boss runs exactly the table's
+## own durations. SPEC-bosses, `BossData`: "duration multiplier".
+const DEFAULT_STATUS_RESISTANCE: float = 1.0
+## The resistance at or below which FREEZE degrades: SPEC-stats-status, "Freeze
+## becomes heavy Chill". The comparison is `<=` rather than `==` so a malformed
+## negative multiplier cannot smuggle a real freeze past the downgrade.
+const NO_STATUS_RESISTANCE: float = 0.0
+## The stacks a degraded FREEZE lands as Chill with — the Chill table's own cap,
+## i.e. the heaviest Chill it allows.
+const HEAVY_CHILL_STACKS: int = CHILL_MAX_STACKS
+
 ## CHILL's penalty per stack, as a `StatBlock` *percent* modifier on move and
 ## attack speed: SPEC-stats-status, "`-12% move and attack speed per stack`". A
 ## percent modifier rather than a flat one because the spec states the row as a
@@ -241,6 +273,19 @@ var _warned_missing_health: bool = false
 ## `status_mult` term on `Damage.compute` (G23), not a second flag here.
 var _freeze_double_ready: bool = false
 
+## How long a status lasts on this entity, as a multiplier on the table's own
+## duration: SPEC-bosses' `BossData.status_resistance` — "duration multiplier,
+## Freeze downgraded to Chill" — is where a boss's number comes from, and this
+## is the field it is set on. Exported so a boss's spawn path (bosses' lane) sets
+## it from data, and settable at run time so a phase can raise it.
+##
+## 1.0 is the default and means the spec's table rows run unmodified, which is
+## what every non-boss entity wants. At or below `NO_STATUS_RESISTANCE` the
+## durations are multiplied to nothing *and* FREEZE is downgraded — see
+## `degrades_freeze()`: the downgrade exists so that "0.0 resistance" is a boss
+## taking heavy Chill rather than a boss on which Freeze does nothing at all.
+@export var status_resistance: float = DEFAULT_STATUS_RESISTANCE
+
 
 # --- the API SPEC-stats-status's "Interfaces provided" fixes -------------------
 
@@ -276,6 +321,12 @@ func apply_status(status: Status, stacks: int = 1, source: Node = null, trigger_
 		return false
 	if not _resolves_statuses():
 		return false
+	# SPEC-stats-status's closing paragraph: a boss at 0.0 resistance has Freeze
+	# "downgraded to Chill", so the freeze never lands as one. Checked before the
+	# entry is touched: the application is transformed, not refused, and what
+	# lands is announced as the Chill it becomes.
+	if status == Status.FREEZE and degrades_freeze():
+		return _heavy_chill(source)
 	var entry: Dictionary = _entry(status)
 	var total: int = int(entry["stacks"]) + stacks
 	var cap: int = max_stacks(status)
@@ -285,11 +336,14 @@ func apply_status(status: Status, stacks: int = 1, source: Node = null, trigger_
 	# is never held as Chill. Only an entity that may hold FREEZE converts: a
 	# player is one of the three statuses FREEZE is forbidden to, so a player
 	# simply sits at the Chill cap (the spec's own last line, applied here rather
-	# than left for the caller).
-	if status == Status.CHILL and total >= CHILL_MAX_STACKS and allows(Status.FREEZE):
+	# than left for the caller). A fully resistant entity does not convert either
+	# — that conversion is the one way a freeze could still reach it, undoing the
+	# downgrade above — so its Chill simply sits at the cap, slowed the whole way.
+	if status == Status.CHILL and total >= CHILL_MAX_STACKS and allows(Status.FREEZE) \
+			and not degrades_freeze():
 		return _freeze_from_chill(source)
 	entry["stacks"] = total
-	entry["remaining"] = duration(status)
+	entry["remaining"] = resisted_duration(status)
 	entry["source"] = source if is_instance_valid(source) else null
 	if status == Status.FREEZE:
 		_freeze_double_ready = true
@@ -394,11 +448,105 @@ func healing_multiplier() -> float:
 
 
 ## The factor every damaging hit against this entity is multiplied by: UNRAVEL's
-## row, "+10 % all damage taken per stack". 1.0 with no UNRAVEL. `Damage.compute`
-## reads it into the formula's `status_mult` term; Kindling's BURN term and
-## Permafrost's FREEZE term are the attacker-side terms G23 adds beside this one.
+## row, "+10 % all damage taken per stack". 1.0 with no UNRAVEL. Read into the
+## formula's `status_mult` term by `incoming_damage_multiplier()` below, which is
+## what `Damage.compute` actually calls: this is the target-side part of it.
 func damage_taken_multiplier() -> float:
 	return 1.0 + UNRAVEL_DAMAGE_TAKEN_PER_STACK * float(stacks(Status.UNRAVEL))
+
+
+# --- G23: the resistance field and the formula's whole status term ------------
+
+## The whole `status_mult` term of SPEC-stats-status's formula, in one place so
+## its three parts cannot be dropped, reordered or counted twice:
+##
+##   `status_mult = 1.0 (+0.25 Kindling on BURN) (+1.0 Permafrost on FREEZE,
+##                      once) (+UNRAVEL stacks * 0.1)`
+##
+## `attacker_host` is the *attacking* entity's `EffectHost`, which is where the
+## two attacker-side terms are read from — `Damage.compute` looks it up on the
+## attacker's parent and passes it in. Passing none (a hazard, a status tick, a
+## fixture) leaves the relic terms at zero rather than guessing. The entity's own
+## host is consulted as well, through `has_relic()`'s usual rule, so a status an
+## entity applied to itself reads the same relic.
+##
+## **Side effect, by design:** the FREEZE term is the *pending* freeze double, so
+## reading this spends it — the spec's "once", and the reason the second hit on a
+## frozen target is a normal one. Permafrost is what makes the bonus land on
+## every hit instead; it still spends the double, so the one-shot cannot be
+## banked and cashed by a later attacker who has neither relic.
+func incoming_damage_multiplier(attacker_host: EffectHost = null) -> float:
+	var multiplier: float = damage_taken_multiplier()
+	if has(Status.BURN) and _attacker_holds(KINDLING_ID, attacker_host):
+		multiplier += KINDLING_BURN_BONUS
+	multiplier += _freeze_damage_bonus(attacker_host)
+	return multiplier
+
+
+## The formula's FREEZE term, "+1.0 Permafrost on FREEZE, once": +1.0 while the
+## pending double is unspent, and +1.0 on every hit while Permafrost is held.
+## Zero for a target that is not frozen at all — the double belongs to a freeze,
+## it is not a charge the entity banks for later.
+func _freeze_damage_bonus(attacker_host: EffectHost) -> float:
+	if not has(Status.FREEZE):
+		return 0.0
+	var permafrost := _attacker_holds(PERMAFROST_ID, attacker_host)
+	var pending := consume_freeze_double()
+	return FREEZE_DAMAGE_BONUS if permafrost or pending else 0.0
+
+
+## Whether the attacking side holds relic `id`: the host `Damage.compute` read
+## off the attacker, or this entity's own host when the entity applied the status
+## to itself — the same either-side rule `has_relic()` already applies to an
+## applier's relic, in one place so two readers of the same relic cannot drift.
+func _attacker_holds(id: StringName, attacker_host: EffectHost) -> bool:
+	if attacker_host != null and is_instance_valid(attacker_host) and attacker_host.has_effect(id):
+		return true
+	return has_relic(id)
+
+
+## The scaled seconds `status` runs for on this entity: the table's duration
+## multiplied by `status_resistance`. 1.0 reads as the table's own number, and
+## above 1.0 lengthens the status — it is a multiplier, not a cap. 0.0 leaves no
+## clock at all, which the next frame's tick expires; FREEZE is the one row with
+## a clause for that ("Freeze becomes heavy Chill") and is downgraded before it
+## ever reaches this. MARK's `NO_EXPIRY` 0.0 stays 0.0 whatever the resistance,
+## i.e. still no expiry.
+func resisted_duration(status: Status) -> float:
+	return duration(status) * status_resistance
+
+
+## Whether FREEZE is downgraded on this entity: SPEC-stats-status's closing
+## paragraph, "Freeze becomes heavy Chill", at or below `NO_STATUS_RESISTANCE`.
+## Read by `apply_status()` — which sends the application to `_heavy_chill()`
+## instead of holding a freeze — and by the Chill cap's conversion, which is the
+## one other route to a freeze and is therefore held back for the same reason.
+func degrades_freeze() -> bool:
+	return status_resistance <= NO_STATUS_RESISTANCE
+
+
+## Lands a refused-by-resistance FREEZE as heavy Chill: the Chill cap's stacks,
+## the entity's own Chill clock, and the slow that comes with them. Announced as
+## the Chill it is, so a HUD icon and an effect listening on
+## `Events.status_applied` see what the entity actually received.
+##
+## The duration is the Chill table's own, deliberately *not* passed through
+## `resisted_duration()`: the spec's clause is "Freeze becomes heavy Chill rather
+## than *doing nothing*", and multiplying the downgrade by the same 0.0 that
+## triggered it would be exactly the doing-nothing it exists to avoid.
+##
+## Called only from `apply_status()`, for an entity `degrades_freeze()` is true
+## for; never for an entity that may hold FREEZE, which holds the real thing.
+func _heavy_chill(source: Node) -> bool:
+	clear(Status.CHILL)
+	var entry: Dictionary = _entry(Status.CHILL)
+	entry["stacks"] = HEAVY_CHILL_STACKS
+	entry["remaining"] = duration(Status.CHILL)
+	entry["source"] = source if is_instance_valid(source) else null
+	_sync_speed_modifiers(Status.CHILL)
+	status_applied.emit(Status.CHILL, HEAVY_CHILL_STACKS)
+	Events.status_applied.emit(entity(), Status.CHILL, HEAVY_CHILL_STACKS, source)
+	return true
 
 
 ## True while the relic `id` is held by either effect host that governs this
@@ -743,18 +891,19 @@ func _release_modifiers(status: int) -> void:
 
 
 ## CHILL reaching its cap becomes FREEZE instead: the Chill is cleared (with its
-## slow) and the freeze is applied on top, carrying the full duration and arming
-## the one-shot double. Announced like any other application, so a HUD icon and an
-## effect listening on `Events.status_applied` see the freeze rather than a Chill
-## that never existed.
+## slow) and the freeze is applied on top, carrying its (resisted) duration and
+## arming the one-shot double. Announced like any other application, so a HUD icon
+## and an effect listening on `Events.status_applied` see the freeze rather than a
+## Chill that never existed.
 ##
-## Called only from `apply_status()`, after the player gate has already decided
-## this entity may hold FREEZE.
+## Called only from `apply_status()`, after both gates have already decided this
+## entity may hold FREEZE: it is not a player, and its `status_resistance` does
+## not `degrades_freeze()`.
 func _freeze_from_chill(source: Node) -> bool:
 	clear(Status.CHILL)
 	var entry: Dictionary = _entry(Status.FREEZE)
 	entry["stacks"] = FREEZE_MAX_STACKS
-	entry["remaining"] = FREEZE_DURATION
+	entry["remaining"] = resisted_duration(Status.FREEZE)
 	_freeze_double_ready = true
 	_sync_speed_modifiers(Status.FREEZE)
 	status_applied.emit(Status.FREEZE, FREEZE_MAX_STACKS)

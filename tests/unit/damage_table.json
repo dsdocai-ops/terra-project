@@ -1,6 +1,8 @@
 {
-  "_comment": "Golden table for Damage.compute (SPEC-stats-status). Every expected value is hand-computed from the reference formula below so balance changes are explicit diffs (reviewed by both developers during the week-12 balance pass).",
-  "reference_formula": "raw = hit.base_damage * (attacker.ATTACK / 100.0) * hit.ability_power_scale(attacker.ABILITY_POWER); crit = hit.force_crit or (host_rng.randf() < CRIT_CHANCE + hit.bonus_crit_chance); crit_mult = 1.5 + CRIT_DAMAGE if crit else 1.0; status_mult = 1.0 (StatusEffects terms land week 4); defense = max(target.DEFENSE, 0); mitigation = 100.0 / (100.0 + defense); final = round(raw * crit_mult * status_mult * hit.multiplier * mitigation), minimum 1 on a connecting hit",
+  "_comment": "Golden table for Damage.compute (SPEC-stats-status). Every expected value is hand-computed from the reference formula below so balance changes are explicit diffs (reviewed by both developers during the week-12 balance pass). The 12 week-2 rows are unchanged: the 6 rows G23 added carry the formula's status terms and do not touch them.",
+  "reference_formula": "raw = hit.base_damage * (attacker.ATTACK / 100.0) * hit.ability_power_scale(attacker.ABILITY_POWER); crit = forced (hit.force_crit, or the target's MARK, which the hit consumes) or (host_rng.randf() < CRIT_CHANCE + hit.bonus_crit_chance); crit_mult = 1.5 + CRIT_DAMAGE if crit else 1.0; status_mult = 1.0 + (0.25 Kindling on BURN) + (1.0 on FREEZE: the target's next hit once, or every hit while the attacker holds Permafrost) + (UNRAVEL stacks * 0.1); defense = max(target.DEFENSE, 0); mitigation = 100.0 / (100.0 + defense); final = round(raw * crit_mult * status_mult * hit.multiplier * mitigation), minimum 1 on a connecting hit",
+  "status_terms_note": "Two optional fields carry the status terms. 'attacker_relics' attaches a marker effect under each relic id on the attacker's EffectHost (the .tres files are W4-B6 content and do not exist yet), and 'target_statuses' applies each named status to the target's StatusEffects before the hit. A row with neither field is a week-2 row and calls the formula exactly as it did then.",
+  "status_rows": "status_mult is stated per row so each of the three terms is pinned alone as well as composed: kindling_burns_brighter 1.25, unravel_three_stacks 1.3, freeze_doubles_the_next_hit 2.0, permafrost_keeps_the_freeze_doubled 2.0, mark_forces_the_crit (crit, not a status_mult term), all_status_terms_composed 2.75.",
   "ability_power_scale": "HitData.ability_power_scale(ap): 1.0 unless scales_with_ability_power, then max(1.0 + (ap - 100.0) / 100.0, 0.0). Choice recorded in .goals/LOG.md — the exact curve is HitInfo's (Dev A, combat-core) and the week-12 balance pass revises it here.",
   "crit_roll_note": "Golden cases use CRIT_CHANCE exactly 0.0 (never crit) or 1.0 (always crit, randf() in [0,1)), or force_crit (Mark) — so expectations are RNG-independent. In-between chances are covered by a seeded band test in test_damage.gd.",
   "cases": [
@@ -87,6 +89,57 @@
       "target_base": { "MAX_HP": 100.0, "ATTACK": 10.0, "DEFENSE": 100.0, "MOVE_SPEED": 80.0, "ATTACK_SPEED": 1.0, "DODGE_COOLDOWN": 0.8, "CRIT_CHANCE": 0.0, "CRIT_DAMAGE": 0.0, "ABILITY_POWER": 100.0, "COOLDOWN_REDUCTION": 0.0, "LUCK": 0.0 },
       "hit": { "base_damage": 20.0, "multiplier": 1.5, "bonus_crit_chance": 0.0, "element": "NONE", "tags": ["heavy"] },
       "expected": 32
+    },
+    {
+      "name": "kindling_burns_brighter",
+      "attacker_base": { "MAX_HP": 100.0, "ATTACK": 100.0, "DEFENSE": 0.0, "MOVE_SPEED": 120.0, "ATTACK_SPEED": 1.0, "DODGE_COOLDOWN": 0.8, "CRIT_CHANCE": 0.0, "CRIT_DAMAGE": 0.0, "ABILITY_POWER": 100.0, "COOLDOWN_REDUCTION": 0.0, "LUCK": 0.0 },
+      "attacker_relics": ["kindling"],
+      "target_base": { "MAX_HP": 100.0, "ATTACK": 10.0, "DEFENSE": 0.0, "MOVE_SPEED": 80.0, "ATTACK_SPEED": 1.0, "DODGE_COOLDOWN": 0.8, "CRIT_CHANCE": 0.0, "CRIT_DAMAGE": 0.0, "ABILITY_POWER": 100.0, "COOLDOWN_REDUCTION": 0.0, "LUCK": 0.0 },
+      "target_statuses": [ { "status": "BURN", "stacks": 1 } ],
+      "hit": { "base_damage": 20.0, "multiplier": 1.0, "bonus_crit_chance": 0.0, "element": "NONE", "tags": ["melee"] },
+      "expected": 25
+    },
+    {
+      "name": "unravel_three_stacks_take_more",
+      "attacker_base": { "MAX_HP": 100.0, "ATTACK": 100.0, "DEFENSE": 0.0, "MOVE_SPEED": 120.0, "ATTACK_SPEED": 1.0, "DODGE_COOLDOWN": 0.8, "CRIT_CHANCE": 0.0, "CRIT_DAMAGE": 0.0, "ABILITY_POWER": 100.0, "COOLDOWN_REDUCTION": 0.0, "LUCK": 0.0 },
+      "target_base": { "MAX_HP": 100.0, "ATTACK": 10.0, "DEFENSE": 0.0, "MOVE_SPEED": 80.0, "ATTACK_SPEED": 1.0, "DODGE_COOLDOWN": 0.8, "CRIT_CHANCE": 0.0, "CRIT_DAMAGE": 0.0, "ABILITY_POWER": 100.0, "COOLDOWN_REDUCTION": 0.0, "LUCK": 0.0 },
+      "target_statuses": [ { "status": "UNRAVEL", "stacks": 3 } ],
+      "hit": { "base_damage": 20.0, "multiplier": 1.0, "bonus_crit_chance": 0.0, "element": "NONE", "tags": ["melee"] },
+      "expected": 26
+    },
+    {
+      "name": "freeze_doubles_the_next_hit",
+      "attacker_base": { "MAX_HP": 100.0, "ATTACK": 100.0, "DEFENSE": 0.0, "MOVE_SPEED": 120.0, "ATTACK_SPEED": 1.0, "DODGE_COOLDOWN": 0.8, "CRIT_CHANCE": 0.0, "CRIT_DAMAGE": 0.0, "ABILITY_POWER": 100.0, "COOLDOWN_REDUCTION": 0.0, "LUCK": 0.0 },
+      "target_base": { "MAX_HP": 100.0, "ATTACK": 10.0, "DEFENSE": 0.0, "MOVE_SPEED": 80.0, "ATTACK_SPEED": 1.0, "DODGE_COOLDOWN": 0.8, "CRIT_CHANCE": 0.0, "CRIT_DAMAGE": 0.0, "ABILITY_POWER": 100.0, "COOLDOWN_REDUCTION": 0.0, "LUCK": 0.0 },
+      "target_statuses": [ { "status": "FREEZE", "stacks": 1 } ],
+      "hit": { "base_damage": 20.0, "multiplier": 1.0, "bonus_crit_chance": 0.0, "element": "NONE", "tags": ["melee"] },
+      "expected": 40
+    },
+    {
+      "name": "permafrost_keeps_the_freeze_doubled",
+      "attacker_base": { "MAX_HP": 100.0, "ATTACK": 100.0, "DEFENSE": 0.0, "MOVE_SPEED": 120.0, "ATTACK_SPEED": 1.0, "DODGE_COOLDOWN": 0.8, "CRIT_CHANCE": 0.0, "CRIT_DAMAGE": 0.0, "ABILITY_POWER": 100.0, "COOLDOWN_REDUCTION": 0.0, "LUCK": 0.0 },
+      "attacker_relics": ["permafrost"],
+      "target_base": { "MAX_HP": 100.0, "ATTACK": 10.0, "DEFENSE": 0.0, "MOVE_SPEED": 80.0, "ATTACK_SPEED": 1.0, "DODGE_COOLDOWN": 0.8, "CRIT_CHANCE": 0.0, "CRIT_DAMAGE": 0.0, "ABILITY_POWER": 100.0, "COOLDOWN_REDUCTION": 0.0, "LUCK": 0.0 },
+      "target_statuses": [ { "status": "FREEZE", "stacks": 1 } ],
+      "hit": { "base_damage": 20.0, "multiplier": 1.0, "bonus_crit_chance": 0.0, "element": "NONE", "tags": ["melee"] },
+      "expected": 40
+    },
+    {
+      "name": "mark_forces_the_crit",
+      "attacker_base": { "MAX_HP": 100.0, "ATTACK": 100.0, "DEFENSE": 0.0, "MOVE_SPEED": 120.0, "ATTACK_SPEED": 1.0, "DODGE_COOLDOWN": 0.8, "CRIT_CHANCE": 0.0, "CRIT_DAMAGE": 0.0, "ABILITY_POWER": 100.0, "COOLDOWN_REDUCTION": 0.0, "LUCK": 0.0 },
+      "target_base": { "MAX_HP": 100.0, "ATTACK": 10.0, "DEFENSE": 0.0, "MOVE_SPEED": 80.0, "ATTACK_SPEED": 1.0, "DODGE_COOLDOWN": 0.8, "CRIT_CHANCE": 0.0, "CRIT_DAMAGE": 0.0, "ABILITY_POWER": 100.0, "COOLDOWN_REDUCTION": 0.0, "LUCK": 0.0 },
+      "target_statuses": [ { "status": "MARK", "stacks": 1 } ],
+      "hit": { "base_damage": 20.0, "multiplier": 1.0, "bonus_crit_chance": 0.0, "element": "NONE", "tags": ["melee"] },
+      "expected": 30
+    },
+    {
+      "name": "all_status_terms_composed",
+      "attacker_base": { "MAX_HP": 100.0, "ATTACK": 100.0, "DEFENSE": 0.0, "MOVE_SPEED": 120.0, "ATTACK_SPEED": 1.0, "DODGE_COOLDOWN": 0.8, "CRIT_CHANCE": 0.0, "CRIT_DAMAGE": 0.0, "ABILITY_POWER": 100.0, "COOLDOWN_REDUCTION": 0.0, "LUCK": 0.0 },
+      "attacker_relics": ["kindling", "permafrost"],
+      "target_base": { "MAX_HP": 100.0, "ATTACK": 10.0, "DEFENSE": 0.0, "MOVE_SPEED": 80.0, "ATTACK_SPEED": 1.0, "DODGE_COOLDOWN": 0.8, "CRIT_CHANCE": 0.0, "CRIT_DAMAGE": 0.0, "ABILITY_POWER": 100.0, "COOLDOWN_REDUCTION": 0.0, "LUCK": 0.0 },
+      "target_statuses": [ { "status": "BURN", "stacks": 1 }, { "status": "FREEZE", "stacks": 1 }, { "status": "UNRAVEL", "stacks": 5 } ],
+      "hit": { "base_damage": 20.0, "multiplier": 1.0, "bonus_crit_chance": 0.0, "element": "NONE", "tags": ["melee"] },
+      "expected": 55
     }
   ]
 }
