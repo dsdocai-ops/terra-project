@@ -2,7 +2,7 @@ class_name DebugCommands
 extends RefCounted
 ## Registers the debug-tools core command set on a DebugConsole (the
 ## SPEC-debug-tools command table): help, spawn, give, gold, skip, floor, seed,
-## god, kill, heal, timestop, timeslow, fps, dump. Handlers return result text;
+## net_lag, god, kill, heal, timestop, timeslow, fps, dump. Handlers return result text;
 ## targeting commands use the issuing peer id to find the right player.
 ## Owned by debug-tools (W2-B4, floor advance W3-B5a).
 ## Sync: every handler runs on the host (a client's console routes the line
@@ -38,6 +38,7 @@ func _register() -> void:
 	console.register(&"skip", _cmd_skip, "skip — advance one floor (host only; reports why a shut exit blocked it)")
 	console.register(&"floor", _cmd_floor, "floor <n> — jump to floor %d-%d, advancing one floor at a time (host only)" % [RunState.MIN_FLOOR, RunState.MAX_FLOOR])
 	console.register(&"seed", _cmd_seed, "seed <n> — force the next run seed on GameState (0 clears)")
+	console.register(&"net_lag", _cmd_net_lag, "net_lag <ms> [loss%] — record simulated latency on this peer (placeholder; the delay proxy lands in W4-B11)")
 	console.register(&"god", _cmd_god, "god — toggle god mode for the issuing player (consumed once combat-core Health lands)")
 	console.register(&"kill", _cmd_kill, "kill — kill every enemy under World/Entities (host-only)")
 	console.register(&"heal", _cmd_heal, "heal — full-heal the issuing player (deferred until combat-core Health lands)")
@@ -178,6 +179,34 @@ func _cmd_seed(args: PackedStringArray, _peer_id: int) -> String:
 	return "next run seed forced to %d (takes effect on the next run start)" % value
 
 
+## `net_lag <ms> [loss%]` — the SPEC-debug-tools command that simulates latency
+## on this peer. Placeholder (W3-B5b): it validates the arguments and records
+## them on NetworkManager (`net_lag_ms`, `net_lag_loss`) for W4-B11's delay/drop
+## proxy to consume, and says so in its result, so a call is never mistaken for
+## a working simulation. `0` clears it.
+## Sync: a local setting, not game state — the peer that executes the line
+## records it (in co-op a client's line routes to the host through
+## request_debug, so W4-B11 needs a per-peer path before the smoke can lag one
+## side; recorded as a judgment call, not a defect).
+func _cmd_net_lag(args: PackedStringArray, _peer_id: int) -> String:
+	if args.is_empty() or not String(args[0]).is_valid_int():
+		return "net_lag needs whole milliseconds: net_lag <ms> [loss%]"
+	var milliseconds := int(args[0])
+	if milliseconds < 0:
+		return "net_lag needs whole milliseconds: net_lag <ms> [loss%]"
+	var loss_percent: float = 0.0
+	if args.size() >= 2:
+		if not String(args[1]).is_valid_float():
+			return "net_lag loss is a percentage: net_lag <ms> [loss%]"
+		loss_percent = clampf(float(args[1]), 0.0, 100.0)
+	NetworkManager.net_lag_ms = milliseconds
+	NetworkManager.net_lag_loss = loss_percent
+	if milliseconds == 0 and loss_percent == 0.0:
+		return "net_lag off — placeholder, the real delay proxy lands in W4-B11"
+	return "net_lag: %d ms, %.1f%% loss recorded on this peer — placeholder, the real delay proxy lands in W4-B11" % [
+		milliseconds, loss_percent]
+
+
 func _cmd_god(_args: PackedStringArray, peer_id: int) -> String:
 	console.toggle_god(peer_id)
 	return "god mode %s for peer %d (consumed once combat-core Health lands)" % ["ON" if console.is_god(peer_id) else "OFF", peer_id]
@@ -241,6 +270,8 @@ func _cmd_dump(_args: PackedStringArray, peer_id: int) -> String:
 		"is_host": NetworkManager.is_host,
 		"peer_ids": NetworkManager.peer_ids,
 		"forced_seed": GameState.forced_seed,
+		"net_lag_ms": NetworkManager.net_lag_ms,
+		"net_lag_loss": NetworkManager.net_lag_loss,
 		"player_count": NetworkManager.player_count(),
 		"enemies_alive": enemies,
 		"world_loaded": world != null,

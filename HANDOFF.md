@@ -944,6 +944,58 @@ PLAN **G12b**, which this task unblocks.
 
 ---
 
+### W3-B5b — `seed` confirmed end to end, and the `net_lag` placeholder (`debug-tools`)
+
+**What shipped.** Two halves of the last open Week 3 Dev B item.
+(1) `seed <n>` was already writing `GameState.forced_seed`; what was missing was
+the proof that it reaches a **run**, so the command's contract is now asserted
+end to end: `seed 4242` → `GameState.start_run(999, …)` → `run.seed == 4242`
+(the W3-B1 precedence rule `forced_seed` → caller seed → host roll), and
+`seed 0` clears the field so the caller's seed comes through instead.
+(2) `net_lag <ms> [loss%]` is registered with its help line and implemented as
+the placeholder SPEC-debug-tools asks for in Week 3: it validates a whole
+non-negative millisecond value and an optional percentage, records them on
+`NetworkManager` (`net_lag_ms`, `net_lag_loss`), clamps loss to 0–100, clears on
+`net_lag 0`, and says in its result that it is a placeholder whose real delay
+proxy lands in **W4-B11** — so a call can never be mistaken for a working
+simulation. The values also appear in the `dump` payload.
+
+**Files.** `scripts/debug/debug_commands.gd` (net_lag registered, `_cmd_net_lag`
+added, class doc and `dump` payload updated), `scripts/autoload/network_manager.gd`
+(two documented fields with the `TODO(debug-tools, W4-B11)` swap), and
+`tests/unit/test_console_parser.gd` (12 new cases: 2 seed-precedence, 10 net_lag,
+plus the `CORE_COMMANDS` entry and the autoload reset in `after_each`). No other
+file changed, and the commit added no RPC.
+
+**How it was verified.** Tests first, red for the right reason
+(`.goals/evidence/g5/red-console-parser.log`: **11 failing / 43 passing**, every
+net_lag case failing on `unknown command: net_lag` and on
+`Invalid access to property 'net_lag_ms'`), then green. `test_console_parser.gd`
+**54/54 / 179 asserts**; full suite **35 scripts / 554 tests / 554 passing /
+54 115 asserts**, exit 0, up from the 543 baseline of W3-B5a
+(`.goals/evidence/g5/gut-full.log`); `--headless --path . --import` exit 0 with
+0 error lines (`g5/import.log`); headless `-- --host --debug-tools --smoke=6`
+exit 0 with 0 script/parse errors (`g5/launch-host.log`); `GODOT=… bash
+tools/smoke_two.sh` **35 `ok` lines, 0 FAIL**, exit 0, logs in `g5/smoke/`
+(`g5/smoke-run.log`) — run before the commit because it touches
+`network_manager.gd`; `grep -rn "Engine.time_scale" scripts/ scenes/` and the
+global-RNG grep both print nothing.
+
+**Judgment calls.** Recorded as decision 36. The one worth repeating: `net_lag`
+is a **local** setting (`SPEC-debug-tools`: "simulated latency on this peer"),
+but a client's console line routes to the host through `request_debug`, so a
+client cannot yet lag itself — W4-B11 needs a per-peer path before the smoke can
+lag one side. That is a limitation of the placeholder stated here, not a bug
+introduced now.
+
+**Not claimed.** Nothing is delayed or dropped: `net_lag` records intent only,
+and no traffic reads the two fields. The per-peer routing gap above is open.
+`seed` is proven against `GameState`, not against a launched game's console
+LineEdit — the unit tests drive the real `DebugConsole.run()`, real `GameState`
+and real `NetworkManager`.
+
+---
+
 ## Decisions made without a human
 
 These are the judgment calls taken during weeks 1 and 2 that were not dictated
@@ -1696,6 +1748,40 @@ already recorded in a spec or a comment, the location is given.
       `project.godot`, Input Map, autoload public API, `scripts/data/` Resource,
       `Events` signal, save schema, CI or addon was touched — the Input Map is
       untouched because both commands are typed, not bound.
+
+36. **`net_lag`'s placeholder shape, and what `seed` is proven against
+    (W3-B5b/G5).** SPEC-debug-tools lists `net_lag <ms> [loss%]` as the simulated
+    latency command and explicitly defers the implementation ("Decide
+    implementation in week 4; the API is just `net_lag`"), while the Week 3 task
+    list asks only for the placeholder. Four calls:
+    - *The placeholder stores its arguments on `NetworkManager`, not on the
+      console.* A `DebugCommands` instance lives inside the `DebugConsole`, which
+      is lazily created behind `OS.is_debug_build()` and absent in a release
+      export. The setting has to outlive the console for W4-B11's proxy and for
+      the `dump` command to read, so the fields sit with the rest of the network
+      state (`floor_seed`, `last_floor_hash`, `last_revive_refusal`) and their
+      names are the contract W4-B11 fills in.
+    - *Their units are fixed now:* `net_lag_ms` is whole milliseconds (0 = off),
+      `net_lag_loss` is a percentage in 0.0–100.0. Recording "150" and "5" as
+      bare numbers would let W4-B11 read loss as a fraction and silently drop
+      5% of nothing; naming the units in the types and the doc comment costs
+      nothing today.
+    - *The command says out loud that it does nothing yet.* Every result line
+      carries "placeholder, the real delay proxy lands in W4-B11". A debug
+      command that quietly accepts an argument and changes no observable
+      behaviour is the kind of thing that gets trusted and then blamed; the
+      spec's own deferral is written into the output.
+    - *`seed` is asserted against a real run, not only against the field.* The
+      W3-B1 rule (`forced_seed` → caller seed → host roll) is the thing other
+      tests and the smoke rely on, so the case runs `seed 4242` through the
+      console and then starts a run with a **different** caller seed, asserting
+      the run starts on 4242 — and the same for `seed 0`, where the caller's
+      999 must come through. New public API beyond the declared signatures
+      (recorded per the BRIEF's rule): `NetworkManager.net_lag_ms` /
+      `NetworkManager.net_lag_loss` and the private `_cmd_net_lag`. Additions
+      only; nothing renamed or removed. No `project.godot`, Input Map, autoload
+      public API, `scripts/data/` Resource, `Events` signal, save schema, CI or
+      addon was touched.
 
 ---
 

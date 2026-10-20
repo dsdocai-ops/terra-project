@@ -89,6 +89,16 @@ var last_floor_hash: int = 0
 ## was applied (or when no request has arrived). Reset by every attempt, so it
 ## is never stale.
 var last_revive_refusal: StringName = REVIVE_REFUSAL_NONE
+## Simulated latency this peer's outgoing packets should carry, in whole
+## milliseconds; 0 means off. Set by the `net_lag` debug console command.
+## Placeholder (W3-B5b): nothing reads these yet, so no traffic is delayed —
+## W4-B11 owns the delay/drop proxy that consumes them.
+## TODO(debug-tools, W4-B11): apply net_lag_ms / net_lag_loss in the packet
+## proxy; the field names and units are the contract, so no call site changes.
+var net_lag_ms: int = 0
+## Simulated packet loss for this peer, as a percentage in 0.0..100.0. See
+## net_lag_ms for the W4-B11 swap.
+var net_lag_loss: float = 0.0
 
 
 func _ready() -> void:

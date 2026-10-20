@@ -7,7 +7,7 @@ extends GutTest
 
 const CORE_COMMANDS: Array[StringName] = [
 	&"help", &"spawn", &"give", &"gold", &"skip", &"floor", &"seed",
-	&"god", &"kill", &"heal", &"timestop", &"fps", &"dump",
+	&"net_lag", &"god", &"kill", &"heal", &"timestop", &"fps", &"dump",
 ]
 const WORLD_SCENE := "res://scenes/main/world.tscn"
 const DUMP_PATH := "user://debug_dump.json"
@@ -38,6 +38,11 @@ func after_each() -> void:
 	# across GUT files).
 	GameState.run = null
 	GameState.last_advance_refusal = GameState.ADVANCE_REFUSAL_NONE
+	# net_lag records on NetworkManager, an autoload: clear it so a simulated
+	# latency set here cannot bleed into the next test file (LESSONS: autoload
+	# state leaks across GUT files).
+	NetworkManager.net_lag_ms = 0
+	NetworkManager.net_lag_loss = 0.0
 	if FileAccess.file_exists(DUMP_PATH):
 		DirAccess.remove_absolute(ProjectSettings.globalize_path(DUMP_PATH))
 
@@ -141,6 +146,100 @@ func test_seed_zero_clears_forced_seed() -> void:
 func test_seed_rejects_non_numbers() -> void:
 	var result := _console.run("seed abc", 1)
 	assert_true(String(result).contains("seed"), result)
+	assert_eq(GameState.forced_seed, 0, "a refused seed argument forces nothing")
+
+
+# seed <n> against GameState — the next run really starts on the forced seed
+# (the W3-B1 seed-precedence rule: forced_seed, then the caller's seed, then a
+# host roll).
+
+
+func test_a_run_after_seed_starts_on_the_forced_seed() -> void:
+	NetworkManager.start_solo()
+	_console.run("seed 4242", 1)
+	assert_eq(GameState.forced_seed, 4242)
+	# The caller names a different seed: the console's forced_seed has to win.
+	GameState.start_run(999, 1, _party([1]))
+	assert_not_null(GameState.run)
+	assert_eq(GameState.run.seed, 4242, "forced_seed beats the caller's seed")
+
+
+func test_a_run_after_seed_zero_uses_the_callers_seed() -> void:
+	NetworkManager.start_solo()
+	GameState.forced_seed = 31337
+	_console.run("seed 0", 1)
+	assert_eq(GameState.forced_seed, 0, "seed 0 clears the forced seed")
+	GameState.start_run(999, 1, _party([1]))
+	assert_not_null(GameState.run)
+	assert_eq(GameState.run.seed, 999, "with no forced seed the caller's seed is used")
+
+
+# net_lag -- the placeholder (W3-B5b). The real delay proxy lands in W4-B11; until
+# then the command has to be registered, record what it was asked for on
+# NetworkManager, and say plainly that nothing is delayed yet.
+
+func test_net_lag_is_registered() -> void:
+	assert_true(_console.has_command(&"net_lag"))
+	var result := _console.run("help net_lag", 1)
+	assert_true(String(result).contains("net_lag"), result)
+	assert_true(String(result).contains("latency"), result)
+
+
+func test_net_lag_records_latency_and_loss_on_network_manager() -> void:
+	var result := _console.run("net_lag 150 5", 1)
+	assert_eq(NetworkManager.net_lag_ms, 150)
+	assert_eq(NetworkManager.net_lag_loss, 5.0)
+	assert_true(String(result).contains("150"), result)
+	assert_true(String(result).contains("5"), result)
+
+
+func test_net_lag_defaults_loss_to_zero() -> void:
+	_console.run("net_lag 200", 1)
+	assert_eq(NetworkManager.net_lag_ms, 200)
+	assert_eq(NetworkManager.net_lag_loss, 0.0)
+
+
+func test_net_lag_says_where_the_real_proxy_lands() -> void:
+	var result := _console.run("net_lag 100", 1)
+	assert_true(String(result).contains("W4-B11"),
+		"the placeholder names the goal that makes it real: %s" % result)
+	assert_true(String(result).contains("placeholder"), result)
+
+
+func test_net_lag_rejects_a_non_integer_millisecond_value() -> void:
+	var result := _console.run("net_lag soon", 1)
+	assert_true(String(result).contains("net_lag"), result)
+	assert_true(String(result).contains("milliseconds"), "the reason is readable: %s" % result)
+	assert_eq(NetworkManager.net_lag_ms, 0, "a refused argument changes nothing")
+	assert_eq(NetworkManager.net_lag_loss, 0.0)
+
+
+func test_net_lag_rejects_a_negative_millisecond_value() -> void:
+	var result := _console.run("net_lag -40", 1)
+	assert_true(String(result).contains("milliseconds"), result)
+	assert_eq(NetworkManager.net_lag_ms, 0, "a refused argument changes nothing")
+
+
+func test_net_lag_rejects_a_non_numeric_loss() -> void:
+	_console.run("net_lag 120 2", 1)
+	var result := _console.run("net_lag 120 soggy", 1)
+	assert_true(String(result).contains("loss"), "the reason is readable: %s" % result)
+	assert_eq(NetworkManager.net_lag_ms, 120, "the earlier setting is left alone")
+	assert_eq(NetworkManager.net_lag_loss, 2.0, "the earlier loss is left alone")
+
+
+func test_net_lag_clamps_loss_to_a_percentage() -> void:
+	var result := _console.run("net_lag 80 250", 1)
+	assert_eq(NetworkManager.net_lag_loss, 100.0, "loss is a percentage and cannot exceed 100")
+	assert_true(String(result).contains("100"), result)
+
+
+func test_net_lag_zero_clears_the_simulation() -> void:
+	_console.run("net_lag 150 5", 1)
+	var result := _console.run("net_lag 0", 1)
+	assert_eq(NetworkManager.net_lag_ms, 0)
+	assert_eq(NetworkManager.net_lag_loss, 0.0)
+	assert_true(String(result).contains("off"), "clearing is reported: %s" % result)
 
 
 func test_gold_emits_currency_gained_for_the_issuing_peer() -> void:
