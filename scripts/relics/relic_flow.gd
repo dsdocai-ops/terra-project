@@ -36,11 +36,12 @@ extends RefCounted
 ## and touches nothing here. Until then a pick is refused with
 ## `REFUSAL_NO_EFFECT_HOST` rather than silently dropped.
 ##
-## blocked on save-system (week 5): `SaveManager.profile` is a null `RefCounted`
-## stub. The codex write below reads and writes the `codex.relics` field
-## SPEC-save-system already names, creating the holder on first use, and changes
-## no save schema and no serialisation — `SaveManager.save()` is still its week-1
-## stub.
+## save-system (week 5): the codex write below reads and writes the
+## `codex.relics` field SPEC-save-system names, on the `PlayerProfile` that
+## `SaveManager.profile` now holds (`SaveManager` was still a `RefCounted` stub
+## when this flow shipped). It changes no save schema: a run's codex entries
+## reach disk through `SaveManager.save()`, which the run-economy banking path
+## calls.
 
 ## Where a relic's data lives (SPEC-project: `data/<type>/<id>.tres`).
 const DATA_DIR: String = "res://data/relics/"
@@ -78,13 +79,6 @@ static var _pending: Dictionary[int, Dictionary] = {}
 ## Why the most recent request was refused, `REFUSAL_NONE` when one applied.
 ## Reset by every attempt, so it is never stale.
 static var last_refusal: StringName = REFUSAL_NONE
-
-
-## The minimal profile holder the codex writes into until save-system's
-## `PlayerProfile` lands (week 5). `codex.relics` is the field SPEC-save-system
-## names; nothing else is invented and nothing is serialised.
-class CodexProfile extends RefCounted:
-	var codex: Dictionary = {"relics": []}
 
 
 ## Clears the pending offers and the last refusal. For tests and for a session
@@ -283,12 +277,13 @@ static func seen_relics() -> Array[StringName]:
 
 
 ## The profile the codex writes into: `SaveManager.profile` when save-system has
-## created one, otherwise the minimal holder above, installed into the existing
-## slot so the field path is the spec's (`profile.codex.relics`) from day one.
-static func _ensure_profile() -> RefCounted:
-	var profile: RefCounted = SaveManager.profile
+## created one, otherwise a fresh `PlayerProfile.defaults()` installed into that
+## slot, so the field path is the spec's (`profile.codex.relics`) from the first
+## offer and the entry reaches disk with the run's other gains.
+static func _ensure_profile() -> PlayerProfile:
+	var profile: PlayerProfile = SaveManager.profile
 	if profile == null:
-		profile = CodexProfile.new()
+		profile = PlayerProfile.defaults()
 		SaveManager.profile = profile
 	return profile
 

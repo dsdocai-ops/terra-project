@@ -4392,12 +4392,68 @@ defaults are the ones SPEC-classes-characters and SPEC-weapons state, and `ore`
 and `town` start empty with an "absent means zero" rule (decision 103), so a new
 ore or building needs no change here.
 
-**Not claimed.** `SaveManager` is still its week-1 stub — `profile` is typed
-`RefCounted`, `save()`/`load()` are `pass` — so nothing writes this profile to
-disk yet, `created_at` stays empty until `SaveManager` calls
+**Not claimed at G2.** `SaveManager` was still its week-1 stub when this landed —
+`profile` typed `RefCounted`, `save()`/`load()` are `pass` — so nothing wrote
+this profile to disk, `created_at` stayed empty until `SaveManager` called
 `touch_timestamps()`, and the debounce, atomicity, migrations, corrupt recovery
-and the relaunch integration case are the next four goals (G3–G5). W5-B1 stays
-`[ ]` for that reason. Judgment calls are decisions 102–104.
+and the relaunch integration case were the next three goals (G3–G5). W5-B1 stays
+`[ ]` for that reason. Judgment calls are decisions 102–104. **G3 has since
+landed the write half** (below), so `profile` is a `PlayerProfile` and the
+debounced atomic write, the `.bak`, `reset_profile()` and `export_debug()` all
+exist; `load()` and the recovery chain are still open.
+
+---
+
+### G3 — `SaveManager`: the debounced atomic write with `.bak` (W5-B1, PLAN G3) (`save-system`)
+
+`scripts/autoload/save_manager.gd` is the week-1 stub no longer. `profile` is a
+`PlayerProfile` and `loaded(profile)` carries that type — an autoload public-API
+change sanctioned by BRIEF C29 and recorded as decision 105. The one consumer of
+that slot, `scripts/relics/relic_flow.gd`, used to install its own minimal
+`CodexProfile` holder when the slot was empty; a typed property assignment
+refuses that holder at runtime, so the fallback is now
+`PlayerProfile.defaults()` and the holder class is deleted. The codex path
+(`profile.codex.relics`) and its 18 cases are unchanged — the entries now reach
+disk. The save **schema** is untouched: `SAVE_VERSION` stays 1 (BRIEF A5).
+
+`save()` is one **deferred flush per frame**, so 50 calls in a frame are one
+write and the state written is the state at the *end* of that frame (a mutation
+after the first call is not lost). A write still queued when the manager leaves
+the tree is flushed by `_exit_tree()` — SPEC-save-system's caller list includes
+"`ui-hud` on quit". `_write_atomic()` serialises, writes `PATH + ".tmp"`,
+**parses the tmp file**, rolls the previous good save to `user://save.bak`, then
+renames the tmp over `user://save.json`, so at every instant one of the two paths
+holds a complete save. `reset_profile()` is `PlayerProfile.defaults()` with the
+previous `settings` merged over it; `export_debug()` is the live profile's JSON
+and stamps nothing. The failure rules and the mechanism are decision 106.
+
+**Accept:** new `tests/unit/test_save_manager.gd` **23 cases / 57 asserts**, exit
+0, written and run **red first** against the stub (`Parse Error: Function
+"_write_atomic()" not found in base res://scripts/autoload/save_manager.gd`,
+`Identifier "TMP_PATH" not declared in the current scope`, 23/23 failing, 1/25
+asserts, exit 1). The cases run against the **real files** under `user://`
+(snapshotted and restored per case, so the suite never eats a real save) and
+`tests/helpers/counting_save_manager.gd` counts the writes and the promotions at
+the two seams instead of guessing them from a clock: the tmp file is asserted to
+still exist at the moment it is promoted, and a failing or truncated tmp write is
+asserted to leave `PATH` alone. Full suite **62 scripts / 1 159 tests / 1 159
+passing / 61 971 asserts**, exit 0, 76.817 s, against G2's 61 / 1 136 / 1 136 /
+61 914 — exactly this goal's +1 script, +23 cases, +57 asserts. `--import` exit 0
+with **0** `ERROR` lines; both standing greps empty; a headless host boot
+(`-- --host --smoke=6`) exit 0 with 0 `ERROR` lines; the two-instance smoke
+`tools/smoke_two.sh` all checks ok, exit 0 (recorded although this commit touches
+no sync). One forced negative control (the debounce's two guards removed) fails
+**exactly** the four cases that state it — 19/23, 53/57 asserts, exit 1 — reverted
+from a snapshot with `diff -q` clean and both markers back to 1, re-run at the
+identical 23/23 / 57 asserts. `scripts/autoload/save_manager.gd` at HEAD hashes to
+`357f08dcd6ffbfee4cde79e57f0b412b32a9ab9f1692e20a37f886b7c5ac3bc9`, taken after
+the last edit. Detail in `.goals/evidence/r1792538425597-g3/README.md`.
+
+**Not claimed.** `load()` still only guarantees that a profile object exists, so
+a save does not survive a restart yet: the migration table and the
+`tests/fixtures/save_v1.json` fixture are G4, and the `.bak` /
+`save.corrupt.<timestamp>` recovery chain with the headless relaunch case is G5.
+W5-B1 stays `[ ]` for that reason. No Dev A dependency in this goal.
 
 ---
 
@@ -7219,6 +7275,45 @@ already recorded in a spec or a comment, the location is given.
     `test_a_profile_that_lost_a_starting_class_gets_it_back`. Godot's parser
     returns every JSON number as a `float`, so every int field is coerced at this
     boundary; that coercion is the goal's forced negative control.
+105. **`SaveManager.profile` is a `PlayerProfile`, and `loaded(profile)` carries
+    that type (2026-10-20).** G3. Sanctioned by BRIEF C29 verbatim ("Its
+    `profile` type change from `RefCounted` to `PlayerProfile` (and the matching
+    `loaded(profile)` signal) is an autoload public-API change and gets a
+    numbered decision"), and required by SPEC-save-system's own interface block,
+    which declares `var profile: PlayerProfile` and
+    `signal loaded(profile: PlayerProfile)`. This is a signature change to an
+    autoload's public API, so it is recorded here under C10. Two consequences
+    worth naming: (a) `scripts/relics/relic_flow.gd`, the only consumer of that
+    slot, used to install its own minimal `CodexProfile` holder when the slot was
+    empty; a typed property assignment would have refused that holder at runtime,
+    so the fallback is now `PlayerProfile.defaults()` and the holder class is
+    deleted — the codex path is unchanged (`profile.codex.relics`), it just now
+    reaches disk. (b) The save **schema** is untouched: `SAVE_VERSION` stays 1,
+    because every field is already on SPEC-save-system's table (BRIEF A5).
+106. **The write's failure rules, and what "debounced" is made of (2026-10-20).**
+    G3. SPEC-save-system fixes the order ("write to `user://save.json.tmp`, then
+    rename over `user://save.json`; keep `user://save.bak` from the previous
+    successful save") but not the failure cases or the mechanism, so this goal
+    chose, and tests, all four:
+    - **Debounce = one deferred flush per frame**, not a timer and not a
+      "wrote already this frame" flag: the callers fire in bursts and the file
+      should be the profile at the *end* of the frame, so a mutation after the
+      first `save()` in a frame is still written. A pending write is flushed by
+      `_exit_tree()` as well, because SPEC-save-system's own caller list includes
+      "`ui-hud` on quit".
+    - **The tmp file is parsed before it is promoted.** A truncated write can
+      therefore never become `save.json`; `_write_atomic()` returns false and
+      leaves `PATH` exactly as it was.
+    - **`save.bak` only ever takes a file that parses**, so a corrupt
+      `save.json` is never promoted into the fallback `load()` will trust (G5).
+    - **A failed write leaves the profile dirty**, so the next `save()` or the
+      quit retries instead of the change going quiet.
+    The JSON is parsed through a `JSON` instance rather than
+    `JSON.parse_string()`, because the latter pushes an engine error on exactly
+    the input this module exists to survive — measured, not assumed: it produced
+    two `ERROR` lines and two GUT "unexpected errors" in the first green run.
+    `TMP_PATH` and `BACKUP_PATH` are new `const`s naming the two paths the spec
+    itself names.
 
 ---
 
