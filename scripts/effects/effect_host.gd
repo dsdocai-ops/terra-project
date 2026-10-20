@@ -14,10 +14,16 @@ extends Node
 ##
 ## Events reach effects through `Effect.listen()` — each effect subscribes to
 ## the `Events` bus itself, filtered to its own player — so this node is the
-## single place their lifetime and (from W4-B3) the proc rules are enforced,
-## not a second bus. A removed effect is detached before it is freed, which is
-## what stops its listeners and `StatBlock` modifiers while the node is still
-## alive to do it.
+## single place their lifetime and the proc rules are enforced, not a second
+## bus. A removed effect is detached before it is freed, which is what stops its
+## listeners and `StatBlock` modifiers while the node is still alive to do it.
+##
+## All four of SPEC-effect-system's proc-chain rules are enforced here or on
+## `Effect`'s one dispatch wrapper, never in an effect script: the depth cap and
+## the no-self-retrigger check in `Effect._forward()`, the per-frame spawn cap
+## in `spawn_proc()`/`fire_proc_projectile()`, and rule 4's Mimic Crown copy in
+## `add_mimic_copy()` — a second `Effect` under a suffixed id, attached through
+## the same `add()` every other effect uses.
 ##
 ## It is also the one boundary an effect reaches to spawn: `spawn_proc()` and
 ## `fire_proc_projectile()` forward to the `spawner` seam after checking
@@ -46,6 +52,21 @@ const NODE_NAME: StringName = &"EffectHost"
 ## build ... cannot drop the host below 60 FPS or allocate unbounded nodes").
 const MAX_SPAWNS_PER_FRAME: int = 64
 
+## The suffix a Mimic Crown copy's id carries, from SPEC-effect-system, "Proc
+## chain limits", rule 4: "Mimic Crown copies the last picked relic's effect;
+## the copy is a second `Effect` instance with its own id suffix so rule 2 still
+## applies." `ember_boots` copies as `ember_boots__crown`.
+##
+## It is a `const` and not a literal at the call site because the same string is
+## the copy's `EffectHost` key, its node name, its `StatBlock` modifier source,
+## the `proc_source_id` of everything it spawns and the id its no-self-retrigger
+## check matches — five places that must agree, and one constant is how they do.
+##
+## Double underscore so the suffix cannot collide with a content id: ids are
+## snake_case file names, and no content file can produce two adjacent
+## underscores without the data test noticing.
+const MIMIC_CROWN_SUFFIX: StringName = &"__crown"
+
 ## The player this host belongs to, resolved from the parent on `_ready()`.
 ## Attaching is refused while it is null, because an effect with no player has
 ## no target for its modifiers and no owner for its filtered events.
@@ -67,8 +88,16 @@ var spawner: EffectSpawner = null
 @export var spawner_path: NodePath = ^""
 
 ## {source id: Effect}, in attach order. One effect per id: a duplicate pick
-## raises `stacks` on the existing effect, it does not add a second one.
+## raises `stacks` on the existing effect, it does not add a second one. A Mimic
+## Crown copy is keyed under its *suffixed* id, so it is a second entry and not a
+## second effect on one key (rule 4).
 var _effects: Dictionary[StringName, Effect] = {}
+
+## {copy id: the id of the effect that owns it}, for every Mimic Crown copy this
+## host holds. The copy belongs to the crown that made it, so removing the crown
+## takes its copy and leaves the relic the copy was made from attached (rule 4's
+## whole consequence: "removing Mimic Crown detaches only the copy").
+var _mimic_owners: Dictionary[StringName, StringName] = {}
 
 ## How many effect-spawned nodes this player's effects have been allowed in the
 ## current physics frame — a public counter, the "debug stat" rule 3 says the
@@ -115,21 +144,28 @@ func _ready() -> void:
 ## Instantiates `source.effect_script` under this host and attaches it to the
 ## host's player at `stacks`. Returns the live effect, or null when the request
 ## is refused with a warning: no source, no id, no `effect_script`, a script
-## that is not an `Effect`, the same id already attached, or no player.
+## that is not an `Effect`, the resulting id already attached, or no player.
+##
+## `id_suffix` is how a duplicate is attached: the effect is keyed, named and
+## self-identified as `source.id` plus the suffix (see `add_mimic_copy()`, which
+## is the only caller that passes one, and `MIMIC_CROWN_SUFFIX` for the form).
+## Everything else about the attach is identical, which is the point of rule 4
+## being one attach path rather than a second one beside it.
 ##
 ## The effect is parented before `attach()`, so a subclass may call `add_child`,
 ## start timers or spawn from `_on_attach()` — and `Effect.detach()` can free
 ## everything it opened. The host's generator is injected first, so every draw
 ## an effect makes comes from the host's one stream.
-func add(source: ContentData, stacks: int = 1) -> Effect:
+func add(source: ContentData, stacks: int = 1, id_suffix: StringName = &"") -> Effect:
 	if source == null:
 		push_warning("[effect-host] add() needs a source")
 		return null
 	if source.id == &"":
 		push_warning("[effect-host] source %s has no id, effect refused" % source.resource_name)
 		return null
-	if _effects.has(source.id):
-		push_warning("[effect-host] %s is already attached" % source.id)
+	var id: StringName = suffixed_id(source.id, id_suffix)
+	if _effects.has(id):
+		push_warning("[effect-host] %s is already attached" % id)
 		return null
 	if source.effect_script == null:
 		push_warning("[effect-host] %s has no effect_script, effect refused" % source.id)
@@ -146,20 +182,78 @@ func add(source: ContentData, stacks: int = 1) -> Effect:
 			(made as Node).free()
 		return null
 	var effect: Effect = made as Effect
-	effect.name = source.id
+	effect.name = id
 	add_child(effect)
 	effect.host = self
+	effect.id_suffix = id_suffix
 	effect.rng = _resolve_rng()
 	effect.attach(player, source, stacks)
-	_effects[source.id] = effect
+	_effects[id] = effect
 	return effect
 
 
-## Detaches the effect for `source` and frees it, returning true when there was
-## one to remove. Detach runs first, while the node is alive, so its modifiers,
-## timers and bus connections are released; `queue_free()` then takes the node
-## out of the tree at the end of the frame (safe from inside a signal handler).
-## An unknown source is a warned no-op.
+## Attaches a **copy** of an already-attached effect, keyed under its suffixed
+## id — SPEC-effect-system, "Proc chain limits", rule 4: "Mimic Crown copies the
+## last picked relic's effect; the copy is a second `Effect` instance with its
+## own id suffix so rule 2 still applies."
+##
+## `copied` is the source whose effect is duplicated (Mimic Crown's last pick)
+## and `owner_id` is the copying effect's id — the crown's. The copy itself goes
+## through `add()` with `MIMIC_CROWN_SUFFIX`, so it is one more attachment and
+## not a second attach mechanism, and it is registered as owned by `owner_id` so
+## that removing the crown removes the copy and leaves the relic alone.
+##
+## Refused with a warning when there is no source, no owning id, nothing
+## attached to copy, or a copy already present: a copy of an effect the player
+## does not hold is not rule 4's case, and an id-less owner would leave the copy
+## uncleanable.
+func add_mimic_copy(copied: ContentData, owner_id: StringName, stacks: int = 1) -> Effect:
+	if copied == null:
+		push_warning("[effect-host] add_mimic_copy() needs the copied source")
+		return null
+	if owner_id == &"":
+		push_warning("[effect-host] add_mimic_copy() needs the copying effect's id, or the copy cannot be cleaned up")
+		return null
+	if not _effects.has(copied.id):
+		push_warning("[effect-host] %s is not attached, nothing to copy" % copied.id)
+		return null
+	var copy: Effect = add(copied, stacks, MIMIC_CROWN_SUFFIX)
+	if copy == null:
+		return null
+	_mimic_owners[copy.source_id()] = owner_id
+	return copy
+
+
+## The id a copy of `id` is keyed under: `id` plus `suffix`, or `id` itself when
+## there is no suffix. Static and public because the form is an interface — the
+## copy is looked up by id by the HUD, the debug overlay and any save — and
+## because `Effect.source_id()` builds its one id through it, so the key, the
+## node name and the self-tag check cannot drift apart.
+static func suffixed_id(id: StringName, suffix: StringName) -> StringName:
+	if suffix == &"":
+		return id
+	return StringName(String(id) + String(suffix))
+
+
+## True while this host holds a copy of `id`'s effect made by `owner_id`. The
+## pair, and not the copy alone, is what is stored: the same relic can be copied
+## by only one crown at a time (the copy id is the relic's plus one suffix), and
+## the owner is what a removal cascades from.
+func has_mimic_copy_of(id: StringName, owner_id: StringName) -> bool:
+	return _mimic_owners.get(suffixed_id(id, MIMIC_CROWN_SUFFIX), &"") == owner_id
+
+
+## Detaches and frees the effect for `source` and any Mimic Crown copy that goes
+## with it, returning true when there was one to remove. Detach runs first,
+## while each node is alive, so its modifiers, timers and bus connections are
+## released; `queue_free()` then takes the node out of the tree at the end of the
+## frame (safe from inside a signal handler). An unknown source is a warned
+## no-op.
+##
+## Two copies go with `source`: the copy it *owns* (removing Mimic Crown removes
+## the effect it was duplicating) and the copy *of it* (a copy of an effect the
+## player no longer holds is stale). Either way the original relic stays
+## attached — that is rule 4's "removing Mimic Crown detaches only the copy".
 func remove(source: ContentData) -> bool:
 	if source == null:
 		push_warning("[effect-host] remove() needs a source")
@@ -172,6 +266,7 @@ func remove(source: ContentData) -> bool:
 	_effects.erase(id)
 	effect.detach()
 	effect.queue_free()
+	_drop_mimic_copies_going_with(id)
 	return true
 
 
@@ -212,6 +307,26 @@ func list_tags() -> Dictionary:
 		for tag: StringName in effect.source.tags:
 			counts[tag] = int(counts.get(tag, 0)) + effect.stacks
 	return counts
+
+
+## Drops every Mimic Crown copy that goes with the effect keyed `id`: the copies
+## it owned (it was the crown that made them) and the copy of it (it was the
+## relic that was copied). Called from `remove()` and nowhere else, so the two
+## directions cannot drift apart from the removal they belong to.
+func _drop_mimic_copies_going_with(id: StringName) -> void:
+	var doomed: Array[StringName] = []
+	var copy_of_id: StringName = suffixed_id(id, MIMIC_CROWN_SUFFIX)
+	for copy_id: StringName in _mimic_owners.keys():
+		if copy_id == copy_of_id or _mimic_owners[copy_id] == id:
+			doomed.append(copy_id)
+	for copy_id: StringName in doomed:
+		_mimic_owners.erase(copy_id)
+		var copy: Effect = _effects.get(copy_id) as Effect
+		if copy == null:
+			continue
+		_effects.erase(copy_id)
+		copy.detach()
+		copy.queue_free()
 
 
 ## True while this peer may spawn an effect's result. The client gate lives

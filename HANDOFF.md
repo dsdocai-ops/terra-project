@@ -1398,8 +1398,10 @@ Modifiers are removed **by handle**, never by `remove_source()`: two effects on
 one player must not be able to take each other's modifiers down, even if they
 were built from the same content id. `modify(stat, flat, percent)` appends
 `stat_block.add_modifier(stat, flat, percent, source_id())` to `_handles`, and
-`source_id()` is `source.id` — the id that W4-B3 will also use as the tag that
-blocks self-retriggering, so the two rules cannot drift apart. Timers are
+`source_id()` is `source.id` — the id that W4-B3 also uses as the tag that
+blocks self-retriggering, so the two rules cannot drift apart. *(As of G10; from
+G19b `source_id()` builds through `EffectHost.suffixed_id()`, which returns
+`source.id` unchanged for every effect that is not a Mimic Crown copy.)* Timers are
 `queue_free()`d rather than freed outright, so a `detach()` from inside a signal
 handler is safe. `_connections` is the `{signal, callable}` pair list
 `PLAN.md` G10 asked for: a connection made through a wrapper cannot be found
@@ -1542,6 +1544,7 @@ even though this commit adds no RPC, as the standing two-process proof. No
 **Blocked / not claimed.** `listen` proves the bus delivers a filtered event to
 a named method; it says nothing about proc depth, self-retriggering or the
 per-frame spawn cap, which are W4-B3 (G16–G18) and land in this same wrapper.
+*(All three landed on 2026-10-20; this section is the G11 record.)*
 Nothing in the game attaches an effect yet (no relic content until W4-B5/B6), so
 the filter is exercised against the test doubles only; and `once_per_room`'s
 "room" is whatever the room-populator emits `room_entered` for — Dev A's
@@ -1593,7 +1596,8 @@ so the chain continues through the hurtbox and the hit is stamped before it gets
 there. `trigger_depth` is the depth of the event this effect is handling; the
 dispatch wrapper that sets it, the depth-3 gate and the self-retrigger check are
 W4-B3 (G16–G17). Until then it stays 0, which is the depth of a hit a weapon
-landed, so an effect's own damage lands one link deep.
+landed, so an effect's own damage lands one link deep. *(The wrapper landed on
+2026-10-20; this paragraph is the G13 record.)*
 
 `HitData` gained `proc_depth: int = 0` (`scripts/components/hit_data.gd`) — the
 field G16's gate reads and the one G12's helper writes. It is additive with a
@@ -1635,7 +1639,8 @@ against a double too: Dev A's `Hurtbox` (W2-A2) is still a bare `Area2D`, so
 what is proven is the stamping and the delivery call, not a real damage number
 reaching `Health` or a real `hit_landed` on the bus. The proc-depth **gate**
 (depth 3), the self-retrigger check and the 64-spawns-per-frame cap are W4-B3
-(G16–G18); `trigger_depth` is the seam they will drive. `chance`'s
+(G16–G18); `trigger_depth` is the seam they will drive. *(All three landed on
+2026-10-20; this paragraph is the G12 record.)* `chance`'s
 Luck-aware sibling `chance_lucky()` is named in the spec's annotation but is
 loot-side (W4-B8, G40) and is not implemented here.
 
@@ -1683,7 +1688,8 @@ the test proves the path end to end with two hosts on two players: a
 `player_dodged` for one player reaches exactly that player's effect, the other
 player's effect sees nothing, and a removed effect stops receiving events. The
 proc-ruled wrapper (depth 3, self-retrigger and the 64-per-frame cap) is W4-B3
-(G16–G18) and lands in this same subscription path.
+(G16–G18) and lands in this same subscription path. *(It landed on 2026-10-20;
+this section is the G14 record.)*
 
 **Player installation.** `player.tscn` is Dev A's scene and is not edited, so
 the host is installed by `tests/helpers/effect_host_player.gd`
@@ -1712,7 +1718,9 @@ exit 0 with 0 error or warning lines (`g14/import.log`); two-instance smoke
 G30's. Nothing calls `add()` in the game yet because no relic content exists
 until W4-B5/B6, so what is proved is that the lifecycle is correct when it
 does. There is no client path: clients hold no `Effect` instances. The proc
-caps, the harness and Mimic Crown's id-suffixed duplicate are W4-B3.
+caps, the harness and Mimic Crown's id-suffixed duplicate are W4-B3. *(As of
+this section; all three landed under W4-B3 on 2026-10-20 — see G16, G18, G19a
+and G19b below.)*
 
 #### G15 — `spawn` and `fire_projectile` through the spawner seam (2026-10-20)
 
@@ -1788,7 +1796,14 @@ Nothing here is replicated yet — the seam's results reach clients when the rea
 spawners do — so the two-instance smoke was run as insurance, not as proof of a
 sync path. The per-frame 64-spawn cap is G18 and lands inside this seam.
 
-### W4-B3 — proc depth gate (`effect-system`) — in progress
+### W4-B3 — proc depth gate (`effect-system`) — complete 2026-10-20
+
+**All four of SPEC-effect-system's "Proc chain limits" rules are in** — depth cap
+(G16), no self-retrigger (G17), the per-frame spawn cap (G18) and the Mimic Crown
+duplication rule (G19b) — plus the trigger-test harness (G19a). The sections
+below are the section-per-goal record in the order they landed; this heading said
+"in progress" from G16 until G19b, and `tasks/todo.md`'s W4-B3 tick went with the
+last of them.
 
 The first of SPEC-effect-system's three hard caps is in: **a proc chain stops at
 depth 3**. The rule is enforced in exactly one place — `Effect._forward()`, the
@@ -1852,8 +1867,9 @@ once and kept: with `MAX_PROC_DEPTH` temporarily 5 the chains ran all five links
 and only the gate assertions failed (`.goals/evidence/g16/negative-control.log`).
 
 **Not claimed (at G16).** No self-retrigger rule (G17), no 64-spawns-per-frame
-cap (G18), and no Mimic Crown duplication (G19) — all three land in this same
-wrapper. The gate is host-only logic like the rest of `Effect`; there is no
+cap (G18), and no Mimic Crown duplication (G19a/G19b) — all three landed in this
+same wrapper later the same day, 2026-10-20 (see below). The gate is host-only
+logic like the rest of `Effect`; there is no
 client half to replicate, so the smoke run is insurance rather than proof of a
 sync path.
 
@@ -1932,10 +1948,11 @@ events the wrapper let through *before* the probe's own tag filter, so a
 suppressed event is proven never to reach a handler rather than inferred from a
 log that the probe's filter could also have left empty.
 
-**Not claimed.** The 64-spawns-per-frame cap (G18), the trigger harness + Mimic
-Crown duplication rule (G19). Still **blocked on Dev A (W2-A2)** for the real
-`Hurtbox` the chain advances through. *(Scope of this section, as of G17; the cap
-landed at G18 — see below.)*
+**Not claimed.** The 64-spawns-per-frame cap (G18), the trigger harness (G19a)
+and the Mimic Crown duplication rule (G19b). Still **blocked on Dev A (W2-A2)**
+for the real `Hurtbox` the chain advances through. *(Scope of this section, as of
+G17; all three landed on 2026-10-20 — the cap at G18, the harness at G19a and the
+duplication rule at G19b, all below.)*
 
 #### G18 — the 64-spawns-per-player-per-frame cap (2026-10-20)
 
@@ -1994,8 +2011,9 @@ W4-A4) still shows up as its own refusal rather than as cap pressure.
 
 **Not claimed (at G18).** The trigger-test harness `tests/helpers/effect_harness.gd`
 and the Mimic Crown duplication rule (G19a/G19b) were not implemented at that
-commit — **the harness landed as G19a on 2026-10-20 (see below); the Mimic Crown
-rule is still G19b's, and `data/relics/` still holds only `.gdkeep`.** The chain
+commit — **both landed the same day, 2026-10-20: the harness as G19a and the
+Mimic Crown rule as G19b (see below), and `data/relics/` still holds only
+`.gdkeep`.** The chain
 still advances through `ProcHurtboxStub`, **blocked on Dev A (W2-A2)** for
 combat-core's real `Hurtbox`, and the FX spawner the cap guards is **blocked on
 Dev A (W4-A4)**.
@@ -2084,14 +2102,131 @@ announces and a content case asserting a relic's damage should not silently run
 the relic again. (6) The harness is typed against `GutTest` and is
 `tests/`-only; nothing under `scripts/` imports it, so the game is untouched.
 
-**Not claimed.** The Mimic Crown duplication rule (G19b) is not implemented, and
-`tasks/todo.md`'s W4-B3 stays **open** for exactly that reason — G19a is half of
-the task, and the tick belongs to G19b. No relic or mutation case exists yet:
+**Not claimed (at G19a).** The Mimic Crown duplication rule was G19b's and is not
+implemented at that commit — it landed the same day, 2026-10-20 (see below), and
+`tasks/todo.md`'s W4-B3 tick went with it. No relic or mutation case exists yet:
 `data/relics/` still holds only `.gdkeep`, and the 20 relics of W4-B6 are the
 harness's first real users (G32 onward). The player composition the harness
 assembles by hand is **blocked on Dev A (W2-A1, player.tscn)**; the harness
 returns the scene's existing host when that composition lands, so the swap-in is
 mechanical.
+
+#### G19b — the Mimic-Crown duplication rule, and W4-B3's tick (2026-10-20)
+
+SPEC-effect-system, "Proc chain limits", rule 4: "Mimic Crown copies the last
+picked relic's effect; the copy is a second `Effect` instance with its own id
+suffix so rule 2 still applies." The last of the four proc rules and the last
+goal of W4-B3: rules 1–3 (depth cap, no self-retrigger, spawn cap) each added a
+gate to one wrapper, and this one adds the *second instance* those gates have to
+tell apart. The design doc's no. 58 says only "**Mimic Crown:** copies the effect
+of your last picked relic"; the spec sentence is what makes it implementable, and
+the clause that decides the whole shape is "**so rule 2 still applies**" — a copy
+that shared its original's id would suppress its own hits and be suppressed by
+its original's, which is not a copy at all.
+
+**What changed.** Two production files, two test files:
+
+- `scripts/effects/effect.gd` — `Effect` gains `id_suffix: StringName` and
+  `source_id()` now returns `EffectHost.suffixed_id(source.id, id_suffix)`
+  instead of `source.id`. The copy holds the **same `ContentData`** as the relic
+  it copies (there is one `.tres` per relic; a second resource would be a second
+  thing to keep in sync), so the suffix is the only thing separating the two
+  instances: the host's key, the node's `name`, and — through rule 2's check,
+  which keys on `source_id()` — the tag that suppresses it.
+- `scripts/effects/effect_host.gd` — `MIMIC_CROWN_SUFFIX` (`&"__crown"`),
+  `static suffixed_id()`, `add_mimic_copy(copied, owner_id, stacks)`,
+  `has_mimic_copy_of(id, owner_id)` and the private `_mimic_owners` dictionary
+  that ties each copy to the effect that made it. `add()` gains an `id_suffix`
+  parameter (defaulting to `&""`, so every existing caller and every existing
+  call site is unchanged) and is the **only** place an effect script is
+  instantiated — the copy is an ordinary `add()`, so it inherits the lifecycle,
+  the RNG injection and the ownership `add()` already establishes rather than
+  going through a parallel attach path that could drift from them. `remove()`
+  now calls `_drop_mimic_copies_going_with()`, so a removed effect takes its own
+  copy with it and a removed crown takes the copy it made.
+- `tests/helpers/mimic_crown_stub.gd` (`class_name MimicCrownStub`) — the
+  week-8 relic's double, `blocked on Dev B (W8-B?, the Mimic Crown relic)`. On
+  attach it finds the most recently attached effect that is not itself and calls
+  `host.add_mimic_copy()`. The real `mimic_crown.gd` differs only in how it
+  resolves "last picked" (the shipped relic will read the replicated
+  `RunPlayerState`; this double reads host attach order), and the duplication
+  rule itself is the host's — rule 4 is one of the rules the spec requires to be
+  "enforced in the helpers, not in each effect".
+- `tests/unit/test_mimic_crown.gd` — 13 cases, built on G19a's `EffectHarness`,
+  `EffectHostPlayer` and `ProcChainProbe`, so the effects under test listen
+  through the real `Effect.listen()` wrapper and are attached through the real
+  `add()`. Run red first (see below).
+
+**Accept.** `-gtest=res://tests/unit/test_mimic_crown.gd` exit 0, **13/13, 107
+asserts** (`g19b/gut-full.log` carries the file's run inside the suite), written
+and run red first: the file was authored before `MIMIC_CROWN_SUFFIX` existed and
+the red is "Cannot find member \"MIMIC_CROWN_SUFFIX\" in base \"EffectHost\""
+(`g19b/red-test-mimic-crown.log`). Full suite **46 scripts / 741 tests / 741
+passing / 55 875 asserts** exit 0 (`g19b/gut-full.log`, up from 45 / 728 / 55 768
+at `013ab25`), the delta being exactly this file's 13 tests and 107 asserts.
+`--headless --path . --import` exit 0 with **zero error and zero warning lines**
+(`g19b/import.log`); the nine effect-family files re-run in one loop with every
+pre-existing count byte-for-byte unchanged — `test_effect_base` 25/103,
+`test_effect_host` 17/85, `test_effect_helpers` 22/57, `test_effect_spawn` 25/93,
+`test_effect_timers` 16/53, `test_effect_template` 7/49, `test_proc_limits`
+26/158, `test_tags` 15/258, all passing (`g19b/effect-files.log`) — so no depth,
+self-tag, spawn-cap or cleanup case moved, and the new file's own 13/107 is
+recorded beside them. No two-instance smoke run: the commit touches no RPC,
+replication or spawner wiring (BRIEF C17) — the duplication path is host-only
+logic, like every other effect path — but the game itself was run headless for
+insurance, `--headless --path . -- --host --smoke=6` exit 0 with zero error
+lines (`g19b/host-smoke.log`), so the build still boots and plays a solo session
+with the new `add()` signature in it.
+
+**Judgment calls (HANDOFF decision 49).** (1) The suffix is `&"__crown"` and is
+named in **two** places on purpose: `EffectHost.MIMIC_CROWN_SUFFIX` (what the
+code uses) and a `SUFFIX` const in the test (what the id must look like), so a
+copy whose id silently changed shape fails the suite instead of making every
+store that looks a copy up by id — the HUD, the debug overlay, a save — miss it.
+(2) The failing path was forced once and kept: with `Effect.source_id()`
+returning the unsuffixed id — the one line rule 4 turns on — **6 of 13 cases
+fail** (7 passing, 94/107 asserts) and the six are exactly the suffix-dependent
+ones (the copy reports the wrong id; the original and its copy stop reacting
+separately; each suppresses the wrong one of the pair; the crown's removal takes
+the *relic* out instead of the copy, so "the copied relic stays attached" fails;
+the copy outlives the relic it copies), while the spec-quote, suffix-form,
+one-attach-path, refusal, empty-crown and tag-count cases do not move
+(`g19b/negative-control.log`), then reverted and `grep`-confirmed — so the
+suffix's effect on identity, suppression and cleanup is proven to be tested
+rather than merely observed. (3) "Removing Mimic Crown detaches only the copy" reads as **removing
+the crown removes the crown and its copy and leaves the copied relic attached**:
+the relic the player still holds must keep working, and a copy whose owner is
+gone is of nothing. The other direction is asserted too — removing the *copied*
+relic takes its copy with it, so a copy can never outlive what it copies. (4)
+The copy's own `Effect` is not a second content entry, so **`list_tags()` counts
+a copied relic's tags twice while the crown is held**; the case that pins this is
+explicitly a policy pin, not a spec claim, with the one-line alternative
+(exclude copies from the count) noted for the week-8 balance pass. (5)
+`has_mimic_copy_of()` and `add_mimic_copy()` are new public surface on a
+module's own class rather than an autoload, so nothing on the Ask-first list
+moved; `add()`'s new parameter is additive with a default, so no existing caller
+changed. (6) SPEC-effect-system's Testing section names `test_tags.gd` for
+"counts, Mimic Crown duplication"; the counts half lives there (G9) and the
+duplication half is its own file, `tests/unit/test_mimic_crown.gd`, which the
+goal's own sub-task allows in as many words ("Extend
+`tests/unit/test_effect_template.gd` (or add `tests/unit/test_mimic_crown.gd`)
+first"). The duplicate-counting case that would have gone in `test_tags.gd` is
+instead the last case of the new file, so the "counts" the spec's bullet pairs
+with duplication are asserted beside it; `test_tags.gd` itself is unchanged, and
+`g19b/effect-files.log` is the proof its 15 cases still pass.
+
+**Not claimed.** The real `mimic_crown.gd` and its `.tres` do not exist — the
+week-8 relic batch (W8-B, G-when-it-arrives) ships them and deletes
+`MimicCrownStub`, re-pointing its case at `data/relics/mimic_crown.tres`;
+`data/relics/` still holds only `.gdkeep`. A copy is not yet reachable in the
+game: nothing calls `add()` in a running build, because no relic content exists
+until W4-B5/B6 (G32 onward). The crown copies **one** relic — the last picked —
+and there is no re-copy when the player picks a later relic, no un-copy when the
+crown is stacked, and no stacking interaction beyond the `stacks` argument
+`add_mimic_copy()` already forwards; those are the week-8 relic's business, not
+the duplication rule's. The copy carries no client half: clients hold no
+`Effect` instances. The player composition the test assembles by hand is still
+**blocked on Dev A (W2-A1, player.tscn)**.
 
 ---
 
@@ -3027,9 +3162,9 @@ already recorded in a spec or a comment, the location is given.
       and the tests keep passing.
     - **Modifiers are removed by handle, never by `remove_source()`.** Two
       effects on one player must not be able to take each other's modifiers down,
-      even if they were built from the same content id (Mimic Crown's copy will
-      carry a suffixed id, but a bug elsewhere should not be able to make one
-      relic's teardown erase another's buff). `modify()` records the handle
+      even if they were built from the same content id (Mimic Crown's copy carries
+      a suffixed id — landed at G19b, 2026-10-20 — but a bug elsewhere should not
+      be able to make one relic's teardown erase another's buff). `modify()` records the handle
       `add_modifier` returns; `detach()` removes exactly those.
     - **`_on_detach()` runs after the base cleanup** (handles, timers,
       connections), so a subclass tears its own state down against a state that
@@ -3225,7 +3360,8 @@ already recorded in a spec or a comment, the location is given.
       duplicate counter, so a second `add()` of the same id would be two
       `Effect` instances with one key — one of them unreachable and both adding
       modifiers. The pick flow raises `stacks` on the existing effect (or, for
-      Mimic Crown, adds an id-suffixed copy, W4-B3) instead. A refusal is a
+      Mimic Crown, adds an id-suffixed copy, W4-B3 — landed at G19b,
+      2026-10-20) instead. A refusal is a
       `push_warning` and a null return, not an error: a caller asking twice is
       a bug to surface, not a reason to take the host down.
     - **A source without a usable `effect_script` is refused, and a non-`Effect`
@@ -3260,7 +3396,8 @@ already recorded in a spec or a comment, the location is given.
       `relic_picked`, no `RunPlayerState` write, no roll (G30 owns the pick
       flow). Nothing in the game calls it yet — there is no relic content until
       W4-B5/B6 — and there is no client path, because clients hold no `Effect`
-      instances. The proc caps and Mimic Crown are W4-B3.
+      instances. *(As of this decision; the proc caps and Mimic Crown all landed
+      under W4-B3 on 2026-10-20 — see G16, G18 and G19b below.)*
 
 44. **The spawn seam is a handed-over reference on `EffectHost`, the client gate
     lives only there, and a spawned node carries the depth its trigger produced
@@ -3369,8 +3506,10 @@ already recorded in a spec or a comment, the location is given.
       now also listens to that signal. No assertion was deleted or weakened; the
       file's other 24 cases are unchanged.
     - **What is *not* claimed.** Rule 2 (no self-retrigger, G17), rule 3 (64
-      spawned nodes per frame, G18) and rule 4 (Mimic Crown's id suffix, G19) are
-      not implemented. The cap on total chain length per event is this goal;
+      spawned nodes per frame, G18) and rule 4 (Mimic Crown's id suffix, G19a/G19b)
+      were not implemented at this decision. *(They landed on 2026-10-20 — rules 2
+      and 3 in this same wrapper, rule 4 in the same wrapper plus the copy it keys
+      apart; see G17, G18 and G19b below.)* The cap on total chain length per event is this goal;
       a per-key cooldown, a spawn budget and a duplication rule are separate
       decisions and land in this same wrapper on their own goals' evidence.
 
@@ -3435,7 +3574,9 @@ already recorded in a spec or a comment, the location is given.
       *before* the probe's own `react_tag` filter, so "the handler never ran" is
       observed rather than inferred.
     - **What is *not* claimed.** Rule 3 (the 64-spawn-per-frame cap, G18) and
-      rule 4 (Mimic Crown's id suffix, G19) are not implemented. The chain still
+      rule 4 (Mimic Crown's id suffix, G19a/G19b) were not implemented at this
+      decision. *(Both landed on 2026-10-20: the cap at G18, the duplication rule
+      at G19b, below.)* The chain still
       advances through `ProcHurtboxStub`, **blocked on Dev A (W2-A2)** for
       combat-core's real `Hurtbox`.
 
@@ -3517,6 +3658,74 @@ already recorded in a spec or a comment, the location is given.
       relic's damage should not have that damage re-fed to the relic that
       produced it. `ProcHurtboxStub` remains the announce-always shape for the
       proc-limit tests.
+
+49. **The Mimic Crown copy is a second `Effect` on the same `ContentData` under
+    a suffixed id, and it goes when its owner goes (2026-10-20, W4-B3 / G19b).**
+    SPEC-effect-system "Proc chain limits", rule 4: "Mimic Crown copies the last
+    picked relic's effect; the copy is a second `Effect` instance with its own id
+    suffix so rule 2 still applies." `EffectHost` gains `MIMIC_CROWN_SUFFIX`
+    (`&"__crown"`), `static suffixed_id()`, `add_mimic_copy()`,
+    `has_mimic_copy_of()` and the private `_mimic_owners` map; `Effect` gains
+    `id_suffix` and `source_id()` now builds through `suffixed_id()`; `add()`'s
+    `id_suffix` parameter is additive with a default of `&""`. This adds public
+    API to a module's own class (not an autoload) and changes no existing
+    signature's meaning, so nothing on the project's Ask-first list moved; it is
+    recorded here because the copy's identity, its ownership and the
+    tag-counting policy are choices, not spec numbers.
+    - **The copy holds the *same* `ContentData`, and the suffix is the whole
+      difference.** A second `.tres` per copied relic would be a second thing to
+      keep in sync with the first, and `ContentData` is the *content* — the
+      relic's name, tags and script — while "which instance of it is this" is
+      the host's business. So `Effect.id_suffix` is what separates the two, and
+      it flows into the host key, the node's `name` and (through rule 2, which
+      keys on `source_id()`) the tag that suppresses it. This is the clause "so
+      rule 2 still applies": a copy that shared its original's id would be
+      suppressed by its original's hits *and* suppress its own, which is not a
+      copy.
+    - **The duplication path is `EffectHost.add()` with the constant named, not
+      a second attach mechanism.** The copy is an ordinary `add()` call, so it
+      inherits the attach lifecycle, the host's RNG injection and the
+      parenting/naming that `add()` establishes. The suite asserts this
+      structurally as well as behaviourally: `effect_script.new()` occurs exactly
+      once in `effect_host.gd`, so a future second instantiation path fails the
+      test rather than silently bypassing the lifecycle.
+    - **`remove()` cascades in both directions, and that is the reading of
+      "removing Mimic Crown detaches only the copy".** Removing the crown
+      removes the crown *and* the copy it made, leaving the copied relic
+      attached and still reacting — the relic the player still holds must keep
+      working, and a copy whose owner is gone is a copy of nothing. The other
+      direction is asserted too: removing the *copied* relic takes its copy with
+      it, so a copy can never outlive what it copies. `_mimic_owners` is the
+      ownership that makes both possible; without it a copy would be an orphan
+      keyed under an id no one can look up. Its read side is public
+      (`has_mimic_copy_of(id, owner_id)`, and `has_mimic_copy_of()` answers
+      false for a wrong owner and for an id that was never copied), and the
+      suite asserts the record is **erased** when the copy goes, so the map
+      cannot accumulate an entry per crown ever attached in a run. (An
+      alternative reading — the crown
+      leaves its copy behind as a permanent, ownerless effect — was rejected: it
+      gives a player a way to pay the crown's cost once and keep its benefit
+      after dropping it.)
+    - **A copy is a second attached `Effect`, so `list_tags()` counts the copied
+      relic's tags twice while the crown is held.** `list_tags()` answers "what
+      does this build carry", and a copied effect is carried. This is pinned by
+      an explicit policy case rather than left implied; excluding copies from
+      the count is a one-line change in the getter if the week-8 balance pass
+      prefers the other reading, and the case that would fail is named in its own
+      comment.
+    - **The suffix is a `StringName` constant asserted in two places.** The host
+      names it for the code to use; the test names its exact form too, so a copy
+      whose id changed shape fails the suite instead of making every store that
+      looks a copy up by id — the HUD, the debug overlay, a save — miss it. And
+      `suffixed_id(id, &"")` returning `id` unchanged is asserted as well, which
+      is what keeps every existing non-copy id byte-for-byte what it was.
+    - **The relic itself is `MimicCrownStub` under `tests/helpers/`, `blocked on
+      Dev B (W8-B?, the Mimic Crown relic)`.** Rule 4 is one of the rules the
+      spec requires to be "enforced in the helpers, not in each effect", so the
+      duplication lives on `EffectHost` and the relic double only has to find
+      "the last picked" — which it reads off host attach order in the test and
+      the shipped relic will read off the replicated `RunPlayerState`. Week 8
+      deletes the double and re-points its case at `data/relics/mimic_crown.tres`.
 
 ---
 

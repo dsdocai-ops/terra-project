@@ -72,6 +72,20 @@ var player: Player = null
 ## stops this effect reacting to its own hits (SPEC-effect-system, "Proc chain
 ## limits", rule 2).
 var source: ContentData = null
+## The id suffix this effect was attached under, empty for every effect that is
+## not a duplicate. SPEC-effect-system, "Proc chain limits", rule 4: "Mimic
+## Crown copies the last picked relic's effect; the copy is a second `Effect`
+## instance with its own id suffix so rule 2 still applies." The suffix is what
+## makes the copy a *different* effect to rule 2 — without it the copy and its
+## original would each suppress the other's hits (they share the content id) —
+## and what keeps the two apart as `StatBlock` modifier sources, spawn
+## attributions and `EffectHost` keys. Set by `EffectHost.add()`; an effect
+## attached by hand has none and behaves exactly as before rule 4 existed.
+##
+## The copy holds the *same* `ContentData` as its original — it is a copy of the
+## effect, not a second relic — so this is the only thing that distinguishes the
+## two, and `source_id()` is where it is applied.
+var id_suffix: StringName = &""
 ## The `EffectHost` this effect was attached through, set by `EffectHost.add()`.
 ## It is how `spawn()` and `fire_projectile()` reach the world's spawner without
 ## an effect ever naming a node path (SPEC-project forbids cross-module
@@ -172,14 +186,23 @@ func is_attached() -> bool:
 	return _attached
 
 
-## The effect's id: `source.id`. Used as the `StatBlock` modifier source and as
-## the id the no-self-retrigger check matches (rule 2: an effect never reacts to
-## a hit tagged with its own id). Empty when the effect was attached with no
-## source, in which case there is no id to match and nothing is suppressed.
+## The effect's id: `source.id` plus `id_suffix`, which is `source.id` itself
+## for every effect that is not a duplicate. Used as the `StatBlock` modifier
+## source and as the id the no-self-retrigger check matches (rule 2: an effect
+## never reacts to a hit tagged with its own id). Empty when the effect was
+## attached with no source, in which case there is no id to match and nothing is
+## suppressed.
+##
+## A Mimic Crown copy reports the **suffixed** id here, which is what rule 4's
+## "so rule 2 still applies" means: the copy and its original hold the same
+## `ContentData`, so without the suffix a hit tagged with the relic's id would
+## suppress both of them. `EffectHost.suffixed_id()` is the one place the form
+## is built, so the copy is keyed, named, attributed and self-tag-checked with
+## the same string.
 func source_id() -> StringName:
 	if source == null:
 		return &""
-	return source.id
+	return EffectHost.suffixed_id(source.id, id_suffix)
 
 
 ## Called at the end of `attach()`, once per attach/detach cycle. Subclasses
