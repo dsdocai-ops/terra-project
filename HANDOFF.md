@@ -1851,10 +1851,90 @@ with zero error lines; two-instance smoke 0 `FAIL`. The failing path was forced
 once and kept: with `MAX_PROC_DEPTH` temporarily 5 the chains ran all five links
 and only the gate assertions failed (`.goals/evidence/g16/negative-control.log`).
 
-**Not claimed.** No self-retrigger rule (G17), no 64-spawns-per-frame cap (G18),
-and no Mimic Crown duplication (G19) — all three land in this same wrapper. The
-gate is host-only logic like the rest of `Effect`; there is no client half to
-replicate, so the smoke run is insurance rather than proof of a sync path.
+**Not claimed (at G16).** No self-retrigger rule (G17), no 64-spawns-per-frame
+cap (G18), and no Mimic Crown duplication (G19) — all three land in this same
+wrapper. The gate is host-only logic like the rest of `Effect`; there is no
+client half to replicate, so the smoke run is insurance rather than proof of a
+sync path.
+
+#### G17 — an effect never reacts to a hit tagged with its own id (2026-10-20)
+
+SPEC-effect-system, "Proc chain limits", rule 2: "An effect never reacts to a hit
+whose `tags` already contain its own id (no self-retrigger)." The check is the
+second thing `Effect._forward()` does, in the same wrapper as G16's depth gate and
+for the same reason — one place that knows the proc rules, which no effect script
+can forget and no new effect script can bypass.
+
+**What changed.** `scripts/effects/effect.gd` only:
+
+- `_is_own_hit(values)` returns true when any hit the event carries has
+  `source_id()` in its `tags`; `_forward()` returns early on it, before the depth
+  gate. The comparison is against the **content id** the effect was attached
+  with, never the class name, so two effects built from one script (a Mimic
+  Crown copy, two relics sharing an effect script) are suppressed independently,
+  each by its own id only; an effect attached with no source reads `&""` and has
+  no id to match, so the check passes everything through instead of matching an
+  empty tag.
+- `_event_hits(values)` was factored out and now backs both rules — the
+  self-tag check and the depth gate read the same list, so "what counts as a hit"
+  is one decision rather than two that can drift apart
+  (`.goals/evidence/g16/` and `g17/` both still pass unchanged after the
+  refactor).
+- Only the *reaction* is suppressed. The hit was already delivered to the hurtbox
+  and already announced on `Events.hit_landed` by combat-core, so it still
+  damages — the same "its hits still damage" clause rule 1 is written around.
+
+**Who stamps the tag.** The reacting side is the wrapper's; the *producing* side
+is the caller's. `deal_damage()` stamps `proc` and the depth and leaves `tags`
+alone, because a hit's tag list is also a weapon's, a status's and a hazard's.
+Stamping the source id here was considered and rejected: it would make
+`deal_damage` uncallable from an effect that legitimately self-triggers (G16's
+self-triggering chain shape stops being expressible at all), which trades a
+backstop for a single mechanism. An effect that wants rule 2 to protect it
+appends `source_id()` to the tags of every hit it deals; `listen()`'s doc comment
+states this, and W4-B6's relic batch does it (`ember_boots` and friends). The two
+rules therefore compose instead of overlapping: rule 2 catches the tagged
+self-reference, rule 1 is the backstop for a chain that carries no id.
+
+**Accept.** `-gtest=res://tests/unit/test_proc_limits.gd` exit 0, **18/18, 111
+asserts** (10 cases / 59 asserts at G16 — 8 new cases, all red first, six failing
+for the right reason under `.goals/evidence/g17/red-test-proc-limits.log`); full
+suite **44 scripts / 713 tests / 713 passing / 55 672 asserts** exit 0 (up from
+44 / 705 / 55 620); `--import` exit 0 with zero error lines; the five other effect
+files run individually and unchanged (`test_effect_base` 25/103,
+`test_effect_host` 17/85, `test_effect_helpers` 22/57, `test_effect_spawn` 25/93,
+`test_effect_timers` 16/53 — the same counts as G16, so no depth or cleanup case
+moved); headless `-- --host --debug-tools --smoke=6` exit 0 with zero error and
+zero parse-error lines. The failing path was forced once and kept: with
+`_is_own_hit()` short-circuited to `false`, **exactly the five rule-2 cases fail**
+and no other case in the file moves (`.goals/evidence/g17/negative-control.log`,
+13 passing / 5 failing). The first attempt at that control patched the wrong
+occurrence of the shared loop and took the depth gate down with it, failing 13
+cases — the log it produced was discarded rather than kept, and the working
+control is scoped to `_is_own_hit()` alone.
+
+**Judgment calls (HANDOFF decision 46).** (1) The rule lives in the shared
+wrapper and not in a per-signal wrapper, which is what makes it hold on
+`enemy_killed` and `elite_killed` as well as `hit_landed` — asserted on all five
+hit-carrying signals. (2) The mutual-reference case is asserted on a *derived*
+number: two effects that each tag their hits with the other's id produce six
+reactions — each effect three times, at depths 0, 1 and 2, and never for the hit
+tagged with its own id — against fourteen for the same pair with nothing
+tagged. The fourteen is the control that makes the six mean "the rule removed
+them"; the per-effect depth lists are asserted rather than the interleaved log
+order, so the count does not depend on which connection fired first. (3) The
+G16 chain-of-five fixture used the effect's **own id** as its routing tag, which
+rule 2 makes un-routable by construction; its routing tag moved to a separate
+`hop_N` namespace so the two rules are asserted separately, and every assertion
+in that case (the named stop at `link_3`, the depths `[0, 1, 2]`, the dealt
+depths) is byte-for-byte unchanged. (4) `ProcChainProbe.handler_calls` counts
+events the wrapper let through *before* the probe's own tag filter, so a
+suppressed event is proven never to reach a handler rather than inferred from a
+log that the probe's filter could also have left empty.
+
+**Not claimed.** The 64-spawns-per-frame cap (G18), the trigger harness + Mimic
+Crown duplication rule (G19). Still **blocked on Dev A (W2-A2)** for the real
+`Hurtbox` the chain advances through.
 
 ---
 
@@ -3136,6 +3216,71 @@ already recorded in a spec or a comment, the location is given.
       not implemented. The cap on total chain length per event is this goal;
       a per-key cooldown, a spawn budget and a duplication rule are separate
       decisions and land in this same wrapper on their own goals' evidence.
+
+46. **The no-self-retrigger rule matches the attached content id, in the shared
+    dispatch wrapper, and the *producer* stamps the tag (2026-10-20, W4-B3 /
+    G17).** SPEC-effect-system "Proc chain limits", rule 2: "An effect never
+    reacts to a hit whose `tags` already contain its own id (no self-retrigger)."
+    This is an `Events`-routing behaviour change on the busiest signal in the
+    game, so it is recorded here even though no signal was added, renamed,
+    retyped or given a parameter, and no other Ask-first item moved.
+    - **The spec pins the reacting side, and that is the side that changed.**
+      Rule 1's parenthetical says exactly what the wrapper does for the depth
+      gate ("`Effect.listen` wrappers skip events with `proc_depth >= 3`"); rule 2
+      names only the condition. `_is_own_hit()` therefore lives in the same
+      `Effect._forward()` wrapper — one place that knows the proc rules, so no
+      effect script can forget it and a new one cannot bypass it — and holds on
+      every hit-carrying signal, not on `hit_landed` alone (asserted on all
+      five).
+    - **`deal_damage()` does not stamp `source_id()` on the hit it deals.**
+      Stamping there was the obvious way to make the rule self-enforcing, and it
+      was rejected on a concrete cost: G16's accepted acceptance evidence
+      includes a *self-triggering* chain shape (one effect that reacts to its own
+      hits until the depth gate stops it, `test_a_five_link_self_triggering_chain_stops_at_depth_three`),
+      and stamping every `deal_damage` hit with the dealing effect's id makes
+      that shape inexpressible — the probe would be suppressed on link one and
+      the depth rule would lose the case that exercises it. It would also be
+      wrong on the merits: a hit's `tags` are the caller's (the same payload is a
+      weapon's, a status's and a hazard's), and `deal_damage` already owns the
+      two fields that are its business (`proc_depth`, the `proc` tag). The two
+      rules therefore compose rather than overlap — rule 2 catches the tagged
+      self-reference, rule 1 is the backstop for a chain carrying no id — and
+      `listen()`'s doc comment plus `deal_damage()`'s state the producer's half
+      of the contract. W4-B6's relics are the first content to exercise it.
+    - **The check keys on `source_id()`, never on the class name.** Two effects
+      built from one script (a Mimic Crown copy, two relics sharing an effect
+      script) must be suppressed independently, each by its own id; the suite's
+      per-id case uses two probes of the *same* class so the class name cannot
+      be the discriminator, and a third case pins the id against the display
+      name. An effect attached with no source reads `&""` and has no id to match,
+      so it suppresses nothing rather than matching an empty tag.
+    - **The mutual-reference case is asserted on a derived count, with a
+      control.** Rule 2's real risk is a pair of effects that each tag their hits
+      with the *other's* id: nothing suppresses the other's chain on its own, so
+      the shape must converge. It converges at six reactions (each effect three
+      times, at depths 0, 1 and 2, and never for the hit tagged with its own id)
+      against fourteen for the same pair with nothing tagged — the control is
+      what makes the six mean "the rule removed them" instead of "the fixture is
+      small". The per-effect depth lists are asserted rather than the interleaved
+      log order, so the count does not depend on which connection fired first;
+      `ProcChainLog.depths_for_source()` exists for that.
+    - **A G16 fixture's routing tag moved off the effect's own id, and this is
+      the honest record of it.** `test_a_chain_of_five_effects_stops_at_the_depth_three_link`
+      routed by tagging each link's hit with the *next link's id* — which rule 2
+      now suppresses by construction, so the chain became un-routable and the
+      case failed the moment the rule landed. The routing tag moved to a separate
+      `hop_N` namespace so the two rules are asserted separately. Every assertion
+      in that case is byte-for-byte unchanged (the named stop at `link_3`, the
+      depths `[0, 1, 2]`, the dealt depths `[0, 1, 2, 3]`), no assertion was
+      deleted or weakened, and a `LONG_LINK_BUDGET = 20` const was added so the
+      new rule cases cannot run out of links and pass for the wrong reason.
+      `ProcChainProbe.handler_calls` counts events the wrapper let through
+      *before* the probe's own `react_tag` filter, so "the handler never ran" is
+      observed rather than inferred.
+    - **What is *not* claimed.** Rule 3 (the 64-spawn-per-frame cap, G18) and
+      rule 4 (Mimic Crown's id suffix, G19) are not implemented. The chain still
+      advances through `ProcHurtboxStub`, **blocked on Dev A (W2-A2)** for
+      combat-core's real `Hurtbox`.
 
 ---
 

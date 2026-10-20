@@ -16,7 +16,10 @@ extends Effect
 ##   every hit does. Two probes with different tags are two links of one chain.
 ## - `emit_tag`: the tag the produced hit carries, so the next link recognises
 ##   it. Empty means the produced hit carries no tag of its own (the chain is
-##   then self-feeding, which is the "self-triggering" case).
+##   then self-feeding, which is the "self-triggering" case). Setting it to
+##   *another* probe's id is the mutual-reference case, and setting it to a tag
+##   no probe's id matches is how a chain is routed by tag without the
+##   no-self-retrigger rule (rule 2, goal G17) getting involved.
 ## - `link_limit`: how many results this probe will ever produce. The five-link
 ##   chain sets 5; the observe-only cases set 0, so the probe records reactions
 ##   without advancing the chain. The cap is the *test's* bound, deliberately
@@ -54,6 +57,12 @@ var spawn_at: Vector2 = Vector2.ZERO
 var log: ProcChainLog = null
 ## How many results this probe has produced so far.
 var links: int = 0
+## How many events the dispatch wrapper let reach a handler, counted before the
+## probe's own `react_tag` filter. This is the assertion the no-self-retrigger
+## rule is pinned on (goal G17): a suppressed event never runs the handler at
+## all, which `log.count()` alone could not distinguish from the probe's own tag
+## filter rejecting what it was handed.
+var handler_calls: int = 0
 
 
 func _on_attach() -> void:
@@ -89,6 +98,7 @@ func _on_elite_killed(_enemy: Node, hit: HitData) -> void:
 ## out of links is still counted as having reacted — the gate is asserted on
 ## what ran, not on what it produced.
 func _react(signal_name: StringName, hit: HitData) -> void:
+	handler_calls += 1
 	if hit == null:
 		return
 	if react_tag != &"" and not hit.tags.has(react_tag):

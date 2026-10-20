@@ -48,15 +48,37 @@ const HURTBOX_NAME: StringName = &"Hurtbox"
 
 ## The limit, read from the class under test rather than written here twice.
 const MAX_DEPTH: int = 3
-## How many links each chain shape offers before it runs out: five, the length
-## of the chain the spec's rule is meant to stop.
+## How many reactions each chain offers before it runs out: five, the length of
+## the chain the spec's rule is meant to stop.
 const CHAIN_LINKS: int = 5
+## A link budget no chain in this file can use up, for the cases where the
+## assertion is about the rules and not about a probe's own budget — a chain
+## that stops then stopped because of the rules and not because it ran dry.
+const LONG_LINK_BUDGET: int = 20
 ## A depth past the limit, so "no handler above the limit" is asserted on both
 ## the boundary and the far side of it.
 const OVER_LIMIT_DEPTH: int = MAX_DEPTH + 1
 const BASE_DAMAGE: float = 12.0
 const SPAWN_POSITION: Vector2 = Vector2(96.0, 48.0)
 const EPSILON: float = 0.0001
+
+## The two content ids the no-self-retrigger cases use (rule 2, goal G17). A
+## relic's effect id is its content id — `ember_boots`, `storm_sandals` — and
+## rule 2 keys on exactly that and not on the effect's class name, so two
+## effects built from one script are suppressed independently.
+const SELF_ID: StringName = &"ember_boots"
+const OTHER_ID: StringName = &"storm_sandals"
+## A display name deliberately different from `SELF_ID`, for the case that pins
+## which of the two the rule reads.
+const SELF_DISPLAY_NAME: String = "Ember Boots"
+## How many reactions the mutually-referencing pair produces with the self-tag
+## rule in force: each effect reacts once per depth 0, 1 and 2 and never to the
+## hit the other tagged with its id. Derived in the case's doc comment.
+const MUTUAL_REACTIONS: int = 6
+## The same pair with nothing tagged: every hit is seen by both effects at every
+## depth below the limit, so 2 + 4 + 8 = 14 reactions. The delta is what makes
+## the self-tag rule the cause of the bounded number above.
+const UNTAGGED_MUTUAL_REACTIONS: int = 14
 
 var _player: Player
 var _host: EffectHost
@@ -127,11 +149,12 @@ func _make_dummy() -> Node2D:
 
 
 ## A content source carrying the probe script, the way a relic carries its
-## effect script.
-func _source(id: StringName) -> ContentData:
+## effect script. `display_name` defaults to the id, and is set to something
+## else only by the case that pins which of the two the self-tag rule reads.
+func _source(id: StringName, display_name: String = "") -> ContentData:
 	var content := ContentData.new()
 	content.id = id
-	content.display_name = String(id)
+	content.display_name = display_name if display_name != "" else String(id)
 	content.effect_script = load(PROC_CHAIN_PROBE_SCRIPT_PATH) as GDScript
 	_sources.append(content)
 	return content
@@ -140,8 +163,8 @@ func _source(id: StringName) -> ContentData:
 ## A probe attached through the real `EffectHost.add()` path, observing into
 ## this case's log and producing against the dummy. `link_limit` is left at the
 ## probe's default (0 — observe only); a chaining case sets it.
-func _probe(id: StringName = &"chain_relic") -> ProcChainProbe:
-	var effect: ProcChainProbe = _host.add(_source(id)) as ProcChainProbe
+func _probe(id: StringName = &"chain_relic", display_name: String = "") -> ProcChainProbe:
+	var effect: ProcChainProbe = _host.add(_source(id, display_name)) as ProcChainProbe
 	assert_not_null(effect, "the probe attached")
 	if effect == null:
 		return null
@@ -164,6 +187,15 @@ func _hit(depth: int, tags: Array[StringName] = []) -> HitData:
 ## the depth that reaches the handlers is the depth the hit was built with.
 func _deliver(hit: HitData) -> void:
 	_hurtbox.receive(hit)
+
+
+## Forgets everything the case has recorded so far — the reaction log, the
+## announced depths and the hits the hurtbox was asked to receive — so a case
+## can drive the same chain twice and compare the two runs.
+func _forget() -> void:
+	_log.clear()
+	_announced.clear()
+	_hurtbox.received.clear()
 
 
 ## Emits one of the bus's hit-carrying signals with `hit` at its own depth.
@@ -259,15 +291,25 @@ func test_a_five_link_self_triggering_chain_stops_at_depth_three() -> void:
 	assert_eq(probe.trigger_depth, 0, "the chain leaves no trigger depth behind")
 
 
+## Five *different* effects, each handing the next a tagged hit until the depth
+## limit is reached. The stop is attributed to a named effect (`link_3`) rather
+## than to a total, which is what a chain that stops for the wrong reason cannot
+## fake.
+##
+## The tag that routes the chain is deliberately **not** any effect's own id —
+## `hop_0`…`hop_4` against ids `link_0`…`link_4` — because rule 2 (G17) drops an
+## event whose hit carries the reacting effect's own id. Routing by id would
+## make this chain impossible by construction and the two rules would be
+## conflated; the id-tagged case has its own case below.
 func test_a_chain_of_five_effects_stops_at_the_depth_three_link() -> void:
 	var probes: Array[ProcChainProbe] = []
 	for i: int in CHAIN_LINKS:
 		var link: ProcChainProbe = _probe(StringName("link_%d" % i))
-		link.react_tag = StringName("link_%d" % i)
-		link.emit_tag = StringName("link_%d" % (i + 1))
+		link.react_tag = StringName("hop_%d" % i)
+		link.emit_tag = StringName("hop_%d" % (i + 1))
 		link.link_limit = 1
 		probes.append(link)
-	_deliver(_hit(0, [&"link_0"] as Array[StringName]))
+	_deliver(_hit(0, [&"hop_0"] as Array[StringName]))
 	assert_eq(
 		_log.sources_for(&"hit_landed"),
 		[&"link_0", &"link_1", &"link_2"] as Array[StringName],
@@ -359,6 +401,190 @@ func test_the_handler_runs_with_the_events_depth_as_its_trigger_depth() -> void:
 	assert_eq(_log.depths_for(&"hit_landed"), [1] as Array[int], "the handler read the event's own depth")
 	assert_eq(probe.trigger_depth, 0, "and the depth is cleared once the handler returns")
 	assert_almost_eq(_hurtbox.received[0].base_damage, BASE_DAMAGE, EPSILON, "the delivered hit is the one that was sent")
+
+
+# --- no self-retrigger (rule 2) --------------------------------------------
+
+## The rule itself, read off the class under test and the spec, so the sentence
+## cannot drift away from the code that implements it.
+func test_the_self_retrigger_rule_is_the_specs_and_is_documented() -> void:
+	var spec: String = FileAccess.get_file_as_string(SPEC_PATH)
+	assert_true(
+		spec.contains("An effect never reacts to a hit whose `tags` already contain its own id"),
+		"the spec states rule 2"
+	)
+	var source: String = FileAccess.get_file_as_string(EFFECT_PATH)
+	assert_true(
+		source.contains("_is_own_hit"),
+		"Effect carries the check in the dispatch wrapper"
+	)
+	assert_true(
+		source.contains("An effect never reacts to a hit whose `tags` already contain its own id"),
+		"and the check quotes the rule it implements"
+	)
+
+
+## rule 2: "An effect never reacts to a hit whose `tags` already contain its own
+## id (no self-retrigger)." A hit so tagged must not reach the handler at all —
+## `handler_calls` is counted before the probe's own filters, so this cannot be
+## the probe's `react_tag` doing the work — while the hit itself is delivered
+## and announced exactly as before: the rule suppresses reactions, not damage.
+func test_an_effect_never_reacts_to_a_hit_tagged_with_its_own_id() -> void:
+	var probe: ProcChainProbe = _probe(SELF_ID)
+	_deliver(_hit(0, [SELF_ID] as Array[StringName]))
+	assert_eq(probe.handler_calls, 0, "a hit tagged with the effect's own id never reaches a handler")
+	assert_eq(_log.count(), 0, "and nothing is recorded")
+	assert_eq(_dealt_depths(), [0] as Array[int], "the hit still damages")
+	assert_eq(_announced, [0] as Array[int], "and is still emitted on Events.hit_landed")
+	assert_eq(
+		_hurtbox.received[0].tags,
+		[SELF_ID] as Array[StringName],
+		"the gate reads the tags and leaves them alone"
+	)
+
+
+## The negative control: the same probe, the same hit, no self-tag — it fires.
+## Without this case a gate that was accidentally always-on would pass the rule
+## case above.
+func test_the_same_hit_without_the_self_tag_still_reaches_the_handler() -> void:
+	var probe: ProcChainProbe = _probe(SELF_ID)
+	_deliver(_hit(0))
+	assert_eq(probe.handler_calls, 1, "an untagged hit reaches the handler")
+	assert_eq(_log.sources_for(&"hit_landed"), [SELF_ID] as Array[StringName], "and is recorded")
+	_log.clear()
+	_deliver(_hit(0, [OTHER_ID] as Array[StringName]))
+	assert_eq(
+		_log.sources_for(&"hit_landed"),
+		[SELF_ID] as Array[StringName],
+		"another content's id on the hit is not this effect's own id"
+	)
+
+
+## The rule is per-id, not a blanket suppression: two effects on one player,
+## one hit tagged with one of their ids, and the other effect still reacts.
+## Both probes are the same class, so the discriminator can only be the source
+## id. The third block is the other half of the same property — a hit with no
+## id on it reaches **both** effects, so nothing about two effects on one host
+## makes either of them inert.
+func test_two_effects_with_different_ids_are_filtered_independently() -> void:
+	var self_probe: ProcChainProbe = _probe(SELF_ID)
+	var other_probe: ProcChainProbe = _probe(OTHER_ID)
+	_deliver(_hit(0, [SELF_ID] as Array[StringName]))
+	assert_eq(
+		_log.sources_for(&"hit_landed"),
+		[OTHER_ID] as Array[StringName],
+		"only the effect whose own id is not on the hit reacts"
+	)
+	assert_eq(self_probe.handler_calls, 0, "the tagged effect's handler did not run")
+	assert_eq(other_probe.handler_calls, 1, "the untagged one's did")
+	_log.clear()
+	_deliver(_hit(0, [OTHER_ID] as Array[StringName]))
+	assert_eq(
+		_log.sources_for(&"hit_landed"),
+		[SELF_ID] as Array[StringName],
+		"and the suppression follows the id, not the attachment order"
+	)
+	_log.clear()
+	_deliver(_hit(0))
+	assert_eq(_log.sources_for(&"hit_landed").size(), 2, "a hit carrying no id reaches both effects")
+	assert_true(_log.reacted(SELF_ID), "the first reacted")
+	assert_true(_log.reacted(OTHER_ID), "and so did the second: the rule suppresses by id, not wholesale")
+
+
+## The rule keys on the content id, never on the class name (both probes are
+## `ProcChainProbe`) and never on the display name (which is not a tag any code
+## puts on a hit).
+func test_the_rule_keys_on_the_source_id_and_not_the_display_name() -> void:
+	var probe: ProcChainProbe = _probe(SELF_ID, SELF_DISPLAY_NAME)
+	_deliver(_hit(0, [StringName(SELF_DISPLAY_NAME)] as Array[StringName]))
+	assert_eq(
+		probe.handler_calls,
+		1,
+		"a hit tagged with the display name is not a hit tagged with the effect's id"
+	)
+	_log.clear()
+	_deliver(_hit(0, [SELF_ID] as Array[StringName]))
+	assert_eq(probe.handler_calls, 1, "only the id itself suppresses")
+
+
+## A hit the rule suppresses is still gated by depth, and the rule holds on
+## every hit-carrying signal rather than on `hit_landed` alone — a relic that
+## listens to `enemy_killed` must not re-trigger on its own kill either.
+func test_the_self_tag_is_honoured_on_every_hit_carrying_signal() -> void:
+	var probe: ProcChainProbe = _probe(SELF_ID)
+	var enemy := EnemyBaseStub.new()
+	add_child_autofree(enemy)
+	for signal_name: StringName in ProcChainProbe.HIT_SIGNAL_NAMES:
+		probe.handler_calls = 0
+		_emit_hit_signal(signal_name, enemy, _hit(0, [SELF_ID] as Array[StringName]))
+		assert_eq(probe.handler_calls, 0, "%s does not reach an effect that tagged the hit with its own id" % signal_name)
+		probe.handler_calls = 0
+		_emit_hit_signal(signal_name, enemy, _hit(0))
+		assert_eq(probe.handler_calls, 1, "%s still reaches it when the tag is absent" % signal_name)
+
+
+## The mutual-reference chain the rule is really for: A tags its hits with B's
+## id and B tags its hits with A's id, so neither can re-trigger the other, and
+## the chain has to terminate. Both react at depth 0 (the initial hit is
+## untagged), and then:
+##
+## - A's hit (tagged `link_b`) is dropped for B and reaches A at depths 1 and 2,
+##   where the depth limit stops it — three reactions, depths 0, 1 and 2;
+## - B's hit is symmetric — three reactions, depths 0, 1 and 2.
+##
+## Six reactions, and nothing is left to run: the count is a consequence of the
+## two rules together, so it is asserted against a derivation rather than
+## observed and copied.
+func test_a_pair_that_tags_its_hits_with_the_others_id_terminates() -> void:
+	var first: ProcChainProbe = _probe(&"link_a")
+	first.emit_tag = &"link_b"
+	first.link_limit = LONG_LINK_BUDGET
+	var second: ProcChainProbe = _probe(&"link_b")
+	second.emit_tag = &"link_a"
+	second.link_limit = LONG_LINK_BUDGET
+	_deliver(_hit(0))
+	assert_eq(_log.count(), MUTUAL_REACTIONS, "the chain terminates, bounded by the two rules")
+	assert_eq(
+		_log.depths_for_source(&"link_a", &"hit_landed"),
+		[0, 1, 2] as Array[int],
+		"A reacts to the untagged hit and to the one tagged with B's id, and stops at the depth limit"
+	)
+	assert_eq(
+		_log.depths_for_source(&"link_b", &"hit_landed"),
+		[0, 1, 2] as Array[int],
+		"and B does the same, neither ever reacting to the hit tagged with its own id"
+	)
+	assert_eq(
+		_dealt_depths().size(),
+		MUTUAL_REACTIONS + 1,
+		"every produced hit lands, the two depth-3 ones included"
+	)
+	assert_eq(_dealt_depths().count(MAX_DEPTH), 2, "one from each effect, past the gate that stops reactions")
+	_forget()
+	_deliver(_hit(0))
+	assert_eq(_log.count(), MUTUAL_REACTIONS, "driving it again gives the same count, not merely a finite one")
+	assert_eq(_log.depths_for_source(&"link_a", &"hit_landed"), [0, 1, 2] as Array[int], "with A's links unchanged")
+	assert_eq(_log.depths_for_source(&"link_b", &"hit_landed"), [0, 1, 2] as Array[int], "and B's too")
+
+
+## The control for the case above: the same two effects with nothing tagged feed
+## each other freely, so every hit below the depth limit is seen by both and the
+## chain is bounded by the depth rule alone. 2 + 4 + 8 = 14 reactions — the
+## self-tag rule is what took that number to six.
+func test_the_same_pair_tags_freely_when_nothing_carries_an_id() -> void:
+	var first: ProcChainProbe = _probe(&"link_a")
+	first.link_limit = LONG_LINK_BUDGET
+	var second: ProcChainProbe = _probe(&"link_b")
+	second.link_limit = LONG_LINK_BUDGET
+	_deliver(_hit(0))
+	assert_eq(
+		_log.count(),
+		UNTAGGED_MUTUAL_REACTIONS,
+		"without a self-tag both effects react to every hit at depths 0, 1 and 2"
+	)
+	assert_eq(_log.depths_for_source(&"link_a", &"hit_landed").size(), 7, "A sees 1 + 2 + 4 hits")
+	assert_eq(_log.depths_for_source(&"link_b", &"hit_landed").size(), 7, "and so does B")
+	assert_eq(_dealt_depths().size(), 15, "and every hit at depths 0, 1, 2 and 3 is dealt")
 
 
 ## A scene built in memory, so the spawn case is independent of any `.tscn`.

@@ -68,8 +68,9 @@ const HIT_CLASSES: Array[String] = ["HitData", "HitInfo"]
 ## The player this effect belongs to. Set by `attach()`.
 var player: Player = null
 ## The content this effect came from (`RelicData`, `MutationData`, ...). Its
-## `id` is the effect's id: the `StatBlock` modifier source, and (from W4-B3)
-## the tag that stops the effect reacting to its own hits.
+## `id` is the effect's id: the `StatBlock` modifier source, and the tag that
+## stops this effect reacting to its own hits (SPEC-effect-system, "Proc chain
+## limits", rule 2).
 var source: ContentData = null
 ## The `EffectHost` this effect was attached through, set by `EffectHost.add()`.
 ## It is how `spawn()` and `fire_projectile()` reach the world's spawner without
@@ -102,7 +103,8 @@ var rng: RandomNumberGenerator = null
 ## handling an event reads 0 — the depth of a hit a weapon landed — which is the
 ## chain's root. An event whose hit already carries `MAX_PROC_DEPTH` never
 ## reaches a handler at all: that is where a chain stops. The self-retrigger
-## check (rule 2) is the next goal's, G17.
+## check (rule 2) runs in the same wrapper, just before this one, and drops an
+## event whose hit carries this effect's own id.
 var trigger_depth: int = 0
 
 ## `StatBlock` modifier handles to remove on detach.
@@ -170,9 +172,10 @@ func is_attached() -> bool:
 	return _attached
 
 
-## The effect's id: `source.id`. Used as the `StatBlock` modifier source and,
-## from W4-B3, as the tag that blocks self-retriggering. Empty when the effect
-## was attached with no source.
+## The effect's id: `source.id`. Used as the `StatBlock` modifier source and as
+## the id the no-self-retrigger check matches (rule 2: an effect never reacts to
+## a hit tagged with its own id). Empty when the effect was attached with no
+## source, in which case there is no id to match and nothing is suppressed.
 func source_id() -> StringName:
 	if source == null:
 		return &""
@@ -200,13 +203,20 @@ func _on_detach() -> void:
 ## - where the signal declares a `Player` argument, to filter the event to this
 ##   effect's own player — an effect on player 1 never reacts to player 2's
 ##   dodge, hit, pickup or room entry;
-## - where the signal carries a hit payload, to apply the proc depth limit — an
-##   event whose hit has reached `MAX_PROC_DEPTH` is dropped before the handler
-##   runs, whatever player it belongs to (`hit_landed` has no `Player` argument
-##   at all and is nonetheless wrapped, for exactly this reason).
+## - where the signal carries a hit payload, to apply the proc chain rules — an
+##   event whose hit carries this effect's own id (rule 2, no self-retrigger) or
+##   has reached `MAX_PROC_DEPTH` (rule 1) is dropped before the handler runs,
+##   whatever player it belongs to (`hit_landed` has no `Player` argument at all
+##   and is nonetheless wrapped, for exactly this reason).
 ##
 ## A signal with neither is connected untouched, so the handler is the named
 ## method itself: nothing is wrapped that has nothing to look at.
+##
+## Tagging a hit with this effect's own id is the *producer's* job, not this
+## class's: `deal_damage()` stamps `proc` and increments the depth, while the
+## tag list is the caller's to build, because a hit is also a weapon's, a
+## status's and a hazard's. An effect that wants rule 2 to protect it appends
+## `source_id()` to the `tags` of every hit it deals.
 func listen(sig: Signal, callable: Callable) -> void:
 	if not callable.is_valid():
 		push_warning("[effect] %s: listen() needs a callable" % source_id())
@@ -334,6 +344,11 @@ func apply_status(target: Node, status: int, stacks: int = 1) -> void:
 ## itself — the emitters are the owning modules (SPEC-effect-system, "Events
 ## bus") — so a chain continues through the hurtbox, and the hit is stamped
 ## before it gets there. A target with no hurtbox is a warned no-op.
+##
+## The hit's `tags` are the caller's: this helper adds `proc` and nothing else.
+## An effect that would otherwise re-trigger on its own damage appends
+## `source_id()` there as well, which is what the wrapper's rule-2 check
+## (`_is_own_hit()`) matches on.
 func deal_damage(target: Node, hit: HitData) -> void:
 	if target == null or hit == null:
 		push_warning("[effect] %s: deal_damage() needs a target and a hit" % source_id())
@@ -597,19 +612,26 @@ func _player_argument_index(args: Array[Dictionary]) -> int:
 
 
 ## Calls `callable` with the event's own `values`, unless the event belongs to
-## another player or has reached the proc depth limit.
+## another player, carries a hit this effect tagged itself, or has reached the
+## proc depth limit.
 ##
-## Three things happen here and this is the only place any of them happens, so
+## Four things happen here and this is the only place any of them happens, so
 ## no effect script re-implements them:
 ##
 ## 1. the player filter: an event naming a `Player` other than this effect's own
 ##    returns without calling anything at all (the negative control is a
 ##    `player_dodged` for a teammate in `test_effect_base.gd`);
-## 2. the proc gate: an event whose hit carries `MAX_PROC_DEPTH` or more is
+## 2. the self-retrigger check: an event whose hit already carries this effect's
+##    own id is dropped here, so a relic whose own damage comes back to it —
+##    Ember Boots' trail burning the enemy that was just hit, Volatile Core's
+##    death explosion killing another enemy — does not re-trigger itself
+##    (SPEC-effect-system, "Proc chain limits", rule 2 — asserted in
+##    `test_proc_limits.gd`);
+## 3. the proc gate: an event whose hit carries `MAX_PROC_DEPTH` or more is
 ##    dropped here, so a chain of effects that trigger one another stops at the
-##    third link while the hits themselves keep damaging (SPEC-effect-system,
-##    "Proc chain limits", rule 1 — asserted in `test_proc_limits.gd`);
-## 3. `trigger_depth` is set to the event's depth for the duration of the
+##    third link while the hits themselves keep damaging (rule 1 — asserted in
+##    `test_proc_limits.gd`);
+## 4. `trigger_depth` is set to the event's depth for the duration of the
 ##    handler, so everything the handler produces is one link deeper, and the
 ##    previous value is restored on the way out, so a nested proc cannot leak
 ##    its depth back into the event that caused it.
@@ -617,6 +639,8 @@ func _forward(values: Array, argument_index: int, callable: Callable) -> void:
 	if argument_index >= 0 and argument_index < values.size():
 		if values[argument_index] != player:
 			return
+	if _is_own_hit(values):
+		return
 	var depth: int = _event_proc_depth(values)
 	if depth >= MAX_PROC_DEPTH:
 		return
@@ -626,16 +650,51 @@ func _forward(values: Array, argument_index: int, callable: Callable) -> void:
 	trigger_depth = previous
 
 
+## True when a hit the event carries is tagged with this effect's own id — the
+## no-self-retrigger rule, quoted from SPEC-effect-system, "Proc chain limits",
+## rule 2: "An effect never reacts to a hit whose `tags` already contain its own id
+## (no self-retrigger)."
+##
+## The comparison is against `source_id()` — the content id the effect was
+## attached with, never its class name — so two effects built from one script
+## (a Mimic Crown copy, two relics sharing an effect script) are suppressed
+## independently, each by its own id only. An effect attached with no source has
+## no id and therefore nothing to suppress, so the check passes everything
+## through rather than matching an empty tag.
+##
+## Only the *reaction* is suppressed: the hit was already delivered and
+## announced by whoever produced it, so it still damages (the same clause rule 1
+## is written around).
+func _is_own_hit(values: Array) -> bool:
+	var id: StringName = source_id()
+	if id == &"":
+		return false
+	for hit: HitData in _event_hits(values):
+		if hit.tags.has(id):
+			return true
+	return false
+
+
 ## The proc depth the event in `values` carries: the greatest `proc_depth` among
 ## the arguments that are a hit payload, or 0 when none of them is. An event
 ## with no hit argument is not a link in a chain and is therefore never gated,
 ## which is what keeps a dodge or a room entry out of the depth rules.
 func _event_proc_depth(values: Array) -> int:
 	var depth: int = 0
+	for hit: HitData in _event_hits(values):
+		depth = maxi(depth, hit.proc_depth)
+	return depth
+
+
+## Every hit payload among `values`, in argument order. Both rules that read an
+## event's hit — the self-retrigger check and the depth gate — go through here,
+## so "what counts as a hit" is one decision rather than two that can drift.
+func _event_hits(values: Array) -> Array[HitData]:
+	var hits: Array[HitData] = []
 	for value: Variant in values:
 		if value is HitData:
-			depth = maxi(depth, (value as HitData).proc_depth)
-	return depth
+			hits.append(value as HitData)
+	return hits
 
 
 ## True when a signal declared with `args` (as `_signal_arguments()` reads them)

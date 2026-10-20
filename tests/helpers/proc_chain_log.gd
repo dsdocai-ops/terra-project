@@ -44,6 +44,20 @@ func depths_for(signal_name: StringName) -> Array[int]:
 	return depths
 
 
+## The proc depths at which one effect reacted to `signal_name`, in order — the
+## per-effect view the mutual-reaction case (rule 2, goal G17) needs. Two
+## effects reacting inside the same dispatch produce one interleaved list whose
+## order depends on connection order; each effect's own list does not, so
+## "this effect reacted three times, at depths 0, 1 and 2" is an assertion about
+## the effect rather than about the order two connections happened to be made.
+func depths_for_source(source_id: StringName, signal_name: StringName) -> Array[int]:
+	var depths: Array[int] = []
+	for i: int in reaction_signals.size():
+		if reaction_signals[i] == signal_name and reaction_sources[i] == source_id:
+			depths.append(reaction_depths[i])
+	return depths
+
+
 ## Every source id that reacted to `signal_name`, in order. The negative
 ## control for the chain: the id of the effect whose link should never have run.
 func sources_for(signal_name: StringName) -> Array[StringName]:
