@@ -30,9 +30,9 @@ extends Node
 ##    actives (Bomb Bag, 3) all state one; the day a cooldown-only active lands,
 ##    `active_charges == 0` is the line that decides what it means.
 ##  * **the cooldown** is the relic's `active_cooldown`, counted down through
-##    `TimeManager.scale_for(player)` — never `Engine.time_scale`, and never the
-##    enemies' clock: a time stop on the enemies does not stall a player's relic,
-##    while the player's own frozen state does.
+##    `TimeManager.scale_for(player)` — never the engine's global time scale, and
+##    never the enemies' clock: a time stop on the enemies does not stall a
+##    player's relic, while the player's own frozen state does.
 ##  * **the refill is the relic's**: on `Events.room_entered` for this player, a
 ##    slot refills only when its effect answers
 ##    `refills_charges_per_room()` — "where stated".
@@ -182,9 +182,9 @@ func _physics_process(delta: float) -> void:
 ## Advances every running cooldown by `delta` of the **player's** time, so a
 ## caller may drive it directly (a test, a catch-up on a late join) and the
 ## engine's own tick is not a second code path. `TimeManager.scale_for(player)`
-## is the spec's rule: never `Engine.time_scale`, and never the enemies' stack —
-## a time stop on the enemies leaves a player's relic cooldown running, while the
-## player's own hit-stop freezes it.
+## is the spec's rule: never the engine's global time scale, and never the
+## enemies' stack — a time stop on the enemies leaves a relic cooldown running,
+## while the player's own hit-stop freezes it.
 func advance(delta: float) -> void:
 	var scaled: float = delta * time_scale()
 	if scaled <= 0.0:

@@ -1,7 +1,7 @@
-# HANDOFF — Weeks 1 to 3 (W1-B1 .. W1-B10, W2-B1 .. W2-B6, W3-B1 .. W3-B5)
+# HANDOFF — Weeks 1 to 4 (W1-B1 .. W1-B10, W2-B1 .. W2-B6, W3-B1 .. W3-B5, W4-B1 .. W4-B13)
 
 A plain-language rundown of what the Dev B (Surface + Systems) lane shipped in
-week 1, week 2 and week 3, how each piece works, every decision that was made
+week 1, week 2, week 3 and week 4, how each piece works, every decision that was made
 without a human in the loop, and how to run the build solo and in co-op. Written
 for Dev A and the human who review this handoff; the task list is
 `tasks/todo.md`.
@@ -28,6 +28,22 @@ for Dev A and the human who review this handoff; the task list is
   through the lane-B seam; **`week-3` is not tagged** — the design-doc "Done
   when" line is partial. Verdict and reason in decision 37 below and in
   `specs/WEEKLY.md`.
+- Week 4 gate reconciliation (2026-10-20, tree at `379c46c` on
+  `feat/relics-on-dodge-relics`): import exit 0 with 0 error lines
+  (`.goals/evidence/r1792536096839/g1/import-final.log`); **60 GUT scripts /
+  1111 tests / 1111 passing / 61 696 asserts, exit 0** in 75.4 s
+  (`full-suite-final.log`) — the same count as the run's own step-0 baseline,
+  which is what a no-engineering reconciliation should show; the nineteen W4-B
+  suites re-run one file at a time, **400 tests / 400 passing / 4 127
+  asserts**, and the seven suites whose W4-B box is still open green too,
+  **170 tests / 170 passing / 3 409 asserts**
+  (`w4b-named-suites.log`, `w4b-openbox-suites.log`); `tools/smoke_two.sh`
+  **35 `ok` / 0 FAIL / exit 0** at the same revision
+  (`.goals/evidence/r1792536096839/g15/smoke-run.log`); W4-B1 .. W4-B6 ticked
+  with evidence, W4-B7 .. W4-B13 open with blocker or follow-up annotations;
+  **`week-4` is not tagged** — the design-doc "Done when" line is partial, and
+  no engineering was done in this goal. Verdict and reason in decision 100
+  below and in `specs/WEEKLY.md`.
 
 ---
 
@@ -1309,7 +1325,7 @@ module emits on. No `Engine.time_scale`, no global RNG, no Dev A file, no
 `.tscn`, no `project.godot` / Input Map / autoload-signature / `Events` /
 `scripts/data/` / save-schema / CI / addons change.
 
-### W4-B2 — `Effect` base, `EffectHost`, event dispatch (`effect-system`) — in progress
+### W4-B2 — `Effect` base, `EffectHost`, event dispatch (`effect-system`) — complete 2026-10-20 (heading corrected by G1)
 
 W4-B2 is the system every relic, mutation, class passive, Ascension and skill
 node attaches through, so it landed as several goals (G9–G15). This section
@@ -7048,6 +7064,49 @@ already recorded in a spec or a comment, the location is given.
     weight 0.3) are content-as-data in `.tres`, so the week-5 pass re-tunes them
     without touching a script. Recorded so they are not mistaken for spec values.
 
+100. **`week-4` is NOT created; the design-doc "Done when" line is partial
+    (2026-10-20).** G1. Design doc section 20's week-4 line — "Events bus,
+    StatBlock, TimeManager, status effects, element combos, 20 relics, Shrine
+    rooms, elites with affixes, gold/ore/Echo drops" — is **partial**. **Met:**
+    the **events bus** (every signal of SPEC-events' table has a parsed
+    conformance case; the nine emitters whose owner modules are Dev A's are
+    **W4-A4** and still open, so `tests/helpers/event_emitter.gd` stands in),
+    **StatBlock** and **TimeManager** (weeks 2 to 3), **status effects**, the
+    **six element combos** with their scaling hooks (W4-B4), and all **twenty
+    relics** of design doc 9.1 (W4-B6). **Unmet: "Shrine rooms"** — the
+    `Shrine` interactable, its scene, the guarded `SHRINE` populator
+    registration and the whole pick → attach → codex path ship and are tested,
+    but **no floor places one** (Dev A's **W4-A3**). **Unmet: "elites with
+    affixes"** — no affix system exists (Dev A's **W4-A1**). **Unmet: the
+    week-4 half of TimeManager** — **W4-B9** is open: the three rewind functions
+    are `pass` stubs, no two-process check of the two broadcasts has been run,
+    and there is no `timestop` smoke step. **Unmet: "gold/ore/Echo drops"** —
+    the path ships and is tested end to end from `Events.enemy_killed` to a
+    credited pickup, but nothing emits `enemy_killed` in a shipped game (again
+    **W4-A4**) and the four `data/loot/` tables carry placeholder amounts for
+    the week-5 economy pass (decision 99). **A milestone tag claims the whole
+    design-doc line, not one lane's task list** — the precedent decisions 22
+    and 37 set for `week-2` and `week-3`. The verdict was taken against the tree
+    at `379c46caaf5425c0d4ce52c27d5618c19379fb09` on
+    `feat/relics-on-dodge-relics` (`git branch -vv`), and `git tag -l` still
+    shows only `week-1`; a tag would have to sit on a revision where all nine
+    clauses of the line hold. The same verdict is
+    written into `specs/WEEKLY.md`'s Week 4 entry, `tasks/todo.md`'s Week 4
+    checkpoint block and `.goals/LOG.md`. Evidence:
+    `.goals/evidence/r1792536096839/g1/`.
+101. **Two doc comments in `scripts/relics/active_relic_controller.gd` were
+    reworded to drop the literal `Engine.time_scale` (2026-10-20).** G1.
+    SPEC-time-manager's check reads "no `Engine.time_scale` anywhere in
+    `scripts/` or `scenes/`", and D3, G17, G19 and G24 each run that grep as a
+    standing gate — but the week-4 relic doc comments spelled the phrase out
+    while *explaining* that a relic cooldown must never use it. Prose that
+    forbids a call still matches a grep for the call (the failure mode LESSONS
+    records against G11), so those two comments now say "the engine's global
+    time scale". **No code, no behaviour and no test assertion changed** — it
+    is a comment-only edit, and `tests/unit/test_active_relic.gd` (plus the full
+    suite) was re-run green after it. Recorded because two later goals would
+    otherwise have had to edit this goal's prose to pass their own gate.
+
 ---
 
 ## Running the game
@@ -7167,11 +7226,15 @@ short checklist for Dev A and the human; none of them block week 4.
   W3-B4b on 2026-10-20** (decision 34) and the host revive rule behind it is
   tested; what remains open is only the hold-to-revive input and the
   `Downed`/`Dead` states that start the sequence, both Dev A's W3-A5.
-- **Floor-sync smoke steps 4 and 5** — step 4 (a client picks a relic at a
-  Shrine) needs the Shrine of W4-B5, and step 5 (a client goes down and the host
-  revives) needs Dev A's W3-A5 down/emitter path. Both are recorded as blocked
-  rather than skipped in decision 37; `tools/smoke_two.sh` drives steps 1–3 and
-  the floor-sync phase today.
+- **Floor-sync smoke steps 4 to 7** — step 4 (a client picks a relic at a
+  Shrine) has its Shrine since W4-B5, but **no floor places one**, which is Dev
+  A's W4-A3; step 5 (a client goes down and the host revives) needs the real
+  down path, Dev A's W3-A5; step 6 (a host time stop while the client keeps
+  moving) needs W4-B9's consumers and the `timestop` command driven from the
+  script (G26); step 7 (close the client, host run continues) is not driven
+  either. All four are recorded as blocked rather than skipped in decisions 37
+  and 100; `tools/smoke_two.sh` drives steps 1–3 and the floor-sync phase
+  today.
 - **Advanced-floor two-process proof** — only floor 1 is proven across two
   processes (the driver starts the run once the client is in, which is the
   `run_started` broadcast). The `floor_changed` re-broadcast is unit-tested;
@@ -7189,13 +7252,17 @@ short checklist for Dev A and the human; none of them block week 4.
 ---
 
 Everything above was verified on this machine: week 1 and week 2 on 2026-10-18 /
-2026-10-19 (import exit 0, 338/338 GUT, 28/28 smoke, `main` @ `ee62cb7`), and the
+2026-10-19 (import exit 0, 338/338 GUT, 28/28 smoke, `main` @ `ee62cb7`), the
 **Week 3 close-out on 2026-10-20** at `84395b4` — import exit 0 with 0 error
 lines, **35 scripts / 554 tests / 554 passing / 54 115 asserts, exit 0**, and
 `tools/smoke_two.sh` **35 `ok` / 0 FAIL / exit 0** (logs in
-`.goals/evidence/g6/`). The week-1 close-out (WEEKLY entry, SPEC-foundation
-write-backs, `week-1` tag) is done. The week-2 checkpoint is **partial** and the
-`week-2` tag is withheld (decision 22); the week-3 checkpoint is **partial** and
-the `week-3` tag is withheld (decision 37) — in both cases because Dev A's lane
-for that week has not landed. Week 4 records, the perf numbers and the `week-4`
-tag decision are tracked in `.goals/PLAN.md` and `specs/WEEKLY.md`.
+`.goals/evidence/g6/`) — and the **Week 4 gate reconciliation on 2026-10-20** at
+`379c46c` — import exit 0 with 0 error lines, **60 scripts / 1111 tests / 1111
+passing / 61 696 asserts, exit 0** (logs in
+`.goals/evidence/r1792536096839/g1/`). The week-1 close-out (WEEKLY entry,
+SPEC-foundation write-backs, `week-1` tag) is done. The week-2, week-3 and
+week-4 checkpoints are each **partial** and each tag is withheld (decisions 22,
+37 and 100) — in every case because Dev A's lane for that week has not landed.
+The week-4 verdict, the per-task record and the perf-scene gap are written into
+`specs/WEEKLY.md`'s Week 4 entry, `tasks/todo.md`'s Week 4 checkpoint block and
+decision 100; the perf scene itself is still open as W4-B11 / G28.
