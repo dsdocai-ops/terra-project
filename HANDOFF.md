@@ -1264,6 +1264,84 @@ module emits on. No `Engine.time_scale`, no global RNG, no Dev A file, no
 `.tscn`, no `project.godot` / Input Map / autoload-signature / `Events` /
 `scripts/data/` / save-schema / CI / addons change.
 
+### W4-B2 — `Effect` base, `EffectHost`, event dispatch (`effect-system`) — in progress
+
+W4-B2 is the system every relic, mutation, class passive, Ascension and skill
+node attaches through, so it landed as several goals (G9–G15). This section
+records what has shipped so far and grows as the rest lands. Task line in
+`tasks/todo.md` stays unticked until `Effect`/`EffectHost` are complete.
+
+#### G9 — `Tags` vocabulary and `ProjectileSpec` (2026-10-20)
+
+Two interfaces every other Week 4 module imports: the closed tag vocabulary
+`ContentData.tags` is drawn from, and the value object `Effect.fire_projectile`
+hands the projectile spawner.
+
+**`scripts/effects/tags.gd`** — `class_name Tags extends RefCounted`, the spec's
+19 tags as `StringName` constants (`FIRE` … `ACTIVE`), a typed
+`ALL: Array[StringName]` in the spec's order, and `is_valid(tag) -> bool`. It
+carries no state and no methods beyond that check; it is a vocabulary, not a
+registry.
+
+**`scripts/effects/projectile_spec.gd`** — `class_name ProjectileSpec extends
+RefCounted` with exactly the spec's six fields: `scene: PackedScene`,
+`speed: float`, `damage: float`, `element: HitData.Element`, `pierce: int`,
+`bounce: int`. A convenience `_init` takes them in that order.
+`to_dict()`/`from_dict()` are the plain-type form the spawner path uses — the
+scene travels as its resource path, the element as its enum int, everything else
+as a float/int — matching the `EnemySpawnInfo` / `ProjectileSpawnInfo`
+convention. A missing or non-scene path leaves `scene` null and an element
+outside the enum degrades to `NONE`, so a spec that only carries numbers (or an
+older payload) is still usable rather than raising.
+
+**`tests/unit/test_tags.gd`** (15 tests / 258 asserts) parses the tag set out of
+the spec's own "Tags and synergies" sentence at run time (`test_events_bus.gd`'s
+precedent) and asserts: the spec lists 19 unique tags; the script's constant map
+contains exactly those 19 `StringName` constants and nothing else besides `ALL`;
+every constant is the uppercased tag name; `ALL` is the full, deduplicated
+vocabulary; `is_valid` accepts every vocabulary tag and rejects an invented tag,
+the wrong case and the empty name. The content cross-link walks every `.tres`
+under `data/relics`, `data/mutations`, `data/synergies` and `data/ascensions`,
+loads the `ContentData` ones and reports any tag outside the vocabulary, with the
+helper's failing path forced in its own case (`&"lifesteal"` is reported,
+`Tags.ALL` produces nothing). `ProjectileSpec` is asserted for its six declared
+variables and no more, its neutral defaults, a full dictionary round trip through
+the placeholder projectile scene, the plain wire types, the absent-scene path and
+the unknown-element degradation.
+
+**Verified:** `-gtest=res://tests/unit/test_tags.gd` 15/15 green / 258 asserts
+(`.goals/evidence/g9/test-tags.log`); red run first — GUT refused the file with a
+parse error because neither class existed
+(`.goals/evidence/g9/red-test-tags.log`); full suite **38 scripts / 589 tests /
+589 passing / 55 116 asserts** exit 0 (`g9/gut-full.log`, up from the 574
+baseline); `--import` exit 0 with **0** error or warning lines (`g9/import.log`);
+headless `-- --host --debug-tools --smoke=6` exit 0 with 0 script/parse errors
+(`g9/launch-host.log`); `grep -rn "Engine.time_scale" scripts/ scenes/` and the
+global-RNG grep both empty. Negative controls forced and kept: an invented
+constant fails the exact-set assertion and a dropped tag fails six assertions
+(`g9/negative-control-invented-tag.log`, `g9/negative-control-missing-tag.log`),
+both reverted before the green run.
+
+**Judgment calls.** (1) The vocabulary is read from the spec rather than
+transcribed, so a spec edit that adds or renames a tag fails the test instead of
+leaving a second list to rot. (2) The test asserts the constant map *exactly*
+apart from `ALL`, which is what makes "exactly the 19 tags" checkable; a future
+non-tag constant would need to live in its own script. (3) `ProjectileSpec`'s
+wire form carries a resource path and an int rather than Resource objects, per
+the repo's existing spawn-info convention. (4) `_element_from` is a `match`
+rather than an int cast: an unknown value becomes `NONE` explicitly, and the
+conversion raises no int-to-enum warning.
+
+**Blocked / not claimed.** `ProjectileSpec.element` consumes stats-status's
+`HitData.Element`, the field-matching mirror of combat-core's `HitInfo.Element`
+(**blocked on Dev A W2-A1**); when the real class lands the swap is the same
+rename HANDOFF decision 38 recorded for the bus. Nothing in this goal calls a
+spawner: `spawn`/`fire_projectile` are G15, and the projectile spawner itself is
+Dev A's W2-A6. The round trip proves the spec's own dictionary form, not a
+two-process transmission. No file on the "Ask first" list was touched — both new
+scripts are additions under `scripts/effects/`, and `ContentData` is unchanged —
+so no new numbered decision is required.
+
 ---
 
 ## Decisions made without a human
