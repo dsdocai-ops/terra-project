@@ -110,6 +110,26 @@ const BURN_DAMAGE_PER_SECOND: float = 0.04
 const TOXIN_DAMAGE_PER_SECOND: float = 0.015
 const BLEED_DAMAGE_PER_SECOND: float = 0.02
 
+## CHILL's penalty per stack, as a `StatBlock` *percent* modifier on move and
+## attack speed: SPEC-stats-status, "`-12% move and attack speed per stack`". A
+## percent modifier rather than a flat one because the spec states the row as a
+## fraction of the entity's own speed, and because the base values are never
+## written (SPEC-project).
+const CHILL_SLOW_PER_STACK: float = 0.12
+
+## FREEZE's immobility, as the percent modifier that takes move speed to 0:
+## `(base + flat) * (1 + percent)` is 0 when the percent sum is -1, whatever the
+## base is. Move speed only — "cannot act" is `can_act()`, not a speed of zero,
+## because attack speed is clamped at 0.2 and would never read as stopped.
+const FREEZE_IMMOBILE_PERCENT: float = -1.0
+
+## The `StatBlock` modifier sources CHILL and FREEZE own. One `StringName` each so
+## `remove_source()` on a clear, an expiry, a stack change and a conversion all
+## release exactly the modifiers that status added — and so a second status
+## cannot take the first one's penalty away with it.
+const CHILL_SOURCE: StringName = &"status:chill"
+const FREEZE_SOURCE: StringName = &"status:freeze"
+
 ## The spec's seven rows plus FREEZE, by their snake_case names: the tag each
 ## tick carries and the word the debug overlay and the HUD use.
 const STATUS_NAMES: Dictionary[int, StringName] = {
@@ -171,6 +191,12 @@ var _active: Dictionary[int, Dictionary] = {}
 ## True once this component has warned that its entity carries no `Health`, so
 ## sixty frames of a burning enemy write one line and not sixty.
 var _warned_missing_health: bool = false
+## Whether the pending FREEZE double is still unspent. Armed when FREEZE is
+## applied (or when CHILL converts to it) and spent by `consume_freeze_double()`,
+## which is what makes the double land on *one* hit. Without Permafrost the hit
+## after that is a normal one; Permafrost's "always" is the attacker-side
+## `status_mult` term on `Damage.compute` (G23), not a second flag here.
+var _freeze_double_ready: bool = false
 
 
 # --- the API SPEC-stats-status's "Interfaces provided" fixes -------------------
@@ -205,8 +231,18 @@ func apply_status(status: Status, stacks: int = 1, source: Node = null) -> bool:
 	var cap: int = max_stacks(status)
 	if cap != UNLIMITED_STACKS:
 		total = mini(total, cap)
+	# SPEC-stats-status, CHILL's row: "At 5 converts to `FREEZE`" — the 5th stack
+	# is never held as Chill. Only an entity that may hold FREEZE converts: a
+	# player is one of the three statuses FREEZE is forbidden to, so a player
+	# simply sits at the Chill cap (the spec's own last line, applied here rather
+	# than left for the caller).
+	if status == Status.CHILL and total >= CHILL_MAX_STACKS and allows(Status.FREEZE):
+		return _freeze_from_chill(source)
 	entry["stacks"] = total
 	entry["remaining"] = duration(status)
+	if status == Status.FREEZE:
+		_freeze_double_ready = true
+	_sync_speed_modifiers(status)
 	status_applied.emit(status, total)
 	Events.status_applied.emit(entity(), status, total, source)
 	return true
@@ -237,6 +273,7 @@ func clear(status: Status) -> void:
 	if not _active.has(status):
 		return
 	_active.erase(status)
+	_release_modifiers(status)
 	status_expired.emit(status)
 
 
@@ -245,6 +282,51 @@ func clear_all() -> void:
 	var present: Array[int] = _active.keys()
 	for status: int in present:
 		clear(status)
+
+
+# --- the flags the other rows' consumers read (G21) --------------------------
+
+## Whether the entity may act this frame. False only while FREEZE is active —
+## SPEC-stats-status, FREEZE's row: "Immobile 2 s, can't act". The lock is a
+## read, not a disrupted state: the entity's own controller asks before it moves
+## or attacks (enemies-ai / abilities), so a frozen enemy keeps its AI and its
+## cooldowns and simply produces nothing while this is false.
+func can_act() -> bool:
+	return not has(Status.FREEZE)
+
+
+## Whether the pending FREEZE double is still unspent. `Damage.compute` (G23)
+## reads it with the mark below to build `status_mult`.
+func freeze_double_ready() -> bool:
+	return has(Status.FREEZE) and _freeze_double_ready
+
+
+## Spends the FREEZE double: true on the first hit after a freeze, false after.
+## The spec's row is "next hit double damage once (...) then clears all Chill",
+## so spending it is also what drops any Chill the frozen entity picked up.
+func consume_freeze_double() -> bool:
+	if not freeze_double_ready():
+		return false
+	_freeze_double_ready = false
+	clear(Status.CHILL)
+	return true
+
+
+## Whether the entity's next damaging hit is a guaranteed crit. SPEC-stats-status,
+## MARK's row: "Next damaging hit is a guaranteed crit, then consumed". Read by
+## `Damage.compute` (G23), which short-circuits its crit roll when this is true.
+func mark_forces_crit() -> bool:
+	return has(Status.MARK)
+
+
+## Consumes the mark, returning whether there was one to consume: the next
+## damaging hit is the only caller, and it is consumed whether or not the hit
+## itself connects (the spec says "next damaging hit", not "next hit that lands").
+func consume_mark() -> bool:
+	if not has(Status.MARK):
+		return false
+	clear(Status.MARK)
+	return true
 
 
 # --- reads for the rest of the game ------------------------------------------
@@ -428,6 +510,77 @@ func _tick(scaled_delta: float) -> void:
 			expired.append(status)
 	for status: int in expired:
 		clear(status)
+
+
+# --- the row-specific edges (G21) --------------------------------------------
+
+## Brings CHILL's or FREEZE's `StatBlock` modifiers in line with the stacks the
+## component now holds: CHILL's -12 % per stack on move and attack speed, FREEZE's
+## move speed of 0. One status's source is removed and re-added, so a stack change
+## widens the penalty without stacking a second copy of it, and a status with no
+## stacks leaves none behind. Every write is a modifier — `base` is never touched
+## (SPEC-project: "Never edit base stats").
+##
+## Called from `apply_status()` and from the Chill-to-Freeze conversion, so there
+## is one place a speed penalty is computed. An entity with no `StatBlock` yet
+## simply has no stats to slow.
+func _sync_speed_modifiers(status: int) -> void:
+	var block := stat_block()
+	if block == null:
+		return
+	match status:
+		Status.CHILL:
+			block.remove_source(CHILL_SOURCE)
+			var held := stacks(Status.CHILL)
+			if held > 0:
+				var percent: float = -CHILL_SLOW_PER_STACK * float(held)
+				block.add_modifier(StatBlock.Stat.MOVE_SPEED, 0.0, percent, CHILL_SOURCE)
+				block.add_modifier(StatBlock.Stat.ATTACK_SPEED, 0.0, percent, CHILL_SOURCE)
+		Status.FREEZE:
+			block.remove_source(FREEZE_SOURCE)
+			if has(Status.FREEZE):
+				block.add_modifier(StatBlock.Stat.MOVE_SPEED, 0.0, FREEZE_IMMOBILE_PERCENT, FREEZE_SOURCE)
+		_:
+			pass
+
+
+## Takes back the modifiers a status owns as it leaves, and forgets its pending
+## double with it. The counterpart of `_sync_speed_modifiers()`, called from
+## `clear()` and nowhere else, so no status can be removed with its penalty still
+## on the entity — however it was removed (consumed, expired, converted, or an
+## explicit `clear_all()`).
+func _release_modifiers(status: int) -> void:
+	var block := stat_block()
+	match status:
+		Status.CHILL:
+			if block != null:
+				block.remove_source(CHILL_SOURCE)
+		Status.FREEZE:
+			_freeze_double_ready = false
+			if block != null:
+				block.remove_source(FREEZE_SOURCE)
+		_:
+			pass
+
+
+## CHILL reaching its cap becomes FREEZE instead: the Chill is cleared (with its
+## slow) and the freeze is applied on top, carrying the full duration and arming
+## the one-shot double. Announced like any other application, so a HUD icon and an
+## effect listening on `Events.status_applied` see the freeze rather than a Chill
+## that never existed.
+##
+## Called only from `apply_status()`, after the player gate has already decided
+## this entity may hold FREEZE.
+func _freeze_from_chill(source: Node) -> bool:
+	clear(Status.CHILL)
+	var entry: Dictionary = _entry(Status.FREEZE)
+	entry["stacks"] = FREEZE_MAX_STACKS
+	entry["remaining"] = FREEZE_DURATION
+	_freeze_double_ready = true
+	_sync_speed_modifiers(Status.FREEZE)
+	status_applied.emit(Status.FREEZE, FREEZE_MAX_STACKS)
+	Events.status_applied.emit(entity(), Status.FREEZE, FREEZE_MAX_STACKS, source)
+	return true
 
 
 ## The mutable record for `status`, created empty on first use. Dictionaries are

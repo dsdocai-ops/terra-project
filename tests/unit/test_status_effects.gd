@@ -30,6 +30,11 @@ const STOP_SOURCE: StringName = &"status-stop"
 
 const TPS: int = 60
 const MAX_HP: float = 100.0
+## The fixture's speed bases, so a CHILL/FREEZE read of `StatBlock.get_value()`
+## has a non-zero number to be a fraction of. A zero base would read 0 whether or
+## not a penalty landed.
+const BASE_MOVE_SPEED: float = 120.0
+const BASE_ATTACK_SPEED: float = 1.0
 ## BURN at 5 stacks on a 100 HP target: 4 % per stack per second (SPEC table).
 const BURN_STACKS: int = 5
 const BURN_5_STACK_DPS: float = 20.0
@@ -99,7 +104,11 @@ func _spawn(component: StatusEffects = null) -> StatusEffects:
 	statuses.name = STATUS_NAME
 	node.add_child(statuses)
 	add_child_autofree(node)
-	block.base = {StatBlock.Stat.MAX_HP: MAX_HP}
+	block.base = {
+		StatBlock.Stat.MAX_HP: MAX_HP,
+		StatBlock.Stat.MOVE_SPEED: BASE_MOVE_SPEED,
+		StatBlock.Stat.ATTACK_SPEED: BASE_ATTACK_SPEED,
+	}
 	_entity = node
 	_block = block
 	_health = health
@@ -368,3 +377,167 @@ func test_a_refused_application_reaches_the_events_bus_not_at_all() -> void:
 	_entity.add_to_group(StatusEffects.PLAYER_TAG)
 	_status.apply_status(StatusEffects.Status.MARK, 1)
 	assert_eq(_bus_status, -1, "the bus heard nothing at all")
+
+
+# --- G21: BURN, CHILL -> FREEZE, and MARK ---------------------------------
+#
+# The four spec rows the Week 4 relics drive (Ember Boots burns, Frostwalkers
+# chill, Assassin's Mark marks). The core above pins the tables; this section
+# pins each row's own behaviour: BURN's per-stack DPS and expiry, CHILL's
+# StatBlock slow and its 5th-stack conversion, FREEZE's immobility, action lock,
+# one-shot double and Chill clear, and MARK's single stack consumed by the next
+# hit. 4 % / -12 % / 2 s / single are the spec table's numbers, read from the
+# component's constants rather than repeated here.
+
+## The damage a window of frames dealt, with one frame or two of physics jitter
+## allowed either way — the same bound the core's ticking cases use.
+func _assert_dps(expected: float, note: String) -> void:
+	var dealt := float(_health.total_damage())
+	assert_between(dealt, expected * (1.0 - DPS_TOLERANCE), expected * (1.0 + DPS_TOLERANCE), note)
+
+
+func test_burn_deals_four_percent_of_max_hp_per_second_per_stack() -> void:
+	assert_almost_eq(_status.damage_per_second(StatusEffects.Status.BURN, 1), MAX_HP * 0.04, 0.001,
+		"BURN's rate is 4 % of max HP per second per stack")
+	assert_almost_eq(_status.damage_per_second(StatusEffects.Status.BURN, 5), MAX_HP * 0.04 * 5.0, 0.001,
+		"and five stacks deal five times that")
+	_status.apply_status(StatusEffects.Status.BURN, 1)
+	await wait_physics_frames(TPS)
+	_assert_dps(MAX_HP * 0.04, "one stack of BURN on 100 HP deals 4 damage over a second")
+
+
+func test_burn_stacks_add_dps_and_stop_at_five() -> void:
+	_status.apply_status(StatusEffects.Status.BURN, 3)
+	_status.apply_status(StatusEffects.Status.BURN, 4)
+	assert_eq(_status.stacks(StatusEffects.Status.BURN), StatusEffects.BURN_MAX_STACKS,
+		"BURN's stacks cap at 5")
+	assert_almost_eq(_status.damage_per_second(StatusEffects.Status.BURN, 5), MAX_HP * 0.04 * 5.0, 0.001,
+		"and each stack adds 4 % of max HP per second on top of the last")
+
+
+func test_burn_reapplying_refreshes_the_duration_rather_than_stacking_it() -> void:
+	_status.apply_status(StatusEffects.Status.BURN, 1)
+	await wait_physics_frames(int(StatusEffects.BURN_DURATION * float(TPS)) * 3 / 4)
+	assert_lt(_status.remaining(StatusEffects.Status.BURN), StatusEffects.BURN_DURATION * 0.5,
+		"the clock is most of the way through its 4 s")
+	_status.apply_status(StatusEffects.Status.BURN, 1)
+	assert_almost_eq(_status.remaining(StatusEffects.Status.BURN), StatusEffects.BURN_DURATION, 0.05,
+		"a re-apply resets the 4 s clock instead of adding a second one")
+	assert_eq(_status.stacks(StatusEffects.Status.BURN), 2, "and does add its stack of DPS")
+
+
+func test_burn_expires_after_four_seconds_of_scaled_time() -> void:
+	_status.apply_status(StatusEffects.Status.BURN, StatusEffects.BURN_MAX_STACKS)
+	watch_signals(_status)
+	await wait_physics_frames(int(StatusEffects.BURN_DURATION * float(TPS)) + 20)
+	assert_signal_emitted_with_parameters(_status, "status_expired", [StatusEffects.Status.BURN])
+	assert_false(_status.has(StatusEffects.Status.BURN), "4 s of scaled time ends a burn")
+	assert_eq(_status.remaining(StatusEffects.Status.BURN), 0.0)
+
+
+func test_chill_slows_move_and_attack_speed_by_twelve_percent_per_stack() -> void:
+	var chill_slow: float = StatusEffects.CHILL_SLOW_PER_STACK
+	assert_almost_eq(chill_slow, 0.12, 0.001, "the spec row is -12 % per stack")
+	_status.apply_status(StatusEffects.Status.CHILL, 2)
+	assert_almost_eq(_block.get_value(StatBlock.Stat.MOVE_SPEED), BASE_MOVE_SPEED * (1.0 - 2.0 * chill_slow),
+		0.001, "two stacks read -24 % move speed through the StatBlock")
+	assert_almost_eq(_block.get_value(StatBlock.Stat.ATTACK_SPEED), BASE_ATTACK_SPEED * (1.0 - 2.0 * chill_slow),
+		0.001, "and the same penalty on attack speed")
+	assert_almost_eq(float(_block.base[StatBlock.Stat.MOVE_SPEED]), BASE_MOVE_SPEED, 0.001,
+		"the base value was never written -- the penalty is a modifier")
+	assert_almost_eq(float(_block.base[StatBlock.Stat.ATTACK_SPEED]), BASE_ATTACK_SPEED, 0.001,
+		"attack speed's base is untouched too")
+
+
+func test_chill_slow_follows_the_stack_count_and_lifts_with_the_status() -> void:
+	_status.apply_status(StatusEffects.Status.CHILL, 1)
+	var one_stack := _block.get_value(StatBlock.Stat.MOVE_SPEED)
+	assert_almost_eq(one_stack, BASE_MOVE_SPEED * 0.88, 0.001, "one stack is -12 %")
+	_status.apply_status(StatusEffects.Status.CHILL, 3)
+	assert_eq(_status.stacks(StatusEffects.Status.CHILL), 4, "four stacks, below the conversion point")
+	assert_almost_eq(_block.get_value(StatBlock.Stat.MOVE_SPEED), BASE_MOVE_SPEED * (1.0 - 4.0 * 0.12), 0.001,
+		"a re-apply widens the slow to the new stack count")
+	_status.clear(StatusEffects.Status.CHILL)
+	assert_almost_eq(_block.get_value(StatBlock.Stat.MOVE_SPEED), BASE_MOVE_SPEED, 0.001,
+		"clearing CHILL removes exactly its modifiers")
+
+
+func test_the_fifth_chill_converts_the_entity_to_freeze_instead() -> void:
+	_status.apply_status(StatusEffects.Status.CHILL, 4)
+	assert_true(_status.has(StatusEffects.Status.CHILL), "four stacks are still CHILL")
+	assert_false(_status.has(StatusEffects.Status.FREEZE))
+	_status.apply_status(StatusEffects.Status.CHILL, 1)
+	assert_false(_status.has(StatusEffects.Status.CHILL), "the 5th stack is FREEZE instead of CHILL")
+	assert_true(_status.has(StatusEffects.Status.FREEZE), "the entity is frozen")
+	assert_eq(_status.stacks(StatusEffects.Status.FREEZE), StatusEffects.FREEZE_MAX_STACKS, "single stack")
+	assert_eq(_status.stacks(StatusEffects.Status.CHILL), 0, "no Chill is left behind")
+	assert_almost_eq(_status.remaining(StatusEffects.Status.FREEZE), StatusEffects.FREEZE_DURATION, 0.05,
+		"and it carries the full freeze duration")
+
+
+func test_five_chill_applied_at_once_converts_the_same_way() -> void:
+	_status.apply_status(StatusEffects.Status.CHILL, StatusEffects.CHILL_MAX_STACKS)
+	assert_true(_status.has(StatusEffects.Status.FREEZE), "one call of 5 lands as FREEZE")
+	assert_false(_status.has(StatusEffects.Status.CHILL))
+	assert_almost_eq(_block.get_value(StatBlock.Stat.MOVE_SPEED), 0.0, 0.001,
+		"and the Chill slow gives way to the freeze's immobility")
+
+
+func test_a_player_caps_chill_at_five_without_freezing() -> void:
+	_entity.add_to_group(StatusEffects.PLAYER_TAG)
+	_status.apply_status(StatusEffects.Status.CHILL, StatusEffects.CHILL_MAX_STACKS)
+	assert_true(_status.has(StatusEffects.Status.CHILL), "a player can be chilled")
+	assert_eq(_status.stacks(StatusEffects.Status.CHILL), StatusEffects.CHILL_MAX_STACKS, "to the cap")
+	assert_false(_status.has(StatusEffects.Status.FREEZE),
+		"but never frozen: FREEZE is one of the three a player never receives")
+
+
+func test_freeze_makes_the_entity_immobile_and_unable_to_act() -> void:
+	_status.apply_status(StatusEffects.Status.FREEZE, 1)
+	assert_almost_eq(_block.get_value(StatBlock.Stat.MOVE_SPEED), 0.0, 0.001, "move speed reads 0")
+	assert_false(_status.can_act(), "and the entity cannot act")
+	assert_almost_eq(float(_block.base[StatBlock.Stat.MOVE_SPEED]), BASE_MOVE_SPEED, 0.001,
+		"again through a modifier, never a base write")
+	await wait_physics_frames(int(StatusEffects.FREEZE_DURATION * float(TPS)) + 20)
+	assert_false(_status.has(StatusEffects.Status.FREEZE), "2 s of scaled time ends the freeze")
+	assert_almost_eq(_block.get_value(StatBlock.Stat.MOVE_SPEED), BASE_MOVE_SPEED, 0.001,
+		"and the entity moves again")
+	assert_true(_status.can_act(), "and acts again")
+
+
+func test_freeze_doubles_the_next_hit_exactly_once() -> void:
+	_status.apply_status(StatusEffects.Status.FREEZE, 1)
+	assert_true(_status.freeze_double_ready(), "a frozen entity holds the pending double")
+	assert_true(_status.consume_freeze_double(), "the next hit consumes it")
+	assert_false(_status.freeze_double_ready(), "and no second hit is doubled")
+	assert_false(_status.consume_freeze_double(), "consuming again finds nothing")
+	assert_true(_status.has(StatusEffects.Status.FREEZE), "the freeze itself is still running")
+
+
+func test_consuming_the_freeze_double_clears_all_chill() -> void:
+	_status.apply_status(StatusEffects.Status.FREEZE, 1)
+	_status.apply_status(StatusEffects.Status.CHILL, 2)
+	assert_true(_status.has(StatusEffects.Status.CHILL), "Chill can build on a frozen entity")
+	assert_true(_status.consume_freeze_double())
+	assert_false(_status.has(StatusEffects.Status.CHILL), "the double clears all Chill as it lands")
+	assert_almost_eq(_block.get_value(StatBlock.Stat.MOVE_SPEED), 0.0, 0.001,
+		"the Chill slow goes with it -- the freeze alone is what holds the entity still")
+
+
+func test_mark_forces_the_next_hit_to_crit_and_is_consumed() -> void:
+	_status.apply_status(StatusEffects.Status.MARK, 1)
+	assert_true(_status.mark_forces_crit(), "the mark guarantees a crit")
+	assert_true(_status.consume_mark(), "the next damaging hit consumes it")
+	assert_false(_status.mark_forces_crit(), "so the one after that is a normal roll")
+	assert_false(_status.has(StatusEffects.Status.MARK))
+	assert_false(_status.consume_mark(), "there is nothing left to consume")
+
+
+func test_reapplying_mark_does_not_stack_or_rearm() -> void:
+	_status.apply_status(StatusEffects.Status.MARK, 1)
+	_status.apply_status(StatusEffects.Status.MARK, 3)
+	assert_eq(_status.stacks(StatusEffects.Status.MARK), 1, "MARK is a single stack however many are applied")
+	assert_true(_status.mark_forces_crit())
+	_status.apply_status(StatusEffects.Status.MARK, 2)
+	assert_true(_status.has(StatusEffects.Status.MARK), "a re-apply is still just the one mark")
+	assert_true(_status.consume_mark(), "and it is still consumed exactly once")
