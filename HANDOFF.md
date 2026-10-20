@@ -3878,6 +3878,80 @@ touches no RPC, replication or spawner wiring.
 
 ---
 
+### G9 — the `Shrine` interactable, its scene and the guarded `SHRINE` populator (W4-B5, raw goal G29) (`relics`)
+
+**What shipped.** `scripts/relics/shrine.gd` (`class_name Shrine extends Area2D`),
+`scenes/dungeon/interactables/shrine.tscn` (root script is the file next to it,
+physics layer 6 "interactable", an interact `CircleShape2D` and the placeholder
+`Polygon2D` — the `Rope` scene's shape), one startup line in
+`scenes/main/main.gd` beside `Rope.register_populator()`, a `tests/helpers/`
+registry double (`shrine_registry_stub.gd`), and `tests/unit/test_shrine.gd`
+(19 cases). No relic is attached yet and no codex is written: the pick, the host
+attach and the codex are G10.
+
+**The spec's two sentences, implemented verbatim.** SPEC-relics "Shrine flow":
+"Interact (host validates one use per player per shrine) rolls 3 relics the player
+does not already hold at max stacks and sends `relic_choice_offered(peer_id, ids)`".
+
+- `interact(player)` is the SPEC-player-controller contract (`prompt_text`,
+  `interact(player)`, `hold_seconds = 0.0` — only revive holds).
+- The host calls `refusal_for(peer_id)` — `no_run` or `already_used` — then spends
+  the use and announces `offer_for(player) = RelicRoller.roll(player, OFFER_COUNT,
+  ALLOW_CURSED)` with `OFFER_COUNT = 3` and `ALLOW_CURSED = false`, the spec's
+  "Cursed never roll at Shrines". The one-use record is `_used_peers` keyed by peer
+  id, so **a second use by the same peer is refused while a different peer still
+  gets its own offer** — both halves are asserted in one case.
+- The offer is also kept per peer (`offer_of()`), because G10's `request_pick_relic`
+  has to validate an index against *the offer that peer actually received*.
+- `relic_choice_offered` is a **signal on the Shrine node**, not on `Events`:
+  `test_events_bus.gd` pins the bus to SPEC-effect-system's 37-signal table with
+  "no extras", and that table has no relic-offer row. The `Rope` precedent
+  (`interaction_forwarded` / `extract_applied`) is the same shape.
+- A client's `interact()` emits `interaction_forwarded(peer_id)` and rolls nothing
+  (decision 85c).
+
+**The populator is the `Rope` pattern, plus one behaviour `Rope` does not have.**
+`shrine_populator()` is `Callable(Shrine, &"_populate_shrine_room")`; registration
+resolves `RoomType.SHRINE` off the generator script's own constant map at runtime
+(so this file never names an enum that does not exist) and is a **guarded no-op
+returning `false`**, with the blocker noted **once per process** — `Rope`'s print
+repeats on every call, and a floor change must not reprint it. `blocker_warnings()`
+exposes that as a *read*, so "warns once" is asserted rather than described.
+
+**Evidence** (`.goals/evidence/g9/`, named `<run>-g9-…`). Red first, kept: the
+parse error `Could not find type "Shrine" in the current scope` from the file with
+the implementation moved aside. Then the file **19/19 / 137 asserts** exit 0
+(re-green at the identical tally after the control); full suite **53 scripts / 945
+tests / 945 passing / 58 273 asserts** exit 0, 73.2 s (G8b: 52/926/926/58 134 — this
+goal's +1 script, +19 cases and +139 asserts = 137 from the new file + the 2
+`test_scenes_load.gd` asserts the new `.tscn` earns; it closes exactly);
+`--import` exit 0 with **0** error lines; the touched files re-run individually
+(`test_shrine` 19/19, `test_rope` 22/22, `test_scenes_load` 1/1 / 34 asserts,
+`test_main_scene` 7/7, `test_relic_data` 13/13 / 281, `test_relic_roller` 25/25 /
+346) all green; headless boot `-- --host --smoke=4` exit 0 with **0 script errors**
+and the blocker line printed exactly once. One forced negative control — the
+unique anchor `if has_used(peer_id):` in `refusal_for()` flipped to `if false:`
+(marker count 1 → 0 → 1) — failed **exactly one case**, the one-use case, at
+130/132 asserts and exit 1, and nothing else; reverted **byte-exact**
+(`sha256sum` equal on both sides, `diff` empty). **No two-instance smoke run**
+(decision 85d).
+
+**Blocked on Dev A (W4-A3):** no generated floor places a shrine yet, so
+two-instance smoke step 4 (a client picks at a Shrine) still has nothing to walk
+to. The blocker is greppable in the code
+(`grep -n "blocked on Dev A (W4-A3)" scripts/relics/shrine.gd`), in this section
+and in `tasks/todo.md`. The swap-in is nothing: registration starts working the
+moment `scripts/generation/floor_generator.gd` exists with `RoomType.SHRINE` and
+the static `register_populator(type, populator)`.
+
+**Not claimed:** the offer is proven against the 20 shipped `.tres` and a
+hand-built hold, not against a live player scene — no player scene composes a
+`StatBlock` yet (**blocked on Dev A, W2-A1**), so Luck reads 0 and the roll is the
+run seed's. Nothing here attaches a relic, so a pickup can be offered and not yet
+taken.
+
+---
+
 ## Decisions made without a human
 
 These are the judgment calls taken during weeks 1 and 2 that were not dictated
@@ -6313,6 +6387,40 @@ already recorded in a spec or a comment, the location is given.
     68, 76, 83). (d) No ask-first surface moved: no `project.godot`, no Input
     Map, no autoload API, no `scripts/data/` Resource, no `Events` signal, no
     save schema, no CI, no `addons/`, no `.tscn`, and nothing in Dev A's lane.
+
+85. **The Shrine's offer is a node signal, its client path stops at the wire,
+    and its registration notes its blocker once (2026-10-20).** G9. (a) **No
+    `Events` signal.** SPEC-relics "Shrine flow" writes
+    `relic_choice_offered(peer_id, ids)`, which reads as a bus signal, but
+    `test_events_bus.gd` pins `Events` to SPEC-effect-system's 37-signal table
+    with *no extras* and that table has no relic-offer row, so adding one would
+    fail a green conformance test to satisfy a sentence about a message. It is a
+    signal on the `Shrine` node instead — the shape `Rope` already ships for its
+    own three messages — and the wire broadcast is G10's with the rest of the
+    pick flow. (b) **`ERR`-free client path with an honest stop.** A client's
+    `interact()` emits `interaction_forwarded(peer_id)` and rolls nothing, and
+    it deliberately stops there: the request that opens a shrine must travel on
+    `NetworkManager` (the shrine node is spawned by the host's populator, so it
+    cannot carry the RPC), and SPEC-relics names no "open" request — only
+    `request_pick_relic`. Inventing an RPC name would fix a wire shape the spec
+    does not name, so the gap is recorded in the code and here and lands with
+    G10's pick flow, exactly as `Rope`'s week-5 vote deferral did. (c) **The
+    one-use record is host state keyed by peer id**, so a client never refuses
+    itself; the refusal reason is a `StringName` constant set
+    (`REFUSAL_NONE` / `REFUSAL_NO_RUN` / `REFUSAL_ALREADY_USED`) in the run's
+    existing style, and `refusal_for()` is the one place the two rules are
+    ordered so the answer and the refusal cannot disagree. (d) **No two-instance
+    smoke run**: this commit adds no RPC, no replication and no spawner wiring —
+    one node signal, one scene, one startup registration line — so there is no
+    sync delta (decisions 68, 76, 83, 84). (e) **`scenes/main/main.gd` is
+    `foundation`** (both lanes), and the one line added there is the startup
+    registration the file's own comment already describes for every owning
+    module; no other lane's `.tscn` and no ask-first surface was touched. (f)
+    **The blocked-on-Dev-A note is emitted once per process** (`_blocker_logged`),
+    unlike `Rope`'s per-call print, because registration is retried on every
+    floor change; `blocker_warnings()` exists so the test asserts that rather
+    than describing it — the prompt display of a shrine's prompt is `ui-hud`'s
+    and is not built here.
 
 ---
 
