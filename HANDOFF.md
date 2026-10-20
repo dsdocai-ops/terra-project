@@ -17,6 +17,11 @@ A and the human who review this handoff; the task list is `tasks/todo.md`.
   began: import exit 0; 27 GUT scripts / 338 tests green in ~7 s;
   W2-B1 .. W2-B6 ticked, W2-B7 / W2-B8 and W2-A1 .. W2-A13 open; `week-2` not
   tagged. Full verdict in decision 22 below.
+- Week 3, latest (2026-10-20, after W3-B3b): import exit 0; 33 GUT scripts /
+  479 tests green in ~8 s; `tools/smoke_two.sh` 35 `ok` lines / exit 0 (steps
+  1 + 2 + 3, floor-hash agreement, and the client's layout assertion). Dev A's
+  W3-A1 .. W3-A7 are still unlanded, so every floor is generated through the
+  lane-B seam; `week-3` is not tagged.
 
 ---
 
@@ -579,6 +584,81 @@ worse than failing. This task closes both.
   the project reads `--port`. `net_lag` and the rest of W3-B5's console work are
   untouched here — this task owns only the two tooling findings.
 
+### W3-B3b — layout hash assertion with the host-layout fallback (`networking`)
+
+`SPEC-networking` "Seed sync" asks for three things in one sentence: the host
+*hashes* the layout, clients *assert* the same hash, and a mismatch *logs an
+error and requests the host's layout as a fallback*. W3-B3a shipped the first
+half of the sentence only — every peer generated a floor from the broadcast seed
+and printed its hash, but nothing compared them, so a client that quietly
+generated a different floor would have played it.
+
+- **The host asserts, the client compares.** `NetworkManager.last_floor_hash` is
+  now recorded wherever a floor is generated (`apply_floor_ready`), and
+  `broadcast_floor_ready` sends it to every remote peer right after `floor_ready`
+  through a new `@rpc("authority","call_local","reliable") layout_asserted(
+  layout_hash)`. The payload of `floor_ready` itself is untouched — the spec
+  fixes it at `(seed, floor_index, biome_id, modifiers)` and a test asserts those
+  four argument names — so the hash travels in its own broadcast rather than as a
+  fifth field. A late joiner gets both, in that order.
+- **Agreement is silent.** `apply_layout_assertion` (the plain client-side check,
+  driven directly by the unit tests the same way `apply_floor_ready` is) logs
+  `[floor] layout asserted: floor N layout_hash H agrees with the host on peer P`
+  and changes nothing: no regeneration, no second `floor_changed`, no request.
+- **A mismatch recovers instead of crashing.** It `push_error`s
+  (`[floor] layout hash mismatch on floor N: local L, host H — asking the host
+  for its layout`), records the divergence in `GameState`
+  (`note_floor_divergence` → `floor_divergence_floor/_local_hash/_host_hash`,
+  read back through `has_floor_divergence()`), and sends the new
+  `request_floor_layout(floor_index)` RPC to the host. There is **no retry**:
+  regenerating from the same inputs is exactly what produced the wrong layout.
+- **The fallback carries the host's layout, not its inputs.** The host answers
+  with `floor_layout(floor_index, layout_hash, layout)` —
+  `@rpc("authority","call_local","reliable")`, sender-validated — where
+  `layout` is the layout's wire form. `FloorLayoutPlaceholder.to_wire()` /
+  `from_wire()` send the rooms as a flat `PackedInt32Array` of `(x, y, w, h)`
+  quadruples plus the hash, so the peer that applies it holds the host's *rooms*
+  and the host's hash; `FloorGeneratorSeam.serialize_layout` /
+  `deserialize_layout` are the seam that lets Dev A's real `FloorLayout` describe
+  itself the same way (`to_wire()` / `from_wire()`), blocked on Dev A (W3-A1).
+  The client applies it without generating anything and without re-announcing the
+  floor — it already followed that floor from `floor_ready`.
+- **Verified.** `tests/unit/test_floor_sync.gd` 20 → 34 tests / 135 asserts,
+  written first and confirmed red (GUT ignored the file: parse error). New tests
+  cover: the three RPCs' existence, argument names and `@rpc` configuration; the
+  shared sender rule (`can_accept_floor_broadcast`) on host and client; the
+  host-serves-only-a-remote-client rule; the host hashing what it generated; the
+  agreement path changing nothing; the mismatch path logging an error
+  (`assert_push_error`), recording the divergence, requesting the layout and
+  *not* regenerating (proved with an injected `FloorGeneratorStub` that records
+  zero calls); the host refusing to apply a layout it is sent; an unusable reply
+  leaving the client where it was; and the wire round-trip. Full GUT 33 scripts /
+  479 tests / 12767 asserts exit 0 (`g8-gut.log`); headless `--import` exit 0
+  with 0 error lines (`g8-import.log`); headless `-- --host --smoke=6` exit 0
+  with 0 script/parse errors (`g8-launch.log`); `tools/smoke_two.sh` exit 0 with
+  35 `ok` lines (`g8-smoke-run-default-port.log`, logs in `.goals/evidence/
+  g8-smoke/`) — including the new check that the **client's own assertion line
+  names the host's hash** (`3525914442204165144` for seed `20261020`,
+  `708545516277063756` for `987654321`), which is what makes the assertion a
+  two-process fact rather than a unit-test one. Both banned-literal greps empty.
+  No Dev A file, no `.tscn`, no `project.godot` / Input Map / autoload-signature
+  / `Events` / `scripts/data/` / save-schema / CI / addons change.
+- **Not claimed**: the mismatch path is proven in one process, with the host's
+  reply applied by hand — the smoke's two peers agree by construction (that is
+  the point of the seed sync), so a real end-to-end mismatch would need a
+  deliberately divergent generator, which is Dev A's `FloorGenerator` (W3-A1) and
+  not a lane-B thing to fake in a shipped build. What the smoke proves is that
+  the assertion *runs and agrees* between two real processes.
+- **Environment note (not a code change).** The first smoke run of this task
+  failed `FAIL client never connected` because two leftover headless `--host`
+  instances from the previous step (started 00:55, no `--smoke` timer, so they
+  run forever) were still bound to UDP 7777 — the smoke's default port. G7c's
+  `--port` override ran the whole smoke green on `7901` while they were alive;
+  they were then killed and the smoke re-run green on the default port. A plain
+  `--host` instance has no exit timer by design, so this is expected behaviour of
+  a manual/two-instance run, not a defect — but it does mean a stray host can
+  make a *default-port* smoke fail confusingly, and `PORT=<free>` is the fix.
+
 ---
 
 ## Decisions made without a human
@@ -1125,6 +1205,59 @@ already recorded in a spec or a comment, the location is given.
       whose failing path was never observed is an assumption (decision 30), and
       the same rule applies to a tooling claim.
 
+32. **The hash assertion is its own broadcast, and the fallback carries the
+    layout's content (W3-B3b/G8).**
+    - *`layout_asserted(layout_hash)` is a separate RPC, not a fifth field on
+      `floor_ready`.* The spec fixes `floor_ready(seed, floor_index, biome_id,
+      modifiers)`, and a test in this file asserts exactly those four argument
+      names; the hash is a statement about the layout the host *produced*, which
+      is a different fact from the inputs every peer generates from. It is sent
+      immediately after `floor_ready` on the same reliable, ordered channel, so
+      the client always has a floor to compare against.
+    - *The assertion is split RPC / plain method, like `floor_ready` /
+      `apply_floor_ready`.* `layout_asserted` is the sender-validated RPC;
+      `apply_layout_assertion` is the plain client-side check the unit tests
+      drive directly, because a single process cannot fake a client's sender id
+      (LESSONS). Same for `floor_layout` / `apply_host_layout`.
+    - *One sender rule for every floor broadcast.* `can_accept_floor_ready` now
+      forwards to `can_accept_floor_broadcast`, which the assertion and the
+      layout reply also use: the host accepts only its own local call (sender 0),
+      a client accepts only the host's. `request_floor_layout` is
+      `any_peer`/`call_remote` and validates the sender through the new
+      `can_serve_floor_layout_request`, which refuses sender 0 exactly like
+      `can_apply_rope_request` — a direct local call is not a client's request.
+    - *The fallback sends the host's layout, not its inputs.* Regenerating on the
+      client from `(seed, floor_index, biome_id, modifiers)` would reproduce the
+      same wrong layout, so `FloorLayoutPlaceholder.to_wire()` carries the rooms
+      and the hash. Rooms go over as a flat `PackedInt32Array` of `(x, y, w, h)`
+      quadruples rather than an `Array[Rect2i]`: no typed-array or Rect2i
+      encoding question on the wire, and no process-local value anywhere in it.
+    - *The wire form is the seam for Dev A's layout.* `FloorGeneratorSeam.
+      serialize_layout` calls the layout's own `to_wire()` and
+      `deserialize_layout` rebuilds from the class named in `source`; when
+      `FloorLayout` lands (blocked on Dev A W3-A1) it declares those two methods
+      and nothing on the networking side changes. An unknown source rebuilds
+      nothing and the caller reports the fallback as failed rather than
+      pretending it worked.
+    - *New public API beyond the declared signatures* (recorded here per the
+      BRIEF's rule): `NetworkManager.layout_asserted`, `request_floor_layout`,
+      `floor_layout`, `apply_layout_assertion`, `apply_host_layout`,
+      `can_accept_floor_broadcast`, `can_serve_floor_layout_request`,
+      `last_floor_hash`, `last_floor_index`, the `floor_layout_requested`
+      signal, `GameState.note_floor_divergence` / `has_floor_divergence` and the
+      three divergence fields, `FloorGeneratorSeam.serialize_layout` /
+      `deserialize_layout`, `FloorLayoutPlaceholder.to_wire` / `from_wire`.
+      Additions only — nothing existing was renamed or removed, and
+      `can_accept_floor_ready` keeps its signature and behaviour.
+    - *The divergence is a value, not just a log line.* `GameState` records the
+      floor and both hashes, because the SPEC calls for a fallback and a fallback
+      that leaves no trace is indistinguishable from a silent one; the week-5
+      end-of-run summary and the HUD's debug panel are the readers.
+    - *`floor_layout_requested` is emitted before the RPC travels.* It is how a
+      single-process test proves the request was triggered (`can_send_request()`
+      is false in a fake client, so the RPC is deliberately not sent), and it
+      mirrors `Rope.interaction_forwarded`'s role at W3-B2a.
+
 ---
 
 ## Running the game
@@ -1189,7 +1322,7 @@ than a one-player host on 7777 that nobody can join.
 
 ```powershell
 godot --headless --path . --import                                                         # must exit 0, no errors
-godot --headless --path . -s addons/gut/gut_cmdln.gd -gdir=res://tests -ginclude_subdirs -gexit   # 459 tests, exit 0
+godot --headless --path . -s addons/gut/gut_cmdln.gd -gdir=res://tests -ginclude_subdirs -gexit   # 479 tests, exit 0
 ```
 
 ---

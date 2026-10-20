@@ -17,6 +17,11 @@ signal host_disconnected()
 ## (SPEC-debug-tools). The debug console listens and executes; it is absent in
 ## release exports, where nothing listens and the request is a no-op.
 signal debug_command_requested(command_line: String, peer_id: int)
+## This peer generated a floor that does not match the host's hash, and asked the
+## host for its layout as the fallback (SPEC-networking "Seed sync", W3-B3b).
+## Emitted on the client that asked, before the request travels, so the request
+## is observable where a single process cannot reach a real host.
+signal floor_layout_requested(floor_index: int)
 
 const DEFAULT_PORT: int = 7777
 const MAX_PLAYERS: int = 4
@@ -39,6 +44,13 @@ var floor_seed: int = 0
 var last_floor_layout: RefCounted = null
 ## The modifiers the host named for the current floor.
 var last_floor_modifiers: Array[int] = []
+## The floor the current layout belongs to, so a mismatch can name it and the
+## debug console can say where the run is.
+var last_floor_index: int = 0
+## The hash of that layout, as FloorGeneratorSeam.layout_hash_of reads it. The
+## host asserts this value to every client; a client compares it with its own and
+## falls back to the host's layout when they differ (W3-B3b).
+var last_floor_hash: int = 0
 
 
 func _ready() -> void:
@@ -111,6 +123,8 @@ func disconnect_all() -> void:
 	floor_seed = 0
 	last_floor_layout = null
 	last_floor_modifiers = [] as Array[int]
+	last_floor_index = 0
+	last_floor_hash = 0
 
 
 func get_player(peer_id: int) -> Player:
@@ -179,14 +193,136 @@ func floor_ready(seed: int, floor_index: int, biome_id: int, modifiers: Array[in
 ## True when a floor_ready may be applied on this peer. The host accepts only
 ## its own local broadcast (sender 0); a client accepts only the host's (peer 1).
 func can_accept_floor_ready(sender: int) -> bool:
+	return can_accept_floor_broadcast(sender)
+
+
+## True when a host broadcast about the floor may be applied on this peer. The
+## same rule covers every one of them — floor_ready, layout_asserted and the
+## floor_layout fallback: the host accepts only its own local call (sender 0),
+## a client accepts only the host's (peer 1). The host is the floor of record,
+## so a client's call is never accepted anywhere.
+func can_accept_floor_broadcast(sender: int) -> bool:
 	if is_host:
 		return sender == 0
 	return sender == HOST_PEER_ID
 
 
-## Host only. Sends the floor every peer generates locally. The host applies it
-## here too, so solo and co-op run the identical one-call path; remote peers get
-## it through rpc_id, so the host never generates the same floor twice.
+## Host -> every peer: the hash of the layout the host generated for the floor it
+## just sent (SPEC-networking "Seed sync": "host hashes the layout and clients
+## assert the same hash"). Every peer generates that floor locally from
+## floor_ready's inputs, so the two hashes must be equal.
+## Sync: host-authoritative. The host is the layout of record, so its own
+## call_local invocation asserts nothing; only a client compares, and it does so
+## in apply_layout_assertion.
+@rpc("authority", "call_local", "reliable")
+func layout_asserted(layout_hash: int) -> void:
+	var sender: int = multiplayer.get_remote_sender_id()
+	if not can_accept_floor_broadcast(sender):
+		push_warning("[net] layout_asserted refused: sender %d may not assert a layout here" % sender)
+		return
+	apply_layout_assertion(layout_hash)
+
+
+## Client side of the hash assertion. Agreement is a log line and nothing else:
+## the peer already holds the right floor, so nothing is regenerated and no floor
+## is re-announced. A mismatch logs an error, records the divergence in GameState
+## and asks the host for its layout (request_floor_layout) — SPEC-networking's
+## fallback. There is no retry: regenerating from the same inputs would produce
+## the same wrong layout. Returns true when the hashes agreed.
+func apply_layout_assertion(layout_hash: int) -> bool:
+	if is_host:
+		return true
+	var local_hash: int = last_floor_hash
+	if local_hash == layout_hash:
+		print("[floor] layout asserted: floor %d layout_hash %d agrees with the host on peer %d" % [
+			last_floor_index, local_hash, local_peer_id])
+		return true
+	push_error("[floor] layout hash mismatch on floor %d: local %d, host %d — asking the host for its layout" % [
+		last_floor_index, local_hash, layout_hash])
+	GameState.note_floor_divergence(last_floor_index, local_hash, layout_hash)
+	_request_host_layout(last_floor_index)
+	return false
+
+
+## Client -> host: this peer's floor does not match the hash the host asserted, so
+## it asks for the host's layout to hold instead of its own (SPEC-networking
+## "Seed sync": "mismatch logs an error and requests the host's layout as a
+## fallback"). The request carries no trusted value beyond the floor index.
+## Sync: host-authoritative. The host validates the sender, then answers with the
+## layout it generated, which is the layout of record.
+@rpc("any_peer", "call_remote", "reliable")
+func request_floor_layout(floor_index: int) -> void:
+	var sender: int = multiplayer.get_remote_sender_id()
+	if not can_serve_floor_layout_request(sender):
+		push_warning("[net] request_floor_layout refused: sender %d cannot be served a layout here" % sender)
+		return
+	var layout: RefCounted = last_floor_layout
+	if layout == null:
+		push_warning("[net] request_floor_layout for floor %d refused: no layout to send" % floor_index)
+		return
+	var wire: Dictionary = FloorGeneratorSeam.serialize_layout(layout)
+	if wire.is_empty():
+		push_warning("[net] request_floor_layout for floor %d refused: the layout has no wire form" % floor_index)
+		return
+	if floor_index != last_floor_index:
+		push_warning("[net] request_floor_layout named floor %d; this peer is on floor %d and sends that one" % [
+			floor_index, last_floor_index])
+	floor_layout.rpc_id(sender, last_floor_index, last_floor_hash, wire)
+
+
+## Host -> the asking client: the host's own layout for the floor it is on, so a
+## client whose generation diverged plays the host's floor instead of its own
+## (SPEC-networking "Seed sync" fallback).
+## Sync: host-authoritative. The host is the layout of record; a client only ever
+## applies what it is sent, and never regenerates to get there.
+@rpc("authority", "call_local", "reliable")
+func floor_layout(floor_index: int, layout_hash: int, layout: Dictionary) -> void:
+	var sender: int = multiplayer.get_remote_sender_id()
+	if not can_accept_floor_broadcast(sender):
+		push_warning("[net] floor_layout refused: sender %d may not send a layout here" % sender)
+		return
+	apply_host_layout(floor_index, layout_hash, layout)
+
+
+## Client side of the fallback: holds the host's layout and its hash, so this
+## peer's floor is the host's floor. Nothing is generated here — the wire form
+## carries the host's rooms — and no floor is re-announced, because the client
+## already followed that floor from floor_ready. An unusable payload leaves the
+## peer exactly where it was rather than crashing the run.
+func apply_host_layout(floor_index: int, layout_hash: int, layout: Dictionary) -> RefCounted:
+	if is_host:
+		push_warning("[net] apply_host_layout refused: the host is the layout of record")
+		return null
+	var applied: RefCounted = FloorGeneratorSeam.deserialize_layout(layout)
+	if applied == null:
+		push_warning("[net] floor %d arrived without a usable layout; keeping the local one" % floor_index)
+		return null
+	last_floor_layout = applied
+	last_floor_hash = layout_hash
+	last_floor_index = floor_index
+	print("[floor] applied the host's layout for floor %d — layout_hash %d on peer %d" % [
+		floor_index, layout_hash, local_peer_id])
+	return applied
+
+
+## Client side. Asks the host for its layout. Sent as an RPC rather than a local
+## call, because the local call would run this peer's own host-side handler. A
+## session with no remote host (solo, a single-process test) cannot send one, so
+## the request is recorded and reported instead.
+func _request_host_layout(floor_index: int) -> void:
+	floor_layout_requested.emit(floor_index)
+	if not can_send_request():
+		push_warning("[floor] layout request for floor %d not sent: this session has no remote host to ask" % floor_index)
+		return
+	print("[floor] requested the host's layout for floor %d" % floor_index)
+	rpc_id(HOST_PEER_ID, &"request_floor_layout", floor_index)
+
+
+## Host only. Sends the floor every peer generates locally, then the hash of the
+## layout it produced so each client can assert its own against it (W3-B3b). The
+## host applies the floor here too, so solo and co-op run the identical one-call
+## path; remote peers get it through rpc_id, so the host never generates the same
+## floor twice.
 func broadcast_floor_ready(seed: int, floor_index: int, biome_id: int, modifiers: Array[int] = []) -> bool:
 	if not is_host:
 		push_warning("[net] broadcast_floor_ready refused: only the host declares a floor")
@@ -196,6 +332,7 @@ func broadcast_floor_ready(seed: int, floor_index: int, biome_id: int, modifiers
 		if peer_id == local_peer_id:
 			continue
 		floor_ready.rpc_id(peer_id, seed, floor_index, biome_id, modifiers)
+		layout_asserted.rpc_id(peer_id, last_floor_hash)
 	return true
 
 
@@ -206,11 +343,13 @@ func broadcast_floor_ready(seed: int, floor_index: int, biome_id: int, modifiers
 ## already emitted floor_changed from its own run state.
 func apply_floor_ready(seed: int, floor_index: int, biome_id: int, modifiers: Array[int]) -> RefCounted:
 	floor_seed = seed
+	last_floor_index = floor_index
 	last_floor_modifiers.assign(modifiers)
 	var layout: RefCounted = FloorGeneratorSeam.generate(seed, floor_index, biome_id, modifiers)
 	last_floor_layout = layout
+	last_floor_hash = FloorGeneratorSeam.layout_hash_of(layout)
 	print("[floor] ready seed %d floor %d biome %d — layout_hash %d from %s on peer %d" % [
-		seed, floor_index, biome_id, FloorGeneratorSeam.layout_hash_of(layout),
+		seed, floor_index, biome_id, last_floor_hash,
 		FloorGeneratorSeam.source_of(layout), local_peer_id])
 	if not is_host:
 		GameState.apply_remote_floor(floor_index, biome_id, modifiers)
@@ -249,6 +388,14 @@ func can_send_request() -> bool:
 ## sender 0 and is not a client's request, so it is refused — the host's own
 ## rope use goes through Rope._apply_use, never through the client request path.
 func can_apply_rope_request(sender: int) -> bool:
+	return is_host and sender != 0
+
+
+## True when a floor-layout request from `sender` may be served on this peer:
+## this peer hosts, and the request arrived from a remote client. A direct local
+## call has sender 0 and is not a client's request — the host has no reason to
+## ask itself for its own layout — so it is refused like every other request_*.
+func can_serve_floor_layout_request(sender: int) -> bool:
 	return is_host and sender != 0
 
 
@@ -302,12 +449,15 @@ func _on_peer_connected(peer_id: int) -> void:
 ## A peer that joined after the run started missed the floor broadcast, and
 ## deterministic generation means the floor is fully described by
 ## (seed, floor_index, biome_id, modifiers) — so the host just sends it again to
-## that peer rather than making it wait for the next floor.
+## that peer rather than making it wait for the next floor. The hash assertion
+## travels with it, because a late joiner generates the floor the same way
+## everyone else did and must be able to check it.
 func _send_floor_to_late_joiner(peer_id: int) -> void:
 	if not is_host or GameState.run == null or floor_seed == 0:
 		return
 	var modifiers: Array[int] = FloorGeneratorSeam.roll_modifiers(floor_seed, GameState.run.floor_index)
 	floor_ready.rpc_id(peer_id, floor_seed, GameState.run.floor_index, GameState.run.biome_index, modifiers)
+	layout_asserted.rpc_id(peer_id, last_floor_hash)
 	print("[floor] sent floor %d to late-joining peer %d" % [GameState.run.floor_index, peer_id])
 
 

@@ -84,3 +84,66 @@ static func hash_rooms(rooms: Array[Rect2i], floor_index: int, biome_id: int, mo
 	for modifier: int in modifiers:
 		acc = acc * MODIFIER_MIX + modifier
 	return absi(acc)
+
+
+## The layout as a plain Dictionary for the wire, so a peer whose own generation
+## diverged can hold the host's layout instead of its own (SPEC-networking
+## "Seed sync" fallback). Rooms travel as a flat PackedInt32Array of
+## (x, y, w, h) quadruples: no typed-array or Rect2i encoding question on the
+## wire, and nothing process-local. `layout_hash` travels with the content, so
+## the peer that applies it holds exactly the hash the host asserted.
+func to_wire() -> Dictionary:
+	var flat := PackedInt32Array()
+	for rect: Rect2i in rooms:
+		flat.append(rect.position.x)
+		flat.append(rect.position.y)
+		flat.append(rect.size.x)
+		flat.append(rect.size.y)
+	return {
+		"source": String(SOURCE),
+		"seed": seed,
+		"floor_index": floor_index,
+		"biome_id": biome_id,
+		"modifiers": PackedInt32Array(modifiers),
+		"room_count": room_count,
+		"rooms": flat,
+		"layout_hash": layout_hash,
+	}
+
+
+## The layout a `to_wire()` Dictionary describes. Unlike `for_floor()` this does
+## not generate anything — it carries the sender's rooms and hash across
+## unchanged, which is the whole point of the fallback.
+static func from_wire(data: Dictionary) -> FloorLayoutPlaceholder:
+	var layout := FloorLayoutPlaceholder.new(
+		int(data.get("seed", 0)),
+		int(data.get("floor_index", 1)),
+		int(data.get("biome_id", 1)),
+		modifier_ids_of(data.get("modifiers", PackedInt32Array())))
+	layout.room_count = int(data.get("room_count", 0))
+	layout.rooms = rooms_from(data.get("rooms", PackedInt32Array()))
+	layout.layout_hash = int(data.get("layout_hash", 0))
+	return layout
+
+
+## The modifier ids in a wire value, whatever array type it arrived as.
+static func modifier_ids_of(value: Variant) -> Array[int]:
+	var ids: Array[int] = []
+	if value is Array or value is PackedInt32Array:
+		for entry: Variant in value:
+			ids.append(int(entry))
+	return ids
+
+
+## The room rectangles in a wire value: a flat (x, y, w, h) quadruple per room,
+## ignoring a trailing partial one rather than inventing a room from it.
+static func rooms_from(value: Variant) -> Array[Rect2i]:
+	var rects: Array[Rect2i] = []
+	if not (value is PackedInt32Array):
+		return rects
+	var flat: PackedInt32Array = value
+	var index: int = 0
+	while index + 3 < flat.size():
+		rects.append(Rect2i(flat[index], flat[index + 1], flat[index + 2], flat[index + 3]))
+		index += 4
+	return rects

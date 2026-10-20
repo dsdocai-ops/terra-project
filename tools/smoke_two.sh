@@ -10,7 +10,10 @@
 #  - floor sync (SPEC-networking "Seed sync"): two host/client pairs launched
 #    with the same --seed must generate the same floor — the two layout_hash
 #    values are compared for equality, not merely grepped for presence — and a
-#    third pair on a different --seed must land on a different hash.
+#    third pair on a different --seed must land on a different hash. The client
+#    must also assert the hash the host sent (W3-B3b): its assertion line has to
+#    name the same hash the host generated, which is what proves the assertion
+#    ran between two real peers instead of only inside a unit test.
 # Logs land in $OUT (default: a temp dir; created if missing). Every pair runs on
 # $PORT, which both peers honour (--port on the host, --join=…:$PORT on the
 # client), so a non-default PORT is a real two-peer session. Exit 0 when every
@@ -141,6 +144,17 @@ if [ -n "$FLOOR_HASH_A_HOST" ] && [ "$FLOOR_HASH_A_HOST" = "$FLOOR_HASH_A_CLIENT
   echo "ok   one --seed ($FLOOR_SEED_A) gives one floor: host and client both generated layout_hash $FLOOR_HASH_A_HOST"
 else
   echo "FAIL seed $FLOOR_SEED_A layout_hash mismatch: host='$FLOOR_HASH_A_HOST' client='$FLOOR_HASH_A_CLIENT'"; fail=1
+fi
+
+# The client must assert the hash the host sent (W3-B3b). Equality with the
+# host's own hash is the assertion: a client that never asserted logs no such
+# line, and one that asserted something else fails here.
+FLOOR_ASSERTED_A=$(grep -Eo '\[floor\] layout asserted: floor 1 layout_hash [0-9]+' "$OUT/client_floor_a.log" \
+  | head -1 | grep -Eo '[0-9]+$')
+if [ -n "$FLOOR_ASSERTED_A" ] && [ "$FLOOR_ASSERTED_A" = "$FLOOR_HASH_A_HOST" ]; then
+  echo "ok   client asserted the host's layout hash (W3-B3b): layout_hash $FLOOR_ASSERTED_A"
+else
+  echo "FAIL client did not assert the host's layout hash (asserted='$FLOOR_ASSERTED_A' host='$FLOOR_HASH_A_HOST')"; fail=1
 fi
 
 run_floor_pair b "$FLOOR_SEED_B"

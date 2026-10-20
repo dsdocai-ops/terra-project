@@ -108,6 +108,36 @@ static func roll_modifiers(run_seed: int, floor_index: int) -> Array[int]:
 	return ids
 
 
+## A layout as a plain Dictionary, for the mismatch fallback: the host sends its
+## own layout to a peer whose generation diverged, because regenerating from the
+## same inputs is exactly what produced the wrong layout (SPEC-networking "Seed
+## sync"). A layout class describes itself through `to_wire()`; Dev A's real
+## `FloorLayout` adds its own when it lands (blocked on Dev A W3-A1) — until
+## then this is the placeholder's fields. An empty Dictionary means "no wire
+## form", which the caller reports rather than sending something useless.
+static func serialize_layout(layout: RefCounted) -> Dictionary:
+	if layout == null or not layout.has_method(&"to_wire"):
+		return {}
+	var data: Variant = layout.call(&"to_wire")
+	if data is Dictionary:
+		return data
+	return {}
+
+
+## The layout a wire Dictionary describes, or null when it does not describe one.
+## The class named in `source` rebuilds itself; an unknown source (Dev A's
+## `FloorLayout` before it declares a `from_wire`, blocked on Dev A W3-A1)
+## rebuilds nothing, so the caller records the fallback as failed instead of
+## pretending it worked.
+static func deserialize_layout(data: Dictionary) -> RefCounted:
+	if data.is_empty():
+		return null
+	var source: StringName = StringName(str(data.get("source", "")))
+	if source != FloorLayoutPlaceholder.SOURCE:
+		return null
+	return FloorLayoutPlaceholder.from_wire(data)
+
+
 ## Records the blocker once per process: a headless run generates a floor per
 ## floor change, and the same missing dependency is not news the second time.
 static func _log_blocker_once(detail: String) -> void:

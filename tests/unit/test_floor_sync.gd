@@ -1,15 +1,18 @@
 extends GutTest
-## Tests for floor sync (SPEC-networking "Seed sync", W3-B3a): the host's
-## `floor_ready(seed, floor_index, biome_id, modifiers)` broadcast, the client
-## generating the same floor locally through the lane-B generator seam, the
-## sender validation that stops a client declaring a floor, and the `--seed`
+## Tests for floor sync (SPEC-networking "Seed sync", W3-B3a and W3-B3b): the
+## host's `floor_ready(seed, floor_index, biome_id, modifiers)` broadcast, the
+## client generating the same floor locally through the lane-B generator seam,
+## the sender validation that stops a client declaring a floor, the `--seed`
 ## plumbing from the launch arg through `GameState.start_run` into the seed that
-## is broadcast. Owned by networking.
+## is broadcast, and the layout-hash assertion with its host-layout fallback (a
+## mismatch logs an error, records the divergence and asks the host for its own
+## layout instead of regenerating). Owned by networking.
 ##
-## after_each clears GameState.run / forced_seed / the remote-floor fields, the
-## NetworkManager session and the seam's injected generator, so no autoload or
-## static state leaks into the next test file (LESSONS). Signals are captured
-## with named method callbacks, never lambdas (LESSONS).
+## after_each clears GameState.run / forced_seed / the remote-floor and
+## divergence fields, the NetworkManager session and the seam's injected
+## generator, so no autoload or static state leaks into the next test file
+## (LESSONS). Signals are captured with named method callbacks, never lambdas
+## (LESSONS).
 ##
 ## A single-process suite cannot fake a client — an unstarted ENet peer reports
 ## `is_server() == true` (LESSONS) — so the client's receive path is driven by
@@ -22,17 +25,23 @@ const FORCED_SEED: int = 20261020
 
 ## Floors GameState.floor_changed named, as {floor_index, biome_id}.
 var _floors: Array[Dictionary] = []
+## Floors this peer asked the host's layout for, in order.
+var _layout_requests: Array[int] = []
 
 
 func before_each() -> void:
 	_reset_autoloads()
 	_floors.clear()
+	_layout_requests.clear()
 	GameState.floor_changed.connect(_on_floor_changed)
+	NetworkManager.floor_layout_requested.connect(_on_layout_requested)
 
 
 func after_each() -> void:
 	if GameState.floor_changed.is_connected(_on_floor_changed):
 		GameState.floor_changed.disconnect(_on_floor_changed)
+	if NetworkManager.floor_layout_requested.is_connected(_on_layout_requested):
+		NetworkManager.floor_layout_requested.disconnect(_on_layout_requested)
 	FloorGeneratorSeam.clear_injected_generator()
 	_reset_autoloads()
 
@@ -43,6 +52,9 @@ func _reset_autoloads() -> void:
 	GameState.remote_floor_index = 0
 	GameState.remote_floor_modifiers = [] as Array[int]
 	GameState.last_advance_refusal = GameState.ADVANCE_REFUSAL_NONE
+	GameState.floor_divergence_floor = 0
+	GameState.floor_divergence_local_hash = 0
+	GameState.floor_divergence_host_hash = 0
 	NetworkManager.disconnect_all()
 
 
@@ -52,6 +64,10 @@ func _on_floor_changed(floor_index: int, biome: Resource) -> void:
 		"floor_index": floor_index,
 		"biome_id": placeholder.id if placeholder != null else 0,
 	})
+
+
+func _on_layout_requested(floor_index: int) -> void:
+	_layout_requests.append(floor_index)
 
 
 # --- the RPC contract -------------------------------------------------------
@@ -197,6 +213,165 @@ func test_the_broadcast_carries_the_floors_biome() -> void:
 	assert_eq(FloorGeneratorSeam.layout_hash_of(NetworkManager.last_floor_layout),
 		FloorLayoutPlaceholder.for_floor(FORCED_SEED, 6, 2, [] as Array[int]).layout_hash,
 		"generation used the biome the broadcast named")
+
+
+# --- the layout hash assertion (W3-B3b) -------------------------------------
+
+func test_layout_asserted_exists_as_the_spec_broadcast() -> void:
+	assert_true(NetworkManager.has_method("layout_asserted"), "NetworkManager.layout_asserted exists")
+
+
+func test_layout_asserted_is_authority_call_local_reliable() -> void:
+	var config: Dictionary = _rpc_config(&"layout_asserted")
+	assert_false(config.is_empty(), "layout_asserted is declared with @rpc")
+	assert_eq(config.get("rpc_mode"), MultiplayerAPI.RPC_MODE_AUTHORITY, "host -> clients only")
+	assert_eq(config.get("call_local"), true, "the host runs it too")
+	assert_eq(config.get("transfer_mode"), MultiplayerPeer.TRANSFER_MODE_RELIABLE)
+	assert_eq(_argument_names(&"layout_asserted"), ["layout_hash"] as Array[String])
+
+
+func test_request_floor_layout_is_a_sender_validated_client_request() -> void:
+	var config: Dictionary = _rpc_config(&"request_floor_layout")
+	assert_false(config.is_empty(), "request_floor_layout is declared with @rpc")
+	assert_eq(config.get("rpc_mode"), MultiplayerAPI.RPC_MODE_ANY_PEER, "clients ask")
+	assert_eq(config.get("call_local"), false, "the caller does not run it locally")
+	assert_eq(config.get("transfer_mode"), MultiplayerPeer.TRANSFER_MODE_RELIABLE)
+	assert_eq(_argument_names(&"request_floor_layout"), ["floor_index"] as Array[String])
+
+
+func test_the_floor_layout_reply_is_an_authority_broadcast() -> void:
+	var config: Dictionary = _rpc_config(&"floor_layout")
+	assert_false(config.is_empty(), "floor_layout is declared with @rpc")
+	assert_eq(config.get("rpc_mode"), MultiplayerAPI.RPC_MODE_AUTHORITY, "only the host sends a layout")
+	assert_eq(config.get("call_local"), true)
+	assert_eq(config.get("transfer_mode"), MultiplayerPeer.TRANSFER_MODE_RELIABLE)
+
+
+func test_the_floor_broadcast_sender_rule_covers_the_assertion() -> void:
+	NetworkManager.start_solo()
+	assert_true(NetworkManager.can_accept_floor_broadcast(0), "the host's own local broadcast")
+	assert_false(NetworkManager.can_accept_floor_broadcast(CLIENT_PEER), "a client may not assert a hash")
+	_become_client()
+	assert_true(NetworkManager.can_accept_floor_broadcast(HOST_PEER), "the host's hash is the one to compare")
+	assert_false(NetworkManager.can_accept_floor_broadcast(CLIENT_PEER + 1), "a third peer asserts nothing")
+	assert_false(NetworkManager.can_accept_floor_broadcast(0), "a client has no local authority call")
+
+
+func test_the_host_serves_only_a_remote_clients_layout_request() -> void:
+	NetworkManager.start_solo()
+	assert_true(NetworkManager.can_serve_floor_layout_request(CLIENT_PEER), "a client's request is served")
+	assert_false(NetworkManager.can_serve_floor_layout_request(0), "a direct local call is not a client's request")
+	_become_client()
+	assert_false(NetworkManager.can_serve_floor_layout_request(CLIENT_PEER + 1), "a client serves nobody")
+
+
+func test_the_host_hashes_the_layout_it_asserts() -> void:
+	NetworkManager.start_solo()
+	NetworkManager.broadcast_floor_ready(4242, 2, 1, [] as Array[int])
+	assert_eq(NetworkManager.last_floor_index, 2, "the asserted hash names its floor")
+	assert_eq(NetworkManager.last_floor_hash,
+		FloorLayoutPlaceholder.for_floor(4242, 2, 1, [] as Array[int]).layout_hash,
+		"the host asserts the hash of the layout it generated")
+
+
+func test_agreeing_hashes_log_agreement_and_change_nothing() -> void:
+	_become_client()
+	var layout: RefCounted = NetworkManager.apply_floor_ready(777, 4, 2, [3] as Array[int])
+	var local_hash: int = FloorGeneratorSeam.layout_hash_of(layout)
+	assert_eq(_floors.size(), 1, "the client followed the host's floor")
+	assert_true(NetworkManager.apply_layout_assertion(local_hash), "the host asserted the same hash")
+	assert_eq(NetworkManager.last_floor_hash, local_hash, "the peer's own hash stands")
+	assert_same(NetworkManager.last_floor_layout, layout, "nothing was regenerated")
+	assert_eq(_layout_requests, [] as Array[int], "an agreement asks the host for nothing")
+	assert_false(GameState.has_floor_divergence(), "and records no divergence")
+	assert_eq(_floors.size(), 1, "and does not announce the floor a second time")
+
+
+func test_a_mismatch_logs_an_error_and_requests_the_hosts_layout() -> void:
+	_become_client()
+	var layout: RefCounted = NetworkManager.apply_floor_ready(777, 4, 2, [] as Array[int])
+	var local_hash: int = FloorGeneratorSeam.layout_hash_of(layout)
+	var host_hash: int = local_hash + 1
+	assert_false(NetworkManager.apply_layout_assertion(host_hash), "a different hash fails the assertion")
+	assert_push_error("layout hash mismatch")
+	assert_true(GameState.has_floor_divergence(), "the divergence is recorded, not only logged")
+	assert_eq(GameState.floor_divergence_floor, 4)
+	assert_eq(GameState.floor_divergence_local_hash, local_hash)
+	assert_eq(GameState.floor_divergence_host_hash, host_hash)
+	assert_eq(_layout_requests, [4] as Array[int], "the client asked the host for its layout")
+	assert_same(NetworkManager.last_floor_layout, layout, "the mismatch does not regenerate the floor")
+	assert_true(NetworkManager.is_active, "and leaves the session alive")
+	assert_eq(_floors.size(), 1, "the floor is announced once, not twice")
+
+
+func test_the_hosts_layout_replaces_the_clients_own_after_a_mismatch() -> void:
+	_become_client()
+	var local: RefCounted = NetworkManager.apply_floor_ready(777, 4, 2, [] as Array[int])
+	var local_hash: int = FloorGeneratorSeam.layout_hash_of(local)
+	var host_hash: int = local_hash + 7
+	# The host answers with its own layout, so nothing may be generated here.
+	var stub := FloorGeneratorStub.new()
+	FloorGeneratorSeam.set_injected_generator(stub)
+	var host_wire: Dictionary = FloorGeneratorSeam.serialize_layout(local)
+	host_wire["layout_hash"] = host_hash
+	host_wire["room_count"] = 1
+	host_wire["rooms"] = PackedInt32Array([5, 6, 7, 8])
+	var applied: RefCounted = NetworkManager.apply_host_layout(4, host_hash, host_wire)
+	assert_not_null(applied, "the client applied the host's layout")
+	assert_eq(stub.calls.size(), 0, "the fallback applies what the host sent instead of regenerating")
+	assert_eq(NetworkManager.last_floor_hash, host_hash, "the client now holds the host's hash")
+	assert_eq(FloorGeneratorSeam.layout_hash_of(NetworkManager.last_floor_layout), host_hash)
+	var placeholder: FloorLayoutPlaceholder = NetworkManager.last_floor_layout as FloorLayoutPlaceholder
+	assert_not_null(placeholder, "the host's layout replaced the client's")
+	assert_eq(placeholder.rooms, [Rect2i(5, 6, 7, 8)] as Array[Rect2i], "the host's rooms, not the client's")
+	assert_eq(NetworkManager.last_floor_index, 4, "the fallback names the floor it corrected")
+	assert_eq(NetworkManager.floor_seed, 777, "the run seed is untouched")
+	assert_eq(_floors.size(), 1, "applying the fallback does not re-announce the floor")
+
+
+func test_the_host_does_not_apply_a_layout_it_is_sent() -> void:
+	NetworkManager.start_solo()
+	NetworkManager.apply_floor_ready(777, 4, 2, [] as Array[int])
+	var before: RefCounted = NetworkManager.last_floor_layout
+	var before_hash: int = NetworkManager.last_floor_hash
+	assert_null(NetworkManager.apply_host_layout(4, 999999, {"layout_hash": 999999}),
+		"the host is the layout of record")
+	assert_same(NetworkManager.last_floor_layout, before, "the host's layout stands")
+	assert_eq(NetworkManager.last_floor_hash, before_hash)
+	assert_false(GameState.has_floor_divergence())
+
+
+func test_an_unusable_layout_reply_leaves_the_client_where_it_was() -> void:
+	_become_client()
+	var layout: RefCounted = NetworkManager.apply_floor_ready(777, 4, 2, [] as Array[int])
+	var local_hash: int = FloorGeneratorSeam.layout_hash_of(layout)
+	assert_null(NetworkManager.apply_host_layout(4, 12345, {}), "an empty wire form rebuilds nothing")
+	assert_same(NetworkManager.last_floor_layout, layout, "the client keeps its own layout")
+	assert_eq(NetworkManager.last_floor_hash, local_hash, "and its own hash")
+
+
+# --- the layout wire form (the fallback's payload) --------------------------
+
+func test_a_wire_round_trip_preserves_a_layout() -> void:
+	var layout := FloorLayoutPlaceholder.for_floor(4242, 3, 2, [5] as Array[int])
+	var wire: Dictionary = FloorGeneratorSeam.serialize_layout(layout)
+	assert_false(wire.is_empty(), "the placeholder has a wire form")
+	var rebuilt: RefCounted = FloorGeneratorSeam.deserialize_layout(wire)
+	assert_not_null(rebuilt, "and rebuilds from it")
+	assert_eq(FloorGeneratorSeam.layout_hash_of(rebuilt), layout.layout_hash, "the hash travels with it")
+	var placeholder: FloorLayoutPlaceholder = rebuilt as FloorLayoutPlaceholder
+	assert_not_null(placeholder)
+	assert_eq(placeholder.rooms, layout.rooms, "so do the rooms")
+	assert_eq(placeholder.room_count, layout.room_count)
+	assert_eq(placeholder.modifiers, layout.modifiers)
+	assert_eq(placeholder.seed, 4242)
+	assert_eq(placeholder.floor_index, 3)
+	assert_eq(placeholder.biome_id, 2)
+
+
+func test_a_layout_with_no_wire_form_rebuilds_nothing() -> void:
+	assert_null(FloorGeneratorSeam.deserialize_layout({}), "an empty wire form is not a layout")
+	assert_true(FloorGeneratorSeam.serialize_layout(null).is_empty(), "no layout, no wire form")
 
 
 # --- the generator seam -----------------------------------------------------

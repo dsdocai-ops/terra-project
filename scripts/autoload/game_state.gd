@@ -60,6 +60,14 @@ var last_run_summary: String = ""
 var remote_floor_index: int = 0
 ## The modifiers the host named for that floor.
 var remote_floor_modifiers: Array[int] = []
+## The last floor on which this peer's own generated layout disagreed with the
+## host's, and the two hashes involved: 0/0/0 while the peers have agreed on
+## every floor. SPEC-networking "Seed sync" makes a mismatch an error the client
+## recovers from by taking the host's layout; this is that fact as a value the
+## code and the log can both read, rather than a log line alone (W3-B3b).
+var floor_divergence_floor: int = 0
+var floor_divergence_local_hash: int = 0
+var floor_divergence_host_hash: int = 0
 
 
 ## Host only. Starts a run: resolves the seed, builds the RunState at
@@ -143,6 +151,22 @@ func apply_remote_floor(floor_index: int, biome_id: int, modifiers: Array[int]) 
 ## BiomeData and BiomePlaceholder is deleted.
 func biome_for_index(biome_id: int) -> Resource:
 	return BiomePlaceholder.from_index(biome_id)
+
+
+## Client side. Records that this peer generated a different floor from the
+## host's for `floor_index` (SPEC-networking "Seed sync": the client logs an
+## error and falls back to the host's layout). Written by networking when the
+## hash assertion fails, so a divergence is provable from code and from the
+## end-of-run summary rather than only from a log line.
+func note_floor_divergence(floor_index: int, local_hash: int, host_hash: int) -> void:
+	floor_divergence_floor = floor_index
+	floor_divergence_local_hash = local_hash
+	floor_divergence_host_hash = host_hash
+
+
+## True once a layout-hash divergence has been recorded this session.
+func has_floor_divergence() -> bool:
+	return floor_divergence_floor != 0
 
 
 ## Records why an advance was refused and logs it once. Called from every
