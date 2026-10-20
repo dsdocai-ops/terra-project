@@ -352,7 +352,31 @@ created at `_ready` if absent (see decision 16). `data/audio/sfx_bank.tres`
 (a `SfxBank` Resource) maps the 20 week-2 ids to placeholder clicks generated
 by `tools/make_placeholder_sfx.gd` under `assets/audio/sfx/<id>.wav`; the
 real synth pipeline (W2-B7 / W2-A13) replaces the files later without
-touching the bank. Tests: `tests/unit/test_audio_manager.gd` (21).
+touching the bank. Tests: `tests/unit/test_audio_manager.gd` (22; 21 until
+G15a, below).
+
+**G15a, 2026-10-20 — the pool-cap test's timing flake is gone (fixture change,
+no production code).** `test_plain_pool_respects_the_cap` filled the pool with
+16 real `ui_click` plays and then asserted the pool had grown to the cap. A
+pooled player is `playing` only while the audio thread has not mixed past the
+end of its stream, and the bank's `ui_click.wav` is **1448 bytes ≈ 16 ms**, so
+under load the fill loop outlived the first click: `_acquire_plain()` handed
+back a finished player and the pool reached 15 (`[15] expected to equal [16]`),
+1 run in 3 at `785bf63`. Reproduced on the real binary at that revision — a
+500-trial probe of the same loop under CPU load failed 15 trials, sizes
+including 15 (`.goals/evidence/g15a/red-flake.log`). The fix is in the fixture:
+`_looping_click()` builds a `LOOP_FORWARD` `AudioStreamWAV`, `_fill_plain_pool()`
+fills through the real acquire path and asserts each acquire grew the pool by
+one, and `test_plain_pool_reclaims_a_stopped_player` (new) pins the rule the
+flake depended on — a stopped player is reclaimed, the pool does not grow. Both
+original cap/steal assertions stay, plus the oldest-player identity and the new
+stream on the stolen player. Verified: 20× the file alone green, 20× green under
+the 32-way load that reproduced the flake, and 5 full-suite runs green (3 clean +
+2 under load) at **43 scripts / 694 tests / 694 passing / 55 558 asserts**;
+negative control forced and kept (`.goals/evidence/g15a/negative-control.log` —
+a non-looping click with a 30 ms stall between acquires fails the fixture
+assertion and the cap assertion `[3] expected to equal [16]`, and stopping no
+player fails the reclaim case; exactly 2 tests red, 20 green).
 
 ### W3-B1a — `RunState`, `RunPlayerState`, `RunResult`, `RunEndReason` (`run-economy`)
 
