@@ -1,0 +1,18 @@
+[gd_scene load_steps=3 format=3]
+
+[ext_resource type="Script" path="res://scripts/run/rope.gd" id="1_rope"]
+
+[sub_resource type="CircleShape2D" id="CircleShape2D_interact"]
+radius = 24.0
+
+[node name="Rope" type="Area2D"]
+collision_layer = 32
+collision_mask = 0
+script = ExtResource("1_rope")
+
+[node name="InteractShape" type="CollisionShape2D" parent="."]
+shape = SubResource("CircleShape2D_interact")
+
+[node name="Body" type="Polygon2D" parent="."]
+color = Color(0.78, 0.66, 0.4, 1)
+polygon = PackedVector2Array(-4, -22, 4, -22, 4, 22, -4, 22)
