@@ -7,7 +7,11 @@ extends RefCounted
 ## from_behind, tags) plus the two flags Damage.compute consults directly
 ## (force_crit whether or not the caller forced it, scales_with_ability_power
 ## for the ability-power term). is_crit and final_damage are filled by
-## Damage.compute. When Dev A's
+## Damage.compute. It also carries the two payload fields the WEEK-4 relics
+## needed and `HitInfo` names — `owner_player` (who the hit is attributed to) and
+## `target` (what it landed on), both additive and null by default — which is how
+## an On Hit relic reads "my hit" off a signal that carries no `Player`
+## argument. When Dev A's
 ## HitInfo lands, compute can be re-pointed at it — the field names match.
 ## Sync: none. An ephemeral value object built by the attacker on the host.
 
@@ -28,6 +32,23 @@ var element: Element = Element.NONE
 var is_heavy: bool = false
 ## Set by Hurtbox's from-behind check; Rogue and Backstab read it.
 var from_behind: bool = false
+## The player this hit is attributed to: the one whose weapon, ability, minion or
+## proc produced it. Mirrors `HitInfo.owner_player`, whose spec comment is "for
+## attribution of minion/turret/proc hits". `null` for a hit nothing attributes —
+## a hazard's, or the test double `EventEmitterHelper` builds — so an unattributed
+## hit is inert rather than credited to somebody.
+##
+## It is what makes an On Hit relic possible: `hit_landed` carries no `Player`
+## argument (SPEC-effect-system's own comment: "hit.source / hit.owner_player /
+## target in hit"), so the relics listening to it (W4-B6) filter on this field
+## themselves — `Effect.listen()`'s player filter has nothing to read.
+var owner_player: Player = null
+## The entity the hit landed on, when whoever built the payload knows it: what
+## "the same enemy" (Hungry Steel) and "splits on hit" (Splitting Shot) act on.
+## Mirrors the `target` SPEC-effect-system's `hit_landed` line names beside
+## `source` and `owner_player`. `null` on a payload that never reached one, which
+## every effect reading it treats as a skipped trigger rather than a crash.
+var target: Node = null
 var tags: Array[StringName] = []
 ## How many effect links deep this hit is (SPEC-effect-system, "Proc chain
 ## limits"). A weapon or ability hit a player landed is 0; a hit an `Effect`

@@ -3510,6 +3510,168 @@ scripts/ scenes/` empty (`.goals/evidence/g5-reverify/`).
 
 ---
 
+### G6 — the five "On Hit" relics (W4-B6, raw goal G33) (`relics`)
+
+Design doc 9.1 nos. **7 to 11**, shipped 2026-10-20 as the second instalment of
+**W4-B6**: Echo Blade, Spark Plug, Hungry Steel, Venom Gland, Splitting Shot.
+Eleven of the task's twenty relics are now in; On Hit 12 to 14 and On Kill 15 to
+20 are not.
+
+**What shipped.** `data/relics/<id>.tres` × 5 and
+`scripts/effects/relics/<id>.gd` × 5 — one effect script per relic (decision 59),
+the same "content is data: a `.tres` plus an optional effect script" shape G5
+used. No new system, no new Resource field, no new signal, no new double:
+`tests/integration/test_relic_triggers.gd` is still the batch's single suite and
+grew from **10 cases / 181 asserts** to **22 cases / 390 asserts**, written first
+and run red before a single script existed (`.goals/evidence/g6/g6-red.log`:
+five `Parse Error: Could not find type "<Effect>"` lines, one per relic, and
+`[GUT ERROR] Nothing was run`).
+
+**The trigger, and the hole in it.** All five listen on
+`Events.hit_landed(hit)`. It is the one trigger signal on the bus with **no
+`Player` argument**, so `Effect.listen()`'s player filter — which reads the
+argument the signal declares — has nothing to read here. The batch therefore
+filters on the payload itself: `HitData` gained `owner_player: Player` and
+`target: Node` (decision 64), both additive with null defaults, and each relic
+fires only when `hit.owner_player == player`. That is a different mechanism from
+G5's, and the batch case is what keeps it honest: `EventEmitterHelper` — the
+bus's own emitter, whose hit carries a **null** `owner_player`, the shape a
+teammate's hit arrives in — lands a hit first and nothing at all moves (no echo,
+no chain, no toxin, no count, no split), and only then does the holder's own hit
+move all five. "For its own player and for nobody else" is asserted in both
+directions in one case, which is the negative control the `owner_player` field
+made possible.
+
+**Only the weapon's own hits count.** Two of the five produce a hit of their own
+(Echo Blade's echo, Hungry Steel's rider), so each relic counts only
+`hit.proc_depth == 0` — the base class stamps depth 0 on a weapon's hit and 1+ on
+a proc — and Echo Blade tags its echo with its own source id, which proc-chain
+rule 2 turns into "my own hit cannot come back to me". Without both halves an
+echo would count toward the next echo's modulus and the relic would run away. The
+depth cap and the self-tag rule were already in place from G1; nothing new was
+needed for it.
+
+**The five, one hit at a time.**
+
+- **Echo Blade** (no. 7, "every 4th hit strikes twice") counts the hits its own
+  player lands and, on every `HITS_PER_ECHO = 4`th, deals the same blow again —
+  the same damage, multiplier, element and flags, one `proc_depth` deeper — onto
+  the hit's own target. "Strikes twice", not "strikes for a fraction", so the echo
+  is a whole hit and the case asserts exactly that, plus that the eighth hit
+  echoes too ("every fourth", not "the fourth").
+- **Spark Plug** (no. 8, "10% chance on hit to fire chain lightning") makes one
+  `chance()` roll per hit at `CHAIN_CHANCE = 0.10` and, when it comes good,
+  applies `CHAIN_STATUS = SHOCK`. It deals no damage and spawns nothing: the arc
+  and its damage are `SHOCK`'s own behaviour (stats-status chains it on
+  application), so the relic's whole job is to light it. `chain_chance` is a var
+  so a case can force the roll either way; the relic's own value is the constant,
+  and a case asserts that too.
+- **Hungry Steel** (no. 9, "each hit on the same enemy deals +5% more (stacks)")
+  counts per **enemy instance**, keyed by `instance_id()` — never by the node,
+  which would keep a dead enemy alive — so "the same enemy" means the same enemy
+  and a new target starts at 5 % again. Three cases hold it to that, including
+  that hitting a second enemy does not advance the first one's count.
+- **Venom Gland** (no. 10, "hits apply Toxin") applies `HIT_STATUS = TOXIN` to
+  the hit's target through `apply_status()`, the one path a status is applied by.
+  It deals no damage and spawns nothing; the venom's tick, its healing penalty and
+  its combo are the status's own.
+- **Splitting Shot** (no. 11, "projectiles split into 3 on hit") asks the
+  projectile seam for `SPLIT_COUNT = 3` specs, fanned
+  `SPLIT_SPREAD_DEGREES = 30.0` around the direction the hit travelled, each
+  carrying `SPLIT_DAMAGE_FRACTION = 0.5` of the hit's damage and its element. See
+  the blocked note below.
+
+**Hungry Steel cannot change the hit it rides, so it deals its own.** The "+5 %
+more" reads as a change to the *next* hit on that enemy, but the number a hit
+lands for is computed by the hurtbox **before** `hit_landed` fires (Dev A's
+combat-core, W2-A2: "compute damage … emit `Events.hit_landed`"). An effect cannot
+reach back into a resolved hit, so the relic does the two things it owns: it deals
+the increment as a hit of its own (`base_damage × PER_HIT_STACK_BONUS × count`),
+so the damage is really dealt through the same hurtbox path a weapon's is, and it
+publishes `damage_multiplier_for(enemy)` = `1.0 + count × 5 %` for the day the
+pipeline grows a step that asks (**blocked on Dev A, W2-A2**). The two routes
+produce identical numbers; decision 65 records the choice and that removing one is
+a one-line change when the seam lands. `max_stacks = 3` (decision 65) — the design
+doc says "(stacks)" but gives no count — and a case holds three copies to
+deepening the same step.
+
+**Splitting Shot's three projectiles are specs, not nodes.** The projectile body —
+spawn, travel, collision, bounce — is combat-core's (W2-A6), so the effect hands
+`ProjectileSpec`s to the base class's `fire_projectile()` with `scene = null`, the
+legal "numbers, no body" form `ProjectileSpec` documents, and the fan, the fraction
+and the element are all this relic's to decide. The case asserts the ask: three
+specs, a unit direction each, all within half the spread of the hit's axis, a
+fraction of the damage, the hit's element, the relic's own `proc_source_id`,
+`proc_depth = 1`, and `scene == null`. **`blocked on Dev A (W2-A6)`**: when the
+projectile seam lands, `scene` gets a scene and this effect needs no change. A
+`SPLIT_SPEED = 320.0` placeholder stands in for combat-core's number and is
+recorded as a decision (66).
+
+**Criterion 4 is parsed, not restated.** The batch's cases read the design doc
+**at run time**: `_on_hit_clauses()` parses 9.1's own numbered lines under
+`### 9.1 Passive relics (70 listed)` and compares `display_name` and `description`
+to them, plus `kind = PASSIVE` and each file's stack rule against the batch's own
+`ON_HIT_MAX_STACKS` table. Tags are checked against the vocabulary and against the
+synergy table: all five carry `on_hit`, and each relic's element tag comes first
+where 9.1 gives it one — Spark Plug `storm` (Thunderstruck's row), Venom Gland
+`poison` (Plaguebringer's). And the four descriptions that state a number are
+linked to the constant that number **is** — `HITS_PER_ECHO` ↔ "4th",
+`CHAIN_CHANCE` ↔ "10%", `PER_HIT_STACK_BONUS` ↔ "5%", `SPLIT_COUNT` ↔ "3" — so a
+description that drifts from its effect, or a constant that drifts from the design
+doc, fails. `vfx_id` follows SPEC-art-audio's `relic_proc_<tag>`: Spark Plug
+`relic_proc_storm`, Venom Gland `relic_proc_poison`, the other three
+`relic_proc_on_hit`. **None of the five spawns a node**, so art-audio's
+`relic_proc_*` scenes being unlanded costs this batch nothing — the ids are data
+the proc layer and the HUD will read when those scenes exist.
+
+**Verification.** Red first, before a production file was touched
+(`.goals/evidence/g6/g6-red.log`). The file alone: **22 / 22, 390 asserts**
+(`green-relic-triggers.log`). The full suite: **52 scripts / 901 tests / 901
+passing / 57 530 asserts, exit 0, 72.1 s** (`g6-full-suite.log`), against G5's
+52 / 889 / 57 276 — +12 tests and +254 asserts, all in this file. Two touched
+siblings re-read: `test_relic_data.gd` walks the folder and is now **10 / 10 /
+137** (was 10 / 122 — its folder-walk sees five more files),
+`test_proc_limits.gd` **26 / 26 / 158** (unchanged). One forced negative control:
+Echo Blade's `HITS_PER_ECHO` changed 4 → 5 behind a unique anchor, the run
+showing **20 / 22** with exactly the two cases that read that number failing —
+`test_echo_blade_makes_every_fourth_hit_strike_twice` and
+`test_the_on_hit_descriptions_numbers_are_the_effect_scripts_constants` — then
+reverted **byte-exact** (`diff` silent against the snapshot in
+`.goals/evidence/g6/snapshots/`, marker count back to 0) and re-run green
+(`negative-control-echo-blade.log`). `--import` exit 0 with 0 `ERROR` and 0
+`SCRIPT ERROR` lines (`g6-import.log`). Headless boot `-- --host --smoke=6` exit
+0 with 0 script errors (`g6-boot-host-smoke.log`) — a relic's effect scripts are
+loaded by the game's own content path, so "the suite is green" is not the same
+claim as "the game still boots".
+
+**Ask-first surfaces: one movement, numbered below.** `scripts/components/hit_data.gd`
+— the payload `Events.hit_landed` carries — gained `owner_player` and `target`
+(decision 64). That file is not on the ask-first list (`project.godot`, the Input
+Map, autoloads' API, `scripts/data/` Resources, `Events` signals, save schema, CI,
+addons) and the change is additive with null defaults, so no existing producer or
+consumer of a `HitData` changes; it is called out here because it is a payload
+other modules read. Nothing else on the list moved: no `project.godot`, no Input
+Map, no autoload, no `scripts/data/` Resource definition, no `Events` signal, no
+`.tscn`, no save schema, no CI, no addon. `tasks/todo.md`'s W4-B6 box stays
+**open** at 11 of 20 — PLAN.md completes that task at G8, and the G5 review
+already flagged a premature tick once.
+
+**Nothing here touches sync, so the two-instance smoke was not run.** The relic
+effects are host-only by spec (SPEC-relics: "Rolls, picks, attaches, actives,
+synergy evaluation: host") and every effect reaches clients through a path that
+already replicates — the hurtbox for damage, the entity's `StatusEffects` for a
+status, the projectile spawner for a split. This commit adds no RPC, no
+`MultiplayerSynchronizer`, no replication config and no `NetworkManager` surface,
+so there is no sync delta for the two-instance test to exercise; the headless boot
+above is the standing launch check, not a sync check. Recorded as decision 68.
+
+**Rarity, which no spec dictates.** Echo Blade, Spark Plug and Venom Gland ship
+COMMON — the plain on-hit procs — and Hungry Steel and Splitting Shot RARE, the
+two that compound. All five take `weight = 1.0`. Decision 67, the same shape
+decision 62 gave G5's six.
+
+---
+
 ## Decisions made without a human
 
 These are the judgment calls taken during weeks 1 and 2 that were not dictated
@@ -5657,6 +5819,91 @@ already recorded in a spec or a comment, the location is given.
     suite stay red — is exactly what the "never skip or delete a failing test"
     rule forbids, and weakening it to "offers nothing or something" would have
     asserted nothing at all.
+64. **`HitData` gains `owner_player: Player` and `target: Node` (2026-10-20).**
+    G6. `Events.hit_landed(hit)` is the one trigger signal on the bus with no
+    `Player` argument, so `Effect.listen()`'s player filter — which matches the
+    argument the signal declares — has nothing to match on it. The five On Hit
+    relics are therefore the first in this lane that are per-player by *payload*
+    rather than by signal argument, and to do that they need the payload to carry
+    the two things the question is asked about: who landed the hit, and what it
+    landed on. Both fields are additive with null defaults, so no existing
+    producer or consumer of a `HitData` changes behaviour — the weapon path sets
+    them going forward, and a payload that does not set them reads as "nobody's
+    hit, on nothing", which is exactly the safe answer (the batch's teammate case
+    is a payload with a null owner, and it moves nothing). The file is
+    `scripts/components/hit_data.gd`, which is the stats-status mirror of
+    combat-core's `HitInfo`; SPEC-effect-system's signal table already names
+    "hit.source / hit.owner_player / target" as the payload's shape, so this
+    lands the fields the spec had named and the class had not yet carried. It is
+    called out as a decision because it is a payload other modules read, and
+    because it is the mechanism the whole On Hit batch's player filter rests on.
+65. **Hungry Steel deals its "+5% more" as its own rider hit, and ships
+    `max_stacks = 3` (2026-10-20).** G6. Two judgment calls in one relic. (a) The
+    design doc's "each hit on the same enemy deals +5% more (stacks)" reads as a
+    change to the *next* hit on that enemy, but the number a hit lands for is
+    computed by the hurtbox **before** `hit_landed` fires (SPEC-combat-core's
+    `Hurtbox.receive` order: "compute damage via `Damage.compute`, pass to
+    `Health`, apply knockback, apply statuses …, emit `Events.hit_landed`"), so an
+    effect listening to the event cannot add to the hit that announced it. The
+    relic therefore does the two things it owns: it deals the increment as a hit
+    of its own — same enemy, same element, `base_damage × count × 5 %`, through
+    the same `deal_damage()` path a weapon's hit takes, so the enemy really takes
+    the damage — and it publishes `damage_multiplier_for(enemy)` (`1.0 + count ×
+    5 %`, × copies held) as the read a future pipeline step consumes. The two
+    routes give identical numbers, and when W2-A2's pipeline grows a "ask the
+    effects on this attacker what they are worth" step the rider is deleted or the
+    read is consumed — a one-line choice, recorded here rather than left to drift.
+    (b) The design doc's "(stacks)" fixes *that* the relic stacks but gives no
+    count, so the batch chooses **3**: the nth hit is worth `5 % × n × copies`,
+    a first copy alone reaching +15 % on a third hit, which is a meaningful ramp
+    without being a Bonfire. Every copy deepens the same step rather than adding a
+    parallel one, and the number is one a human moves in the week-11/12 balance
+    pass. No `RelicData` field and no `RARITY_ROLL_WEIGHTS` entry moved.
+66. **Splitting Shot's four numbers the design doc does not give (2026-10-20).**
+    G6. The doc's line is "projectiles split into 3 on hit" and nothing else: no
+    damage per split, no fan width, no speed, no pierce. The batch's choices —
+    each a named constant in `splitting_shot.gd`, so each is one line to move:
+    `SPLIT_DAMAGE_FRACTION = 0.5` (the burst is worth 1.5 hits on one target and
+    less than that spread across three, which is the trade "split" implies),
+    `SPLIT_SPREAD_DEGREES = 30.0` (the three go out at −15°, 0°, +15°), `SPLIT_PIERCE
+    = 0` (a split is a fresh shot, not a piercing one), and `SPLIT_SPEED = 320.0`,
+    which is a **placeholder standing in for combat-core's own number** — the spec
+    needs a speed and this lane does not own the projectile's motion, so the value
+    is flagged in the script comment as one that module's figure replaces when
+    W2-A6 lands. The fourth and largest call is that the specs carry `scene = null`
+    at all: the thing that flies, its collision and its bounce are combat-core's,
+    and `ProjectileSpec` documents a null scene as the legal "numbers, no body"
+    form, so the relic hands over the ask and never reaches for a scene it does
+    not own. The case asserts the ask rather than a spawn, which is what the seam
+    can currently be held to.
+67. **The five "On Hit" relics ship COMMON for the three plain ones and RARE for
+    Hungry Steel and Splitting Shot (2026-10-20).** G6, the same shape as decision
+    62 for G5. The design doc's 9.1 list gives each relic a name, a line and a tag
+    and the synergy table gives the tags, but no rarity and no weight, while
+    `RelicData.Rarity` requires one and G4's roller reads it. The judgment: Echo
+    Blade, Spark Plug and Venom Gland are the plain on-hit procs and land COMMON;
+    Hungry Steel (a stacking ramp that scales with how long a target lives) and
+    Splitting Shot (three projectiles from every hit) are the two that compound
+    and land RARE. All five take `weight = 1.0`, and `max_stacks = 1` except
+    Hungry Steel's 3 (decision 65) — `max_stacks = 1` is not a placeholder: the
+    doc describes each of the four as one effect on one hit, and a second copy of a
+    chance relic is a second roll rather than a deeper one. These are numbers a
+    human re-tiers when the Shrine's economy is tuned; they are written down
+    because a rarity in a `.tres` is a balance decision no spec dictated.
+68. **G6's commit runs no two-instance smoke test, because it touches no sync
+    (2026-10-20).** G6. CLAUDE.md's rule is "any PR touching sync runs the
+    two-instance smoke test first", and this goal does not touch sync: the five
+    effect scripts are host-only by spec (SPEC-relics, "Rolls, picks, attaches,
+    actives, synergy evaluation: host"), and every effect they produce reaches
+    clients through a path that already replicates — the hurtbox for a dealt hit,
+    the entity's `StatBlock`/`StatusEffects` for a status, the projectile spawner
+    for a split. The commit adds no RPC, no `MultiplayerSynchronizer`, no
+    replication config, no `NetworkManager` surface and no change to any
+    spawner's replication, so there is no sync delta for a second instance to
+    exercise. The headless boot (`-- --host --smoke=6`, exit 0, 0 script errors)
+    was run as the standing launch check, not as a sync check. Stated explicitly
+    so the absence of a smoke log in `.goals/evidence/g6/` reads as a decision
+    rather than an omission.
 
 ---
 
