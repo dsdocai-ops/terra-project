@@ -31,8 +31,10 @@ var tags: Array[StringName] = []
 ## How many effect links deep this hit is (SPEC-effect-system, "Proc chain
 ## limits"). A weapon or ability hit a player landed is 0; a hit an `Effect`
 ## produces through `deal_damage` is its trigger's depth + 1. `Effect.listen`'s
-## dispatch wrapper drops events at depth 3, so a chain of relics cannot recurse
-## (the depth gate and the per-frame spawn cap are W4-B3, goal G16).
+## dispatch wrapper drops events whose hit has reached `Effect.MAX_PROC_DEPTH`
+## (3), so a chain of relics cannot recurse — while the hit itself, this object,
+## is still delivered and still damages (W4-B3, goal G16). The per-frame spawn
+## cap on top of that is goal G18.
 var proc_depth: int = 0
 ## True when the target carries MARK (or an effect forces a crit). Week-2
 ## seam: StatusEffects has not landed, so the caller sets this flag directly.

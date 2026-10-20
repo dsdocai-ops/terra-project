@@ -30,11 +30,12 @@ const EPSILON: float = 0.0001
 const SPEC_MEMBERS: Array[String] = ["player", "source", "stacks", "stat_block", "_handles", "_timers"]
 const SPEC_METHODS: Array[String] = ["attach", "detach", "_on_attach", "_on_detach", "listen", "every_seconds", "once_per_room", "modify"]
 
-## The listeners `TrackedEffect` makes in `_on_attach()`, in order: one signal
-## with no `Player` argument (`enemy_killed`, connected untouched), two whose
+## The listeners `TrackedEffect` makes in `_on_attach()`, in order: two signals
+## with no `Player` argument but a hit payload (`enemy_killed`, wrapped for the
+## proc gate), one with neither (`room_cleared`, connected untouched), two whose
 ## `Player` argument is filtered (index 0 on `player_dodged`, index 1 on
 ## `room_entered`), plus the base class's own `room_entered` reset subscription.
-const LISTENERS_PER_EFFECT: int = 4
+const LISTENERS_PER_EFFECT: int = 5
 
 var _player: Player
 var _other_player: Player
@@ -63,6 +64,9 @@ class TrackedEffect:
 	var last_dodge_player: Player = null
 	var last_perfect: bool = false
 	var rooms_seen: int = 0
+	## `room_cleared` events seen: the signal with no `Player` argument and no
+	## hit, which `listen()` therefore connects untouched.
+	var clears_seen: int = 0
 
 	func _on_attach() -> void:
 		attach_calls += 1
@@ -70,6 +74,7 @@ class TrackedEffect:
 		modify(StatBlock.Stat.MOVE_SPEED, 0.0, 0.25)
 		_start_timer(TIMER_SECONDS, _on_timer)
 		listen(Events.enemy_killed, _on_enemy_killed)
+		listen(Events.room_cleared, _on_room_cleared)
 		listen(Events.player_dodged, _on_player_dodged)
 		listen(Events.room_entered, _on_room_seen)
 
@@ -81,6 +86,9 @@ class TrackedEffect:
 
 	func _on_enemy_killed(_enemy: Node, _hit: HitData) -> void:
 		kills_seen += 1
+
+	func _on_room_cleared(_room: Node) -> void:
+		clears_seen += 1
 
 	func _on_player_dodged(event_player: Player, perfect: bool) -> void:
 		dodge_calls += 1
@@ -132,6 +140,14 @@ func _attach(effect: Effect, source: ContentData = null, stacks: int = 1) -> Eff
 	effect.attach(_player, content, stacks)
 	_effects.append(effect)
 	return effect
+
+
+## A hit payload at `depth`, for the proc-gate case: the only thing that makes
+## an event a link in a proc chain.
+func _hit_at_depth(depth: int) -> HitData:
+	var hit := HitData.new()
+	hit.proc_depth = depth
+	return hit
 
 
 func _script_property_names(script: GDScript) -> Array[String]:
@@ -255,12 +271,29 @@ func test_listen_records_a_named_method_and_fires_it() -> void:
 
 ## A signal with no `Player` argument is connected untouched, and the named
 ## method itself is the connection — the filter must not wrap what it has no
-## reason to look at.
+## reason to look at. `room_cleared(room)` is that signal: no player, no hit.
 func test_listen_leaves_a_signal_without_a_player_argument_unfiltered() -> void:
 	var effect: TrackedEffect = _attach(TrackedEffect.new()) as TrackedEffect
-	assert_true(Events.enemy_killed.is_connected(effect._on_enemy_killed), "connected directly")
+	assert_true(Events.room_cleared.is_connected(effect._on_room_cleared), "connected directly")
+	Events.room_cleared.emit(_other_player)
+	assert_eq(effect.clears_seen, 1, "any node reaches the handler; nothing is looked at")
+
+
+## A signal that carries a hit is wrapped even though it has no `Player`
+## argument: the proc depth limit is applied on the way in (W4-B3, goal G16), so
+## `hit_landed` — the busiest event in the game — cannot skip the gate by having
+## no player to filter on. The filter itself still does not gate it: an enemy
+## that is not a Player reaches the handler, as before.
+func test_listen_wraps_a_hit_carrying_signal_without_a_player_argument() -> void:
+	var effect: TrackedEffect = _attach(TrackedEffect.new()) as TrackedEffect
+	assert_false(
+		Events.enemy_killed.is_connected(effect._on_enemy_killed),
+		"wrapped, so the proc gate runs before the handler"
+	)
 	Events.enemy_killed.emit(_other_player, null)
 	assert_eq(effect.kills_seen, 1, "an argument that is not a Player does not gate it")
+	Events.enemy_killed.emit(_other_player, _hit_at_depth(Effect.MAX_PROC_DEPTH))
+	assert_eq(effect.kills_seen, 1, "a hit that has reached the depth limit does")
 
 
 ## The filter: an effect attached to player 1 reacts to player 1's dodge and

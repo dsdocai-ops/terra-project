@@ -52,6 +52,18 @@ const NO_PLAYER_ARGUMENT: int = -1
 const DISPATCH_METHODS: Array[StringName] = [
 	&"_dispatch0", &"_dispatch1", &"_dispatch2", &"_dispatch3", &"_dispatch4",
 ]
+## How deep a proc chain may go, from SPEC-effect-system, "Proc chain limits",
+## rule 1: "A proc at depth 3 does not trigger further effects (its hits still
+## damage, but `hit_landed` from it is emitted with `hit.proc_depth = 3` and
+## `Effect.listen` wrappers skip events with `proc_depth >= 3`)." An event whose
+## hit carries this depth or more never reaches a handler; the hit itself has
+## already been dealt by whoever emitted it, so damage still lands.
+const MAX_PROC_DEPTH: int = 3
+## The class an event's argument must be to count as "the hit this event is
+## about". `HitData` is this repo's payload (stats-status); `HitInfo` is the
+## combat-core name SPEC-effect-system's table uses, accepted here already so
+## the swap-in is a type rename and not a second list to keep in step.
+const HIT_CLASSES: Array[String] = ["HitData", "HitInfo"]
 
 ## The player this effect belongs to. Set by `attach()`.
 var player: Player = null
@@ -82,11 +94,15 @@ var stat_block: StatBlock = null
 ## still reproducible. A caller may replace it (the tests seed it directly).
 var rng: RandomNumberGenerator = null
 ## The proc depth of the event this effect is currently handling, so
-## `deal_damage` produces a result one link deeper than its trigger
-## (`proc_depth = trigger.proc_depth + 1`, SPEC-effect-system "Proc chain
-## limits"). The dispatch wrapper sets it while a handler runs — that wrapper,
-## the depth-3 gate and the self-retrigger check are W4-B3 (goal G16); until
-## then it stays 0, the depth of a hit a weapon landed.
+## `deal_damage`, `spawn` and `fire_projectile` each produce a result one link
+## deeper than their trigger (`proc_depth = trigger.proc_depth + 1`,
+## SPEC-effect-system "Proc chain limits"). `_forward()` sets it on the way into
+## a handler and restores the previous value on the way out, so a nested proc
+## sees its own event's depth and leaks nothing back out. An effect that is not
+## handling an event reads 0 — the depth of a hit a weapon landed — which is the
+## chain's root. An event whose hit already carries `MAX_PROC_DEPTH` never
+## reaches a handler at all: that is where a chain stops. The self-retrigger
+## check (rule 2) is the next goal's, G17.
 var trigger_depth: int = 0
 
 ## `StatBlock` modifier handles to remove on detach.
@@ -179,23 +195,29 @@ func _on_detach() -> void:
 ## disconnects it. `callable` must be a named method on this effect: a lambda
 ## cannot be disconnected and never fires under the test harness.
 ##
-## Where the signal declares a `Player` argument, the connection is filtered
-## through `_forward()` and the handler runs only for events belonging to this
-## effect's own player — an effect on player 1 never reacts to player 2's dodge,
-## hit, pickup or room entry. A signal with no `Player` argument is connected
-## untouched, so the handler is the named method itself (`hit_landed` carries
-## the attacker inside `HitData` and is deliberately unfiltered).
+## A listener goes through `_forward()` when there is something there to do:
+##
+## - where the signal declares a `Player` argument, to filter the event to this
+##   effect's own player — an effect on player 1 never reacts to player 2's
+##   dodge, hit, pickup or room entry;
+## - where the signal carries a hit payload, to apply the proc depth limit — an
+##   event whose hit has reached `MAX_PROC_DEPTH` is dropped before the handler
+##   runs, whatever player it belongs to (`hit_landed` has no `Player` argument
+##   at all and is nonetheless wrapped, for exactly this reason).
+##
+## A signal with neither is connected untouched, so the handler is the named
+## method itself: nothing is wrapped that has nothing to look at.
 func listen(sig: Signal, callable: Callable) -> void:
 	if not callable.is_valid():
 		push_warning("[effect] %s: listen() needs a callable" % source_id())
 		return
 	var args: Array[Dictionary] = _signal_arguments(sig)
 	var index: int = _player_argument_index(args)
-	if index == NO_PLAYER_ARGUMENT:
+	if index == NO_PLAYER_ARGUMENT and not _carries_a_hit(args):
 		_connect_tracked(sig, callable)
 		return
 	if args.size() >= DISPATCH_METHODS.size():
-		push_warning("[effect] %s: %s carries more arguments than the filter forwards, connected unfiltered" % [source_id(), sig.get_name()])
+		push_warning("[effect] %s: %s carries more arguments than the wrapper forwards, connected unfiltered" % [source_id(), sig.get_name()])
 		_connect_tracked(sig, callable)
 		return
 	_connect_tracked(sig, Callable(self, DISPATCH_METHODS[args.size()]).bind(index, callable))
@@ -574,14 +596,59 @@ func _player_argument_index(args: Array[Dictionary]) -> int:
 	return NO_PLAYER_ARGUMENT
 
 
-## Calls `callable` with the event's own `values`, unless the event's `Player`
-## argument says the event belongs to someone else. The negative control for
-## the filter: a foreign event returns without calling anything at all.
+## Calls `callable` with the event's own `values`, unless the event belongs to
+## another player or has reached the proc depth limit.
+##
+## Three things happen here and this is the only place any of them happens, so
+## no effect script re-implements them:
+##
+## 1. the player filter: an event naming a `Player` other than this effect's own
+##    returns without calling anything at all (the negative control is a
+##    `player_dodged` for a teammate in `test_effect_base.gd`);
+## 2. the proc gate: an event whose hit carries `MAX_PROC_DEPTH` or more is
+##    dropped here, so a chain of effects that trigger one another stops at the
+##    third link while the hits themselves keep damaging (SPEC-effect-system,
+##    "Proc chain limits", rule 1 — asserted in `test_proc_limits.gd`);
+## 3. `trigger_depth` is set to the event's depth for the duration of the
+##    handler, so everything the handler produces is one link deeper, and the
+##    previous value is restored on the way out, so a nested proc cannot leak
+##    its depth back into the event that caused it.
 func _forward(values: Array, argument_index: int, callable: Callable) -> void:
 	if argument_index >= 0 and argument_index < values.size():
 		if values[argument_index] != player:
 			return
+	var depth: int = _event_proc_depth(values)
+	if depth >= MAX_PROC_DEPTH:
+		return
+	var previous: int = trigger_depth
+	trigger_depth = depth
 	callable.callv(values)
+	trigger_depth = previous
+
+
+## The proc depth the event in `values` carries: the greatest `proc_depth` among
+## the arguments that are a hit payload, or 0 when none of them is. An event
+## with no hit argument is not a link in a chain and is therefore never gated,
+## which is what keeps a dodge or a room entry out of the depth rules.
+func _event_proc_depth(values: Array) -> int:
+	var depth: int = 0
+	for value: Variant in values:
+		if value is HitData:
+			depth = maxi(depth, (value as HitData).proc_depth)
+	return depth
+
+
+## True when a signal declared with `args` (as `_signal_arguments()` reads them)
+## carries a hit payload, so events on it must go through `_forward()` for the
+## proc gate even when there is no `Player` argument to filter on. `hit_landed`
+## is exactly that signal: unfiltered by player, gated by depth.
+func _carries_a_hit(args: Array[Dictionary]) -> bool:
+	for argument: Dictionary in args:
+		if int(argument.get("type", TYPE_NIL)) != TYPE_OBJECT:
+			continue
+		if HIT_CLASSES.has(String(argument.get("class_name", ""))):
+			return true
+	return false
 
 
 ## One forwarder per signal arity: the event's arguments arrive first and the

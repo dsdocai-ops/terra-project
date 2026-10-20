@@ -1788,6 +1788,74 @@ Nothing here is replicated yet — the seam's results reach clients when the rea
 spawners do — so the two-instance smoke was run as insurance, not as proof of a
 sync path. The per-frame 64-spawn cap is G18 and lands inside this seam.
 
+### W4-B3 — proc depth gate (`effect-system`) — in progress
+
+The first of SPEC-effect-system's three hard caps is in: **a proc chain stops at
+depth 3**. The rule is enforced in exactly one place — `Effect._forward()`, the
+dispatch wrapper `listen()` puts in front of every handler it connects — so a
+relic author cannot forget it and a new effect script cannot bypass it.
+
+**What changed.** `scripts/effects/effect.gd` gained
+`const MAX_PROC_DEPTH: int = 3` (with the spec sentence that fixes the number in
+its doc comment) and the gate itself:
+
+- `listen()` used to decide between "wrap" and "connect untouched" purely on
+  whether the signal declared a `Player` argument. `hit_landed` declares none, so
+  the busiest event in the game was connected **raw** and could never be gated.
+  A signal now also routes through the wrapper when it carries a hit —
+  `_carries_a_hit()` reads the signal's own declaration and matches the payload
+  against `HIT_CLASSES` (`HitData` today, `HitInfo` accepted already so
+  combat-core's landing is a type rename and not a second list to keep in step).
+  A signal with neither a `Player` nor a hit is still connected untouched:
+  nothing is wrapped that has nothing to look at.
+- `_forward()` reads the event's own depth (`_event_proc_depth()` — the maximum
+  `proc_depth` across the event's `HitData` arguments) and returns early when it
+  has reached `MAX_PROC_DEPTH`. The hit itself is untouched: it was already
+  delivered to the hurtbox and already announced on `Events.hit_landed` by
+  combat-core, so "its hits still damage" holds by construction rather than by a
+  second decision in the wrapper.
+- `_forward()` also publishes the event's depth as `trigger_depth` for the
+  duration of the handler and restores what it found, so `deal_damage`/`spawn`/
+  `fire_projectile`'s shipped `+ 1` is now a step in a chain instead of a
+  constant. That assignment is what the pre-G16 code was missing: the field
+  existed and the `+ 1` was asserted, but nothing ever raised the depth above 0.
+
+`tests/unit/test_proc_limits.gd` (10 cases / 59 asserts) is the acceptance
+evidence. It pins the four clauses of the spec sentence separately — the depth
+travels on `HitData` defaulting to 0; depth-0/1/2 events reach a handler and
+depth-3/4 ones do not (each boundary asserted on its own); the depth-3 hit is
+still announced on `Events.hit_landed` and still reaches the damage sink; and the
+chain therefore stops — plus the `+ 1` stamps on all three helpers, the gate on
+**every** hit-carrying signal (not `hit_landed` alone), and the negative control
+that the gate reads the event rather than a stale field on the effect.
+
+Two chain shapes are covered on purpose, because a chain that stops can stop for
+the wrong reason. One self-triggering effect is given a **five-link budget** and
+uses three; a chain of five *different* effects stops with a named link (`link_3`)
+never reacting. The probe's own budget is longer than the spec's limit
+everywhere, so a stop is the gate's doing and not the fixture running out.
+
+The chain advances through the real path: `ProcHurtboxStub` records the hit and
+then does what SPEC-combat-core says the real hurtbox does — announce
+`Events.hit_landed` — so `Effect.deal_damage` deliberately still does not emit the
+signal (HANDOFF decision 41) and the chain is driven by the module that owns the
+event. The double is **blocked on Dev A (W2-A2)** for combat-core's real
+`Hurtbox`.
+
+**Accept.** `-gtest=res://tests/unit/test_proc_limits.gd` exit 0, 10/10, 59
+asserts; the five other effect files unchanged and green (`test_effect_base`
+25/103, `test_effect_host` 17/85, `test_effect_helpers` 22/57, `test_effect_spawn`
+25/93, `test_effect_timers` 16/53); full suite **44 scripts / 705 tests / 705
+passing / 55 620 asserts** exit 0 (up from 43 / 693 / 55 504); `--import` exit 0
+with zero error lines; two-instance smoke 0 `FAIL`. The failing path was forced
+once and kept: with `MAX_PROC_DEPTH` temporarily 5 the chains ran all five links
+and only the gate assertions failed (`.goals/evidence/g16/negative-control.log`).
+
+**Not claimed.** No self-retrigger rule (G17), no 64-spawns-per-frame cap (G18),
+and no Mimic Crown duplication (G19) — all three land in this same wrapper. The
+gate is host-only logic like the rest of `Effect`; there is no client half to
+replicate, so the smoke run is insurance rather than proof of a sync path.
+
 ---
 
 ## Decisions made without a human
@@ -3009,6 +3077,65 @@ already recorded in a spec or a comment, the location is given.
       the swap-in is a wiring change, not a code change. Recorded as
       **blocked on Dev A (W4-A4)** in `scripts/effects/effect_spawner.gd` and
       `tasks/todo.md`.
+
+45. **`Effect.listen` now routes a hit-carrying signal through its dispatch
+    wrapper even when the signal declares no `Player`, and the wrapper both gates
+    on the event's depth and publishes it as `trigger_depth` for the handler
+    (2026-10-20, W4-B3 / G16).** SPEC-effect-system's "Proc chain limits", rule 1,
+    is explicit about *where* the limit lives — "`Effect.listen` wrappers skip
+    events with `proc_depth >= 3`" — so this goal was always going to change
+    `listen()`'s behaviour on one signal: `hit_landed(hit: HitData)` declares no
+    `Player` argument, and the pre-G16 `listen()` connected any signal without one
+    **untouched**. That made the spec's gate unreachable on the busiest event in
+    the game, which is the one event a proc chain actually runs through.
+    - **The change is `Events`-signal routing plus wrapper behaviour, and it is
+      sanctioned by the spec, not invented here.** The alternative — a second
+      wrapper installed on `hit_landed` alone — was rejected because it would be a
+      second place that knows the limit, and the goal's own sub-task says the gate
+      is "not in each effect script". Asked about in this lane's own terms: no
+      `Events` signal was added, renamed, retyped or given a new parameter; the
+      autoload's public API is unchanged; nothing in `project.godot`, the Input
+      Map, `scripts/data/`, the save schema, CI or `addons/` moved.
+    - **`HIT_CLASSES` accepts `HitInfo` as well as `HitData`.** These are
+      different things: `listen()` has to *recognise* a payload from the signal's
+      declaration (a `StringName` class name read off `Events`'s script), while
+      the signature `Events` declares is still `HitData` — combat-core's `HitInfo`
+      does not exist yet (Dev A W2-A1). Listing both now means the swap-in is a
+      type rename in `Events` and not a second place to remember the rule.
+    - **The gate reads the event, never the effect's stored state.** An effect
+      that is somehow carrying a stale `trigger_depth` at or past the limit must
+      still react to a depth-0 event, so the check is on the event's own payload
+      and `trigger_depth` is written and restored *around* the handler call. The
+      restore also makes nested procs correct: a handler that synchronously causes
+      another event sees its own depth, and the outer handler's depth is back in
+      place when the inner one returns. `test_the_gate_reads_the_event_and_not_the_effects_own_state`
+      is that negative control.
+    - **`trigger_depth` is set rather than incremented, and that is the `+ 1`'s
+      other half.** `deal_damage`/`spawn`/`fire_projectile` already shipped
+      `trigger_depth + 1` (W4-B2, G12/G15), but nothing ever raised
+      `trigger_depth` above its default, so every effect result was depth 1
+      regardless of the chain it came from. The wrapper is the only writer
+      because the event is the only thing that knows how deep a hit is.
+    - **`Effect.MAX_PROC_DEPTH` is public and the test reads it instead of
+      writing 3 twice.** The spec sentence that fixes the number is quoted in the
+      const's doc comment and asserted verbatim against `specs/SPEC-effect-system.md`
+      in the suite, so the constant and the spec cannot drift apart silently.
+    - **A pre-existing test's contract was deliberately changed, and its intent
+      was kept.** `test_effect_base.gd` had `test_listen_leaves_a_signal_without_a_player_argument_unfiltered`
+      asserting `Events.enemy_killed.is_connected(effect._on_enemy_killed)` — the
+      property *at the time* was "connected directly", but the property the test
+      was protecting is "a non-`Player` argument must not gate the event", and
+      that still holds (asserted, with a hit at the limit as the counter-case).
+      The "connected directly" half was re-pinned on `room_cleared(room)` — a
+      signal with no player **and** no hit, which is genuinely connected
+      untouched. `LISTENERS_PER_EFFECT` went 4 → 5 because the tracking effect
+      now also listens to that signal. No assertion was deleted or weakened; the
+      file's other 24 cases are unchanged.
+    - **What is *not* claimed.** Rule 2 (no self-retrigger, G17), rule 3 (64
+      spawned nodes per frame, G18) and rule 4 (Mimic Crown's id suffix, G19) are
+      not implemented. The cap on total chain length per event is this goal;
+      a per-key cooldown, a spawn budget and a duplication rule are separate
+      decisions and land in this same wrapper on their own goals' evidence.
 
 ---
 
