@@ -3758,7 +3758,9 @@ exercise. Recorded as decision 76.
 Design doc 9.1 nos. **17 to 20**, shipped 2026-10-20 as the fourth and final
 instalment of **W4-B6**: Bloodthirst, Corpse Bloom, Domino, Trophy Belt. **All
 twenty of the task's relics are now in the tree**; the box stays **open** until
-G8b's harness-completeness gate is green (PLAN's split of raw goal G35).
+G8b's harness-completeness gate is green (PLAN's split of raw goal G35). **[Done
+2026-10-20 (G8b): that gate is green, the box is `[x]`, and the folder and the
+harness each fail on their own by name — see the G8b section below.]**
 
 **What shipped.** `data/relics/<id>.tres` × 4 and `scripts/effects/relics/<id>.gd`
 × 4 — one effect script per relic (decision 59), the shape G5 to G7 used — plus one
@@ -3813,6 +3815,66 @@ Belt, both On Kill).
 spec; no RPC, no `MultiplayerSynchronizer`, no replication config, no `NetworkManager`
 surface, so there is no sync delta to exercise. No base-stat write and no engine time
 scale: `grep -rn "set_base\|Engine.time_scale" scripts/effects/relics/*.gd` is empty.
+
+---
+
+### G8b — the harness-completeness gate (W4-B6, raw goal G35's gate half) (`relics`)
+
+**What shipped.** Two cases and three helpers in `tests/unit/test_relic_data.gd`
+— no production file, no `.tres`, no scene, no signal (this goal adds no content
+and moves no ask-first surface, so it carries a numbered decision only for what
+it *decided*, not for what it changed).
+
+**The gate is two halves, and each fails on its own.**
+
+- `test_the_folder_holds_exactly_the_twenty_week_4_relics_by_id` walks
+  `data/relics/`, applies `_problems_for()` to every file (non-empty id and
+  description, a `rarity`, a `kind`, 1–2 valid tags, `max_stacks >= 1`, an
+  `effect_script` extending `Effect`), then compares the **sorted id list** to
+  `RelicData.WEEK_4_IDS` — the table G3 pinned against design doc 9.1 — and
+  spells the difference out again as a `missing` list and an `extra` list, so the
+  failure reads `ARRAY(["domino"]) != ARRAY([])` instead of a shifted index.
+- `test_every_week_4_relic_has_its_own_case_in_the_harness` parses
+  `tests/integration/test_relic_triggers.gd` into `case name -> body` and, for
+  each of the twenty ids, requires a case that is **named for that relic**
+  (`test_<id>` or `test_<id>_…`) **and** names the id in its own body. Coverage is
+  read inside the case, never across the file, because the file-wide form is
+  fooled: `test_the_spawning_relics_take_their_scene_from_the_relics_own_vfx_id`
+  loads Ember Boots' `.tres` for an unrelated reason, and a file-wide search would
+  count that as Ember Boots' coverage and let its real case be deleted silently.
+- `test_the_gate_credits_only_a_case_that_is_the_relics_own` pins those two rules
+  (both boundary verdicts, and the in-passing case above), so the gate's own
+  matching logic has an observed failing path rather than a comment.
+
+**Both deletion halves were demonstrated, not asserted** (PLAN G8b criterion 2).
+`data/relics/domino.tres` moved aside → **2 cases fail naming `domino`**
+(271/275 asserts, exit 1); the domino harness case renamed to
+`test_the_corpse_spreads_its_statuses_to_the_enemies_beside_it` → **1 case fails
+naming `domino`** (279/281 asserts, exit 1) while the folder gate still passes,
+which is what makes them two halves rather than one. Both files restored
+byte-exact and proven: `sha256sum -c` OK (58e1c5e8… / 139d4465…), `diff -q` clean,
+`ls data/relics/*.tres | wc -l` back to 20, `grep -c "func test_domino"` back to 1.
+
+**G7's decision-75 floor is now the batch itself (decision 84).** The scan's
+`assert_between` reads `RelicData.WEEK_4_IDS.size()` at both ends, so a missing
+file and a stray file fail the same check; `WEEK_4_LANDED_MIN` no longer exists as
+a `const` because GDScript refuses a method call in a constant expression — this
+goal measured that rather than assuming it (the first attempt's log:
+`Parse Error: Assigned value for constant "WEEK_4_LANDED_MIN" isn't a constant
+expression`, kept at `.goals/evidence/g8b/…-test-relic-data-first.log`).
+
+**G8a's forward pointer is resolved, dated in place.** G8a's section says "the box
+stays open until G8b's harness-completeness gate is green"; G8b is that gate, it is
+green, and `tasks/todo.md`'s **W4-B6** is ticked `[x]` in this commit — box,
+annotation and tree all saying twenty.
+
+**Evidence** (`.goals/evidence/g8b/`, all named `<run>-g8b-…`): the file **13/13 /
+281 asserts** exit 0 (G8a: 10/10 / 165); full suite **52 scripts / 926 tests / 926
+passing / 58 134 asserts** exit 0, 72.7 s (G8a: 52/923/923/58 018 — this goal's
++3 cases and +116 asserts, closing exactly); `--import` exit 0 with 0 `ERROR` and
+0 `WARNING` lines; the two deletion logs above; the parse-error log that retired
+the constant. **No two-instance smoke run** (decision 84): a test-only commit
+touches no RPC, replication or spawner wiring.
 
 ---
 
@@ -6137,6 +6199,11 @@ already recorded in a spec or a comment, the location is given.
     check. Deliberately a floor and not an equality: G8 raises the constant to 20
     rather than rewriting the test, and a week-8 relic outside the Week-4 list
     would still be caught by the ceiling rather than silently accepted.
+    **Superseded 2026-10-20 (G8b, decision 84):** the floor was raised to
+    `RelicData.WEEK_4_IDS.size()` at G8b and no longer exists as a `const` — a
+    `const` cannot hold that method call, so the scan reads it inline and the
+    batch's size comes off the one table G3 pinned against the design doc. The
+    week-8 point survives: a relic outside the Week-4 list still fails the scan.
 
 76. **G7's commit runs no two-instance smoke test, for G6's reason (2026-10-20).**
     G7. The five effects are host-only by spec (SPEC-relics, "Rolls, picks,
@@ -6216,6 +6283,36 @@ already recorded in a spec or a comment, the location is given.
     `.goals/evidence/g8a/1792508947701-g8a-headless-boot.log`) ran as the
     standing launch check, not as a sync check, so the absence of a smoke log in
     `.goals/evidence/g8a/` reads as a decision rather than an omission.
+
+84. **The harness-completeness gate's coverage rule, its one deviation from
+    PLAN's wording, and no smoke test (2026-10-20).** G8b. (a) **What counts as
+    "a case for this relic"** is a case whose *name* is the relic's
+    (`test_<id>` or `test_<id>_…`) and whose *body* names that id — read per
+    case, never across the file. SPEC-relics' "Testing" sentence says
+    `test_relic_triggers.gd` holds "one case per relic (88)" and says nothing
+    about how a case is recognised, so the rule is this lane's: the naming
+    convention the file has used since G5 makes each relic's own case
+    greppable, and the body clause is what stops a case named for a relic but
+    about something else from counting. The file-wide reading was rejected
+    because it is genuinely fooled —
+    `test_the_spawning_relics_take_their_scene_from_the_relics_own_vfx_id`
+    loads `ember_boots.tres` for an unrelated reason, which is pinned in the
+    gate's own case. (b) **`WEEK_4_LANDED_MIN` is gone rather than raised.**
+    PLAN's sub-task says to raise G7's decision-75 floor from 16 to
+    `RelicData.WEEK_4_IDS.size()`; the scan's `assert_between` now reads
+    `RelicData.WEEK_4_IDS.size()` at both ends, because a `const` cannot hold a
+    method call in GDScript — the attempt failed with `Parse Error: Assigned
+    value for constant "WEEK_4_LANDED_MIN" isn't a constant expression`
+    (measured, not assumed; the log is kept). The effect is exactly what the
+    sub-task asked for and the "exactly twenty" claim has one home, the table
+    `RelicData.WEEK_4_IDS` that G3 pinned against design doc 9.1 — plus the
+    gate case's sorted comparison, which is stronger than either bound because
+    it names the id. (c) **No two-instance smoke run**: this commit is tests
+    only and touches no RPC, replication, `MultiplayerSynchronizer` or spawner
+    wiring, so there is no sync delta (G6's, G7's and G8a's reason — decisions
+    68, 76, 83). (d) No ask-first surface moved: no `project.godot`, no Input
+    Map, no autoload API, no `scripts/data/` Resource, no `Events` signal, no
+    save schema, no CI, no `addons/`, no `.tscn`, and nothing in Dev A's lane.
 
 ---
 
