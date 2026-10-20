@@ -16,8 +16,9 @@ extends Area2D
 ## Sync: host-authoritative. The host validates the use, rolls, and records both
 ## the use and the offer it announced; a client's `interact()` forwards up the
 ## request path and rolls nothing locally, so the same peer can never spend a
-## shrine twice by asking on the wrong peer. Nothing here attaches a relic —
-## the pick, the host attach and the codex are the pick flow (`W4-B5`, G10).
+## shrine twice by asking on the wrong peer. Nothing here attaches a relic: the
+## pick, the host attach and the codex are `RelicFlow` (`W4-B5`, G10), which this
+## file hands its offer to on the line after announcing it.
 ##
 ## blocked on Dev A (W4-A3): registering the SHRINE populator is a guarded no-op
 ## until FloorGenerator.register_populator() exists under scripts/generation/,
@@ -154,7 +155,13 @@ func _apply_use(player: Player, peer_id: int) -> void:
 	_used_peers[peer_id] = true
 	var ids: Array[StringName] = offer_for(player)
 	_offers[peer_id] = ids.duplicate()
+	# The pick flow validates a later request_pick_relic(index) against *this*
+	# offer, and the codex records every id the player has now seen (G10).
+	RelicFlow.record_offer(peer_id, ids, self, player)
 	relic_choice_offered.emit(peer_id, ids)
+	# The offered peer's copy of it, for the choice popup. A solo host has no
+	# remote peer and routes nothing.
+	NetworkManager.route_relic_choice_offered(peer_id, ids)
 
 
 # --- the client path --------------------------------------------------------

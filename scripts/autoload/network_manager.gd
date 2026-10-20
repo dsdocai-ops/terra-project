@@ -27,6 +27,15 @@ signal floor_layout_requested(floor_index: int)
 ## is, so the client half of the revive is observable where a single process
 ## cannot reach a real host.
 signal revive_requested(target_peer_id: int)
+## A client asked the host to pick the relic at `index` from the offer it
+## received at a shrine (W4-B5, G10). Emitted on the asking peer before the
+## request travels, the same shape as revive_requested, so the UI's call is
+## observable where a single process cannot reach a real host.
+signal relic_pick_requested(index: int)
+## A host's `relic_choice_offered` broadcast landed on this peer: `peer_id` was
+## offered `ids` at a shrine. The choice popup (ui-hud) listens; the host itself
+## hears the Shrine's own node signal, so this is the client's copy of it.
+signal relic_offer_received(peer_id: int, ids: Array[StringName])
 
 const DEFAULT_PORT: int = 7777
 const MAX_PLAYERS: int = 4
@@ -224,6 +233,126 @@ func request_vote_rope(yes: bool) -> void:
 		push_warning("[net] request_vote_rope refused: sender %d cannot apply a rope use here" % sender)
 		return
 	GameState.request_extract_vote(sender, yes)
+
+
+# --- the relic pick flow (W4-B5, G10) ---------------------------------------
+
+## Client -> host: pick the relic at `index` from the offer this peer received
+## at a shrine (SPEC-relics "Shrine flow": "`request_pick_relic(index)`; host
+## attaches via `EffectHost.add`, emits `relic_picked`, updates codex").
+## The index is the only value a client contributes; the host resolves it against
+## the offer that peer was actually given, so a client cannot name a relic it was
+## not offered (SPEC-networking: "Never trust client values beyond ids and
+## indices"). The body validates `multiplayer.get_remote_sender_id()` first, as
+## every request_* does.
+## Sync: host-authoritative. `RelicFlow.apply_pick_request()` is the whole rule.
+@rpc("any_peer", "call_remote", "reliable")
+func request_pick_relic(index: int) -> void:
+	var sender: int = multiplayer.get_remote_sender_id()
+	if not RelicFlow.apply_pick_request(sender, index):
+		push_warning("[net] request_pick_relic refused (%s): sender %d index %d" % [
+			RelicFlow.last_refusal, sender, index])
+
+
+## Host -> the offered peer: the three ids a shrine rolled for `peer_id`
+## (SPEC-relics "Shrine flow"). Sent to that one peer, not every peer: an offer
+## is that player's choice. The host hears its shrine's own node signal; this
+## broadcast is the client's copy, which the choice popup shows.
+## Sync: host-authoritative, validated like every other host broadcast.
+@rpc("authority", "call_local", "reliable")
+func relic_choice_offered(peer_id: int, ids: Array[StringName]) -> void:
+	var sender: int = multiplayer.get_remote_sender_id()
+	if not can_accept_host_broadcast(sender):
+		push_warning("[net] relic_choice_offered refused: sender %d may not offer a relic here" % sender)
+		return
+	apply_relic_offer(peer_id, ids)
+
+
+## Host -> every peer: `peer_id` picked `relic_id` at a shrine (SPEC-relics
+## "Shrine flow": "host attaches via `EffectHost.add`, emits `relic_picked`").
+## The host's own `Events.relic_picked` already fired where the pick was applied;
+## this is the other peers' copy, so the HUD and the synergy panel (week 8) see
+## the pick on every screen.
+## Sync: host-authoritative, validated like every other host broadcast.
+@rpc("authority", "call_local", "reliable")
+func relic_picked(peer_id: int, relic_id: StringName) -> void:
+	var sender: int = multiplayer.get_remote_sender_id()
+	if not can_accept_host_broadcast(sender):
+		push_warning("[net] relic_picked refused: sender %d may not announce a pick here" % sender)
+		return
+	apply_relic_pick_broadcast(peer_id, relic_id)
+
+
+## The client-side entry point the choice popup calls: ask the host to take the
+## relic at `index`. On the host the same call applies directly, because solo and
+## a hosting peer are the same code path (SPEC-networking "Solo play is a host
+## with one peer"). A session with no remote host records the request and says so
+## rather than faking one, exactly like `send_revive_request`.
+## Sync: the host applies; a client's own call never attaches anything.
+func send_pick_relic_request(index: int) -> bool:
+	relic_pick_requested.emit(index)
+	if is_host:
+		return RelicFlow.apply_pick_request(local_peer_id, index)
+	if not can_send_request():
+		push_warning("[net] relic pick %d not sent: this session has no remote host to ask" % index)
+		return false
+	print("[net] asked the host for relic %d of the offer" % index)
+	request_pick_relic.rpc_id(HOST_PEER_ID, index)
+	return true
+
+
+## Host only. Sends an offer to the peer it belongs to. Returns true when it went
+## out; a solo host, the offering peer itself, and an unknown peer have nobody to
+## tell and send nothing.
+func route_relic_choice_offered(peer_id: int, ids: Array[StringName]) -> bool:
+	if not _announces_player_state():
+		return false
+	if peer_id <= 0 or peer_id == local_peer_id or not peer_ids.has(peer_id):
+		return false
+	relic_choice_offered.rpc_id(peer_id, peer_id, ids)
+	return true
+
+
+## Host only. Announces a pick to every remote peer, the same one rpc_id per peer
+## shape `route_player_downed` uses. The host's own bus event already fired in
+## `RelicFlow.apply_pick_request`, so this never loops back to the host.
+func route_relic_picked(player: Player, data: RelicData) -> bool:
+	if not _announces_player_state() or player == null or data == null:
+		return false
+	var targets: Array[int] = remote_peer_ids()
+	if targets.is_empty():
+		return false
+	for peer_id: int in targets:
+		relic_picked.rpc_id(peer_id, player.peer_id, data.id)
+	return true
+
+
+## The receiving half of an offer: puts it on `relic_offer_received` for the
+## choice popup. Returns false for an empty offer, which is not something a
+## shrine produces.
+func apply_relic_offer(peer_id: int, ids: Array[StringName]) -> bool:
+	if ids.is_empty():
+		push_warning("[net] relic offer for peer %d is empty, ignored" % peer_id)
+		return false
+	relic_offer_received.emit(peer_id, ids)
+	print("[net] peer %d was offered %d relics" % [peer_id, ids.size()])
+	return true
+
+
+## The receiving half of a pick: resolves the id to its data and emits
+## `Events.relic_picked` for this peer's presentation layer. The player may be
+## unknown here (a payload for a peer this machine has not spawned), in which
+## case the event still fires with a null player, because the id is the fact the
+## HUD needs; an unknown id is refused. Returns true when emitted.
+func apply_relic_pick_broadcast(peer_id: int, relic_id: StringName) -> bool:
+	var data: RelicData = RelicFlow.data_for(relic_id)
+	if data == null:
+		push_warning("[net] relic_picked for unknown relic %s, ignored" % relic_id)
+		return false
+	var player: Player = get_player(peer_id)
+	Events.relic_picked.emit(player, data)
+	print("[net] peer %d picked %s" % [peer_id, relic_id])
+	return true
 
 
 ## Host -> every peer: the floor about to be played, and the seed it comes from
