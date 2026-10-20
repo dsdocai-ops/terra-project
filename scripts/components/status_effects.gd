@@ -4,8 +4,8 @@ extends Node
 ## Owned by stats-status.
 ##
 ## Sync: host only. The application, the stack counts, the durations, the
-## ticking damage and (from W4-B4's later goals) the element combos are decided
-## on the host, and only a peer that resolves statuses deals status damage
+## ticking damage and the six element combos (G24) are decided on the host, and
+## only a peer that resolves statuses deals status damage
 ## (`_resolves_statuses()`, the seam `EffectHost._can_spawn()` uses). What
 ## clients see is SPEC-stats-status "Multiplayer ownership": "`StatusEffects`
 ## stacks are replicated by the entity's `StateSync` so clients can render icons
@@ -161,6 +161,64 @@ const PLAGUE_DOCTORS_MASK_ID: StringName = &"plague_doctors_mask"
 ## folded into the formula's `status_mult` term.
 const UNRAVEL_DAMAGE_TAKEN_PER_STACK: float = 0.10
 
+# --- the six element combos (SPEC-stats-status, "Element combos") ------------
+#
+# "When a status is applied to a target that already has another element's
+# status, the combo fires once, consumes the listed stacks, and emits
+# `Events.combo_triggered`." The pair rules are `_combo_for()`; the numbers the
+# table's Effect column names are here, one constant each, so no combo carries a
+# literal and the week-12 balance pass edits this block and the table together.
+
+## SHATTER's burst — "Burst 200% of trigger damage in 64 px, consumes
+## Chill/Freeze" — as a fraction of the trigger damage and a radius in pixels.
+const SHATTER_BURST_FRACTION: float = 2.0
+const SHATTER_RADIUS: float = 64.0
+## BLIGHT_EXPLOSION — "Explosion 40% per Toxin stack, consumes Toxin". The row
+## does not say 40 % of *what*, and names no radius: the reading here is 40 % of
+## the trigger damage per stack (the reference SHATTER's row states explicitly)
+## and a detonation on the toxined target itself rather than an unspecified
+## area. Recorded as a HANDOFF decision so the balance pass can correct it.
+const BLIGHT_PER_STACK: float = 0.4
+## SUPERCONDUCT — "-30% Defense for 8 s" — as a `StatBlock` percent modifier
+## under `SUPERCONDUCT_SOURCE` and the window it is held for.
+const SUPERCONDUCT_DEFENSE: float = -0.30
+const SUPERCONDUCT_SECONDS: float = 8.0
+## HEMORRHAGE's window — "Bleed ticks crit for 4 s".
+const HEMORRHAGE_SECONDS: float = 4.0
+## COLLAPSE's reach — "Pull enemies within 128 px to the target".
+const COLLAPSE_RADIUS: float = 128.0
+## The value `_combo_for()` returns when an application is not a reaction.
+const NO_COMBO: int = -1
+
+## The `StatBlock` modifier source SUPERCONDUCT owns, released when its 8 s runs
+## out or the target's combos are cleared: the same per-source shape CHILL and
+## FREEZE use, so one combo ending cannot take another's penalty with it.
+const SUPERCONDUCT_SOURCE: StringName = &"combo:superconduct"
+## The multiplier a HEMORRHAGE-window Bleed tick's damage is scaled by. A status
+## tick bypasses `Damage.compute` (no roll, no `CRIT_DAMAGE`), so the crit and
+## its doubling are one decision here rather than a formula call.
+const COMBO_CRIT_MULTIPLIER: float = 2.0
+## Stamped on a combo's own damage alongside the combo's name, so a listener can
+## tell a reaction's hit from a weapon's or a status tick's — `STATUS_TAG`'s
+## precedent, for the debug overlay rather than for a rule.
+const COMBO_TAG: StringName = &"combo"
+## The property a `wet` entity exposes: SPEC-stats-status, CONDUCT's trigger,
+## "Storm on a `wet` target (standing in water tile or Drowned enemy)". The world
+## owns it — floor-generation's water tiles and Dev A's `Drowned` enemy — so an
+## entity without the property reads as dry and nothing here names a class
+## (**blocked on Dev A (W4-A1)**).
+const WET_PROPERTY: StringName = &"wet"
+## The method CONDUCT asks an entity for the enemies touching its connected water
+## area — the spread half of the row. The real query is floor-generation's /
+## enemies-ai's and does not exist yet (**blocked on Dev A (W2-A1, water
+## tiles)**), so an entity without the method spreads nothing and the request
+## itself is what the case asserts.
+const WATER_AREA_METHOD: StringName = &"connected_water_targets"
+## The method COLLAPSE asks each in-range enemy for the pull it must make toward
+## the target. The movement is Dev A's enemy body (**blocked on Dev A (W4-A1)**),
+## so the request is what the case asserts and nothing here moves a node.
+const PULL_METHOD: StringName = &"pull_toward"
+
 ## Kindling's bonus, from SPEC-stats-status's formula: "+0.25 Kindling on BURN".
 ## An *attacker*-side term: it is added when the entity that dealt the hit holds
 ## the relic, which is why `Damage.compute` hands this component the attacking
@@ -272,6 +330,12 @@ var _warned_missing_health: bool = false
 ## after that is a normal one; Permafrost's "always" is the attacker-side
 ## `status_mult` term on `Damage.compute` (G23), not a second flag here.
 var _freeze_double_ready: bool = false
+## Combo -> the scaled seconds left of the combo's own lasting effect. Only the
+## two rows whose Effect column names a duration are ever keys (HEMORRHAGE's 4 s,
+## SUPERCONDUCT's 8 s); every other combo lands and is done. Ticked in
+## `_physics_process` beside the statuses, on the same scaled time, so a time
+## stop aimed at the enemies freezes a superconductor's clock with them.
+var _combo_remaining: Dictionary[int, float] = {}
 
 ## How long a status lasts on this entity, as a multiplier on the table's own
 ## duration: SPEC-bosses' `BossData.status_resistance` — "duration multiplier,
@@ -321,6 +385,18 @@ func apply_status(status: Status, stacks: int = 1, source: Node = null, trigger_
 		return false
 	if not _resolves_statuses():
 		return false
+	# The combo table is read *before* this status lands, because its trigger is
+	# "another element's status" — one already on the target. Reading it after the
+	# write would make every application its own trigger. The firing happens after
+	# the write, once the applied status is fully in place (G24).
+	var combo_kind: int = _combo_for(status)
+	# "consumes the listed stacks" is the same past tense as the trigger: the
+	# stacks the row names are the ones the target *already had*, so SHATTER spends
+	# the Chill/Freeze that was there. A Frost application on a burning target
+	# therefore bursts with nothing to spend and leaves the Chill it brought for the
+	# next Fire hit to shatter. Read here, with the table, for the same reason — this
+	# status has not landed yet.
+	var combo_frost: int = stacks(Status.CHILL) + stacks(Status.FREEZE)
 	# SPEC-stats-status's closing paragraph: a boss at 0.0 resistance has Freeze
 	# "downgraded to Chill", so the freeze never lands as one. Checked before the
 	# entry is touched: the application is transformed, not refused, and what
@@ -352,6 +428,7 @@ func apply_status(status: Status, stacks: int = 1, source: Node = null, trigger_
 	Events.status_applied.emit(entity(), status, total, source)
 	if status == Status.SHOCK:
 		_chain_shock(source, trigger_damage)
+	_maybe_trigger_combo(combo_kind, status, source, trigger_damage, combo_frost)
 	return true
 
 
@@ -384,11 +461,15 @@ func clear(status: Status) -> void:
 	status_expired.emit(status)
 
 
-## Removes every active status, announcing each as it goes.
+## Removes every active status, announcing each as it goes, and drops the combos
+## those statuses triggered: a reaction's lasting effect (HEMORRHAGE's crit
+## window, SUPERCONDUCT's Defense penalty) belongs to the statuses that produced
+## it, so clearing them must not leave one running.
 func clear_all() -> void:
 	var present: Array[int] = _active.keys()
 	for status: int in present:
 		clear(status)
+	clear_combos()
 
 
 # --- the flags the other rows' consumers read (G21) --------------------------
@@ -630,6 +711,268 @@ func _chain_shock(source: Node, trigger_damage: int) -> void:
 		_deliver_to(target, chain_hit(amount))
 
 
+# --- the six element combos (G24) --------------------------------------------
+#
+# SPEC-stats-status, "Element combos". `_combo_for()` reads the table, and it is
+# read *before* the application lands (see `apply_status()`), because every
+# trigger names an element the target already had — and "consumes the listed
+# stacks" is the same past tense, so what a row spends is the stacks that were
+# there, not the status this application is landing. `_maybe_trigger_combo()`
+# then fires it once and emits through the bus.
+# Two rows need the world and both are requests, not effects: CONDUCT's spread
+# asks the connected-water-area seam and COLLAPSE's pull asks the enemy body —
+# neither provider exists yet (Dev A's), so a case asserts the request.
+
+## The combo `applied` triggers on this entity, as a `Combo.Kind`, or `NO_COMBO`
+## when the application is not a reaction.
+##
+## The rules are the table's own rows, read in the table's order so that a target
+## carrying two eligible elements fires exactly one combo — the spec's "the combo
+## fires once", with the tie broken deterministically rather than by dictionary
+## order. "No combo when same element reapplied" falls out of the pair rules:
+## every one of them names a different element on each side, so Fire on Fire, a
+## second Chill and the rest of the re-applies match nothing.
+func _combo_for(applied: Status) -> int:
+	var element: int = STATUS_ELEMENT.get(applied, HitData.Element.NONE)
+	if element == HitData.Element.NONE:
+		return NO_COMBO
+	var frost: bool = _has_element(HitData.Element.FROST, applied)
+	var fire: bool = _has_element(HitData.Element.FIRE, applied)
+	var storm: bool = _has_element(HitData.Element.STORM, applied)
+	if element == HitData.Element.FIRE and frost:
+		return Combo.Kind.SHATTER
+	if element == HitData.Element.FROST and fire:
+		return Combo.Kind.SHATTER
+	if element == HitData.Element.STORM and is_wet():
+		return Combo.Kind.CONDUCT
+	if element == HitData.Element.FIRE and has(Status.TOXIN):
+		return Combo.Kind.BLIGHT_EXPLOSION
+	if element == HitData.Element.SHADOW and has(Status.BLEED):
+		return Combo.Kind.HEMORRHAGE
+	if element == HitData.Element.FROST and storm:
+		return Combo.Kind.SUPERCONDUCT
+	if element == HitData.Element.STORM and frost:
+		return Combo.Kind.SUPERCONDUCT
+	if element == HitData.Element.VOID and _has_other_element(applied):
+		return Combo.Kind.COLLAPSE
+	return NO_COMBO
+
+
+## Whether the entity holds a status of `element` other than `applied` — the
+## "another element's status" half of every pair rule. CHECKED so CHILL and
+## FREEZE are one element: a Fire application shatters either.
+func _has_element(element: int, applied: Status) -> bool:
+	for status: int in _active.keys():
+		if status == applied:
+			continue
+		if int(STATUS_ELEMENT.get(status, HitData.Element.NONE)) == element:
+			return true
+	return false
+
+
+## Whether the entity holds any status whose element differs from `applied`'s —
+## COLLAPSE's "Void on any other status".
+func _has_other_element(applied: Status) -> bool:
+	var element: int = STATUS_ELEMENT.get(applied, HitData.Element.NONE)
+	for status: int in _active.keys():
+		if status == applied:
+			continue
+		if int(STATUS_ELEMENT.get(status, HitData.Element.NONE)) != element:
+			return true
+	return false
+
+
+## Fires `combo_kind` if the pass above found one: builds the payload, applies
+## the row's own lasting effect or consume, and emits `Events.combo_triggered`
+## **once**. A no-op — and a `false` — when `combo_kind` is `NO_COMBO`, so the
+## caller needs no second branch.
+##
+## `existing_frost` is the Chill + Freeze stacks the target held *before* this
+## application, which is what SHATTER's "consumes Chill/Freeze" spends; every
+## other row's consume names a status the trigger already required to be present,
+## so it reads it here (Toxin for BLIGHT_EXPLOSION) or names none at all.
+func _maybe_trigger_combo(combo_kind: int, applied: Status, source: Node, trigger_damage: int, existing_frost: int = 0) -> bool:
+	if combo_kind == NO_COMBO:
+		return false
+	var element: int = STATUS_ELEMENT.get(applied, HitData.Element.NONE)
+	var combo := Combo.new(combo_kind)
+	match combo_kind:
+		Combo.Kind.SHATTER:
+			# "Burst 200% of trigger damage in 64 px, consumes Chill/Freeze." The
+			# frost the target already held is what goes — both statuses of it, so a
+			# frozen-and-chilled target is left with neither — and the application
+			# that fired the combo still lands.
+			combo.damage = roundi(float(maxi(trigger_damage, 0)) * SHATTER_BURST_FRACTION)
+			combo.radius = SHATTER_RADIUS
+			combo.stacks = existing_frost
+			if existing_frost > 0:
+				clear(Status.CHILL)
+				clear(Status.FREEZE)
+			if combo.damage > 0:
+				for target: Node in _combo_targets(SHATTER_RADIUS):
+					_deliver_to(target, combo_hit(combo, element))
+		Combo.Kind.CONDUCT:
+			# "Shock spreads to every enemy touching the connected water area."
+			# The row names no number of its own, so the spread carries the shock
+			# chain's own damage — 30 % of the trigger damage, SHOCK's row.
+			combo.damage = chain_damage(trigger_damage)
+			combo.radius = SHOCK_CHAIN_RADIUS
+			if combo.damage > 0:
+				_spread_conduct(combo, element)
+		Combo.Kind.BLIGHT_EXPLOSION:
+			# "Explosion 40% per Toxin stack, consumes Toxin." All the stacks go.
+			combo.stacks = stacks(Status.TOXIN)
+			combo.damage = roundi(BLIGHT_PER_STACK * float(combo.stacks) * float(maxi(trigger_damage, 0)))
+			clear(Status.TOXIN)
+			if combo.damage > 0:
+				_deliver_to(entity(), combo_hit(combo, element))
+		Combo.Kind.HEMORRHAGE:
+			# "Bleed ticks crit for 4 s." Nothing is consumed: the row lists no
+			# stacks, and the Bleed is the thing that keeps ticking.
+			combo.duration = HEMORRHAGE_SECONDS
+			_combo_remaining[Combo.Kind.HEMORRHAGE] = HEMORRHAGE_SECONDS
+		Combo.Kind.SUPERCONDUCT:
+			combo.duration = SUPERCONDUCT_SECONDS
+			_combo_remaining[Combo.Kind.SUPERCONDUCT] = SUPERCONDUCT_SECONDS
+			_apply_superconduct()
+		Combo.Kind.COLLAPSE:
+			combo.radius = COLLAPSE_RADIUS
+			_request_pull()
+		_:
+			pass
+	Events.combo_triggered.emit(entity(), combo, source)
+	return true
+
+
+## Whether the entity counts as `wet` for CONDUCT. Read off the entity's
+## `WET_PROPERTY` when it carries one, and false otherwise — a dry entity, one
+## with no water tile, and every fixture that has not declared the property
+## (**blocked on Dev A (W4-A1)** for the real tile / `Drowned` enemy).
+func is_wet() -> bool:
+	var owner_entity := entity()
+	if owner_entity == null:
+		return false
+	var value: Variant = owner_entity.get(WET_PROPERTY)
+	return value is bool and bool(value)
+
+
+## The enemies touching this entity's connected water area, via the
+## `WATER_AREA_METHOD` seam. Empty for an entity that carries no such query —
+## which is every entity today (**blocked on Dev A (W2-A1, water tiles)**), so
+## CONDUCT's spread is a request the case asserts rather than a spread that
+## happened.
+func connected_water_targets() -> Array[Node]:
+	var found: Array[Node] = []
+	var owner_entity := entity()
+	if owner_entity == null or not owner_entity.has_method(WATER_AREA_METHOD):
+		return found
+	var result: Variant = owner_entity.call(WATER_AREA_METHOD)
+	if not (result is Array):
+		return found
+	var listing: Array = result
+	for node: Variant in listing:
+		if node is Node and is_instance_valid(node):
+			found.append(node as Node)
+	return found
+
+
+## Runs CONDUCT's spread: the combo's damage to every enemy the water-area seam
+## returned.
+func _spread_conduct(combo: Combo, element: int) -> void:
+	for target: Node in connected_water_targets():
+		if target == entity():
+			continue
+		_deliver_to(target, combo_hit(combo, element))
+
+
+## Lands SUPERCONDUCT's "-30% Defense": one percent modifier under
+## `SUPERCONDUCT_SOURCE`, removed and re-added so a second reaction refreshes the
+## penalty instead of stacking it. `base` is never written (SPEC-project).
+func _apply_superconduct() -> void:
+	var block := stat_block()
+	if block == null:
+		return
+	block.remove_source(SUPERCONDUCT_SOURCE)
+	block.add_modifier(StatBlock.Stat.DEFENSE, 0.0, SUPERCONDUCT_DEFENSE, SUPERCONDUCT_SOURCE)
+
+
+## Asks every enemy within `COLLAPSE_RADIUS` of the target to pull toward it,
+## through the `PULL_METHOD` seam. The target itself is the centre of the pull,
+## not one of its subjects, and an enemy with no such method is skipped — the
+## movement is Dev A's enemy body (**blocked on Dev A (W4-A1)**), which is why
+## this is a request and not a position change.
+func _request_pull() -> void:
+	for target: Node in _combo_targets(COLLAPSE_RADIUS):
+		if target == entity() or not is_instance_valid(target):
+			continue
+		if target.has_method(PULL_METHOD):
+			target.call(PULL_METHOD, entity(), COLLAPSE_RADIUS)
+
+
+## The nodes a burst reaches: the entity itself plus every `ENEMY_TAG` node
+## within `radius` — SHATTER's "in 64 px" and COLLAPSE's "within 128 px", one
+## measurement rather than two. The candidate set is the group Dev A's enemies
+## register in (**blocked on Dev A (W4-A1)**; today it is whatever the world or a
+## double put there), and the entity is included unconditionally so a burst
+## centred on it can land on it (a target with no `Health` is skipped by the
+## delivery, silently).
+func _combo_targets(radius: float) -> Array[Node]:
+	var found: Array[Node] = []
+	var tree := get_tree()
+	if tree != null:
+		var here := _entity_position()
+		for candidate: Node in tree.get_nodes_in_group(ENEMY_TAG):
+			if candidate == entity() or not is_instance_valid(candidate):
+				continue
+			var positioned := candidate as Node2D
+			if positioned == null:
+				continue
+			if here.distance_to(positioned.global_position) <= radius:
+				found.append(candidate)
+	found.append(entity())
+	return found
+
+
+## Whether Bleed ticks crit right now: true while a HEMORRHAGE window is open
+## ("Bleed ticks crit for 4 s"). Read by `_tick()`, which doubles the tick's hit.
+func bleed_ticks_crit() -> bool:
+	return _combo_remaining.has(Combo.Kind.HEMORRHAGE)
+
+
+## Whether a combo's lasting effect is running, and how long it has left, in
+## scaled seconds. The two rows with a duration are the only ones that can be
+## active; every other combo is finished the moment it fires.
+func combo_active(kind: int) -> bool:
+	return _combo_remaining.has(kind)
+
+
+func combo_remaining(kind: int) -> float:
+	return float(_combo_remaining.get(kind, 0.0))
+
+
+## Drops every combo's lasting effect, releasing what it holds (SUPERCONDUCT's
+## Defense modifier) as it goes. Called by `clear_all()` and by a caller that
+## resets an entity — the counterpart of `clear()` for the reaction layer.
+func clear_combos() -> void:
+	var active: Array[int] = _combo_remaining.keys()
+	for kind: int in active:
+		_expire_combo(kind)
+
+
+## The `HitData` a combo's own damage travels as: the amount as both
+## `base_damage` and `final_damage` (the combo's damage is an outcome, not a
+## formula input, so it bypasses `Damage.compute`), the triggering element, and
+## the `COMBO_TAG` plus the combo's own name. No proc depth and no crit roll: a
+## reaction is the target's event, not a chain link of the attacker's effects.
+func combo_hit(combo: Combo, element: int) -> HitData:
+	var hit := HitData.new()
+	hit.base_damage = float(combo.damage)
+	hit.final_damage = combo.damage
+	hit.element = element
+	hit.tags = [COMBO_TAG, combo.name()]
+	return hit
+
+
 # --- reads for the rest of the game ------------------------------------------
 
 ## The statuses the entity currently carries, in enum order.
@@ -733,7 +1076,7 @@ func is_moving() -> bool:
 ## no on-hit effect. Returns whether a hit was delivered; a missing `Health` is
 ## warned once per component, never once per tick (SPEC-combat-core owns the
 ## real component — **blocked on Dev A (W2-A1)**).
-func deal_status_damage(status: Status, amount: int) -> bool:
+func deal_status_damage(status: Status, amount: int, is_crit: bool = false) -> bool:
 	if amount <= 0:
 		return false
 	if health_of(entity()) == null:
@@ -742,18 +1085,24 @@ func deal_status_damage(status: Status, amount: int) -> bool:
 			push_warning("[status] %s: no %s to receive status damage, ticks dropped" % [
 				entity_name(), HEALTH_NODE])
 		return false
-	return _deliver_to(entity(), tick_hit(status, amount))
+	return _deliver_to(entity(), tick_hit(status, amount, is_crit))
 
 
 ## The `HitData` a tick hands over: the amount as both `base_damage` and
 ## `final_damage` (so whichever of the two the real `Health` reads, the number
 ## is the tick's), the status's element, and the `status` tag plus the status's
-## own name. No proc depth and no crit: a tick is not a chain link and cannot
-## crit.
-func tick_hit(status: Status, amount: int) -> HitData:
+## own name. No proc depth: a tick is not a chain link of effects.
+##
+## `is_crit` is set only for a Bleed tick inside a HEMORRHAGE window ("Bleed
+## ticks crit for 4 s"), and it is the *doubling* as well as the flag — a tick
+## bypasses `Damage.compute`, so there is no roll and no `CRIT_DAMAGE` to read,
+## and `COMBO_CRIT_MULTIPLIER` is the whole of it. Every other tick is not a
+## crit and cannot be.
+func tick_hit(status: Status, amount: int, is_crit: bool = false) -> HitData:
 	var hit := HitData.new()
 	hit.base_damage = float(amount)
-	hit.final_damage = amount
+	hit.final_damage = roundi(float(amount) * COMBO_CRIT_MULTIPLIER) if is_crit else amount
+	hit.is_crit = is_crit
 	hit.element = STATUS_ELEMENT.get(status, HitData.Element.NONE)
 	hit.tags = [STATUS_TAG, status_name(status)]
 	return hit
@@ -800,14 +1149,47 @@ func _deliver_to(target: Node, hit: HitData) -> bool:
 ## is scaled by the entity's `TimeManager` factor, which is 0 while it is
 ## stopped, so nothing ages and nothing is dealt.
 func _physics_process(delta: float) -> void:
-	if _active.is_empty():
+	if _active.is_empty() and _combo_remaining.is_empty():
 		return
 	if not _resolves_statuses():
 		return
 	var scale := TimeManager.scale_for(entity())
 	if scale <= 0.0:
 		return
+	# The combos' own clocks are scaled the same way, and run even when the
+	# target carries no status any more: SUPERCONDUCT's penalty outlives the
+	# Shock and Chill that produced it.
+	_tick_combos(delta * scale)
+	if _active.is_empty():
+		return
 	_tick(delta * scale)
+
+
+## Counts the combos' lasting effects down and releases what an expired one
+## holds. Only the rows with a duration are ever keys.
+func _tick_combos(scaled_delta: float) -> void:
+	if _combo_remaining.is_empty():
+		return
+	var expired: Array[int] = []
+	for kind: int in _combo_remaining.keys():
+		var left: float = maxf(float(_combo_remaining[kind]) - scaled_delta, 0.0)
+		_combo_remaining[kind] = left
+		if left <= 0.0:
+			expired.append(kind)
+	for kind: int in expired:
+		_expire_combo(kind)
+
+
+## Ends one combo's lasting effect and takes back what it holds. The only thing
+## a combo leaves on the entity today is SUPERCONDUCT's Defense modifier, and it
+## is released under its own source, so the entity's other modifiers survive.
+func _expire_combo(kind: int) -> void:
+	_combo_remaining.erase(kind)
+	if kind != Combo.Kind.SUPERCONDUCT:
+		return
+	var block := stat_block()
+	if block != null:
+		block.remove_source(SUPERCONDUCT_SOURCE)
 
 
 func _tick(scaled_delta: float) -> void:
@@ -823,7 +1205,7 @@ func _tick(scaled_delta: float) -> void:
 		var whole := floori(carry + DAMAGE_EPSILON)
 		if whole > 0:
 			carry -= float(whole)
-			deal_status_damage(status, whole)
+			deal_status_damage(status, whole, status == Status.BLEED and bleed_ticks_crit())
 		entry["carry"] = carry
 		if remaining <= 0.0 and duration(status) > NO_EXPIRY:
 			# SPEC-stats-status, TOXIN's row: "Plague Doctor's Mask disables
