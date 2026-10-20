@@ -32,6 +32,12 @@ const DESIGN_DOC_HEADING: String = "### 9.1 Passive relics (70 listed)"
 ## Fixtures are written here and removed in `after_each()`; never in `data/`.
 const FIXTURE_DIR: String = "user://_relic_fixtures"
 const WEEK_4_COUNT: int = 20
+## How many of the twenty have a `.tres` on disk right now: the six On Dodge
+## relics (G5), the five On Hit (G6), the three that follow them plus the On Kill
+## pair (G7). It is the scan's floor, raised by the last batch (G8); the ceiling is
+## `WEEK_4_COUNT` itself, so a file that does not belong to the batch fails the
+## same check that a missing one does.
+const WEEK_4_LANDED_MIN: int = 16
 
 var _fixture_paths: Array[String] = []
 
@@ -162,6 +168,12 @@ func test_the_relic_folder_exists_and_the_scan_reports_what_it_holds() -> void:
 	var paths: Array[String] = _collect_tres(RELIC_DIR)
 	for path: String in paths:
 		assert_true(path.ends_with(".tres"), "%s is a relic resource" % path)
+	# The floor is how many of the twenty have landed and the ceiling is the batch
+	# itself, so a relic whose file goes missing and a stray file that is not a
+	# Week-4 relic are both caught here — without freezing the count, which rises
+	# to `WEEK_4_COUNT` as the last batch lands.
+	assert_between(paths.size(), WEEK_4_LANDED_MIN, RelicData.WEEK_4_IDS.size(),
+		"the folder holds every relic that has landed so far")
 	pass_test("%d relic .tres files in %s" % [paths.size(), RELIC_DIR])
 
 

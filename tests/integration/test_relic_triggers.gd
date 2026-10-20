@@ -61,6 +61,21 @@ extends GutTest
 ##   lands) through `deal_damage` and publishes `damage_multiplier_for(enemy)` as
 ##   the read the damage pipeline consults when that seam lands.
 ##
+## The third instalment — design doc 9.1 nos. 12 to 16, relics, W4-B6 (PLAN G7 /
+## raw goal G34) — is Gravity Stone, Leech Fang and Rune of Ricochet on
+## `hit_landed` and Volatile Core and Soul Jar on `enemy_killed`. `enemy_killed`
+## is the second signal with no `Player` argument, so the On Kill pair filters on
+## the killing hit's `owner_player` exactly as the On Hit batch does. Four of the
+## five act through a provider this lane does not own, and each case asserts what
+## the effect *asks* that provider for rather than a result the game cannot
+## produce yet: Gravity Stone's pull is the enemy body's `pull_toward` (**blocked
+## on Dev A (W4-A1)**), Leech Fang's heal is combat-core's `Health.heal`
+## (**blocked on Dev A (W2-A1)**), Rune of Ricochet's ricochet is the
+## projectile's `add_bounce` (**blocked on Dev A (W2-A6)**), and the ghost army
+## Volatile Core's sibling releases is a spawned root (**blocked on Dev A
+## (W4-A4)** / art-audio). Volatile Core's blast is no ask: it is this lane's own
+## `deal_damage()` onto the enemies in range.
+##
 ## Owned by relics. Sync: none under test — relics are host-only content
 ## (SPEC-relics "Multiplayer ownership") and the harness is one process.
 ##
@@ -149,12 +164,84 @@ const ON_HIT_NUMBER_LINKS: Array[Dictionary] = [
 	{"id": &"splitting_shot", "constant": &"SPLIT_COUNT", "text": "3", "value": 3.0},
 ]
 
+## The second "On Hit" instalment — design doc 9.1 nos. 12 to 14, in that order,
+## which are `RelicData.WEEK_4_IDS`' twelfth to fourteenth.
+const ON_HIT_TAIL_IDS: Array[StringName] = [
+	&"gravity_stone",
+	&"leech_fang",
+	&"rune_of_ricochet",
+]
+## The "On Kill" pair — design doc 9.1 nos. 15 and 16, the fifteenth and
+## sixteenth of `RelicData.WEEK_4_IDS`, and the batch that opens `enemy_killed`.
+const ON_KILL_IDS: Array[StringName] = [
+	&"volatile_core",
+	&"soul_jar",
+]
+## Where the second "On Hit" batch starts in 9.1 and how many it holds, and the
+## same pair for the On Kill one. The two constants are what the numbered ranges
+## below and the data cases are built from.
+const ON_HIT_TAIL_FIRST_NUMBER: int = 12
+const ON_HIT_TAIL_COUNT: int = 3
+const ON_KILL_FIRST_NUMBER: int = 15
+const ON_KILL_COUNT: int = 2
+## What each `.tres` of the two batches must hold. Soul Jar is the batch's one
+## stackable relic — the plan names it with Hungry Steel, Bloodthirst and Trophy
+## Belt as W4-B6's four stack cases — and the other four take a single copy.
+const LATE_BATCH_MAX_STACKS: Dictionary[StringName, int] = {
+	&"gravity_stone": 1,
+	&"leech_fang": 1,
+	&"rune_of_ricochet": 1,
+	&"volatile_core": 1,
+	&"soul_jar": 2,
+}
+## The element tag design doc 9.1's Pyromaniac row gives one of the two batches'
+## relics — "Ember Boots, Kindling, Ember Heart, Volatile Core, Glass Cannonball
+## (explosions tagged fire), Prism" is the 4-fire list, so Volatile Core is a
+## fire relic and its proc id is the fire one. The other four carry their
+## trigger's tag alone.
+const LATE_BATCH_ELEMENT_TAGS: Dictionary[StringName, StringName] = {
+	&"volatile_core": Tags.FIRE,
+}
+## The numbers the two batches' descriptions state, and the effect-script
+## constant each one is — the same read G5's and G6's batches get (SPEC-relics:
+## "balance numbers in the description are the source of truth for the effect
+## script's constants"). Gravity Stone and Volatile Core state no number.
+const LATE_BATCH_NUMBER_LINKS: Array[Dictionary] = [
+	{"id": &"leech_fang", "constant": &"HEAL_FRACTION", "text": "2%", "value": 0.02},
+	{"id": &"rune_of_ricochet", "constant": &"EXTRA_BOUNCES", "text": "2 more", "value": 2.0},
+	{"id": &"soul_jar", "constant": &"SOUL_JAR_KILLS", "text": "20", "value": 20.0},
+	{"id": &"soul_jar", "constant": &"GHOST_ARMY_SECONDS", "text": "10s", "value": 10.0},
+]
+
+## Where the two batches' neighbours stand: one inside Gravity Stone's pull
+## reach and Volatile Core's blast, one well outside both. Both are measured
+## from the enemy the hit landed on, which is the centre of each.
+const NEARBY_AT: Vector2 = Vector2(32.0, 0.0)
+const OUT_OF_REACH_AT: Vector2 = Vector2(400.0, 0.0)
+## The damage the Leech Fang case's hits land for, so 2% of them is a round
+## number, and what those two hits heal for. Written down rather than derived,
+## so the case fails if the fraction changes shape.
+const LEECH_DAMAGE: int = 100
+const LEECH_HEAL: int = 2
+const LEECH_HEAL_HALF: int = 1
+## The harness player's HP and the value it starts the Leech Fang case at — below
+## the maximum, so the heal visibly moves it instead of clamping at the cap.
+const HEALTH_MAX: int = 100
+const HEALTH_START: int = 50
+## The `Health` component node the heal path looks for, and the double standing
+## in for combat-core's (Dev A, W2-A1) heal half.
+const HEALTH_NODE: NodePath = ^"Health"
+const HEALTH_STUB_PATH: String = "res://tests/helpers/status_health_stub.gd"
+
 var _harness: EffectHarness
 var _player: Player
 var _emitter: EventEmitterHelper
 ## The six real `.tres` files by id. Null for one that does not exist, which is
 ## what every case's first assertion reports.
 var _sources: Dictionary[StringName, ContentData] = {}
+## How many enemies `_enemy_at()` has built this case, so the doubles under one
+## root never collide on a name.
+var _enemy_count: int = 0
 
 
 func before_each() -> void:
@@ -165,9 +252,14 @@ func before_each() -> void:
 	_player.global_position = DODGE_AT
 	_emitter = EventEmitterHelper.new()
 	_sources = {}
+	_enemy_count = 0
 	for relic_id: StringName in ON_DODGE_IDS:
 		_sources[relic_id] = load(_relic_path(relic_id)) as ContentData
 	for relic_id: StringName in ON_HIT_IDS:
+		_sources[relic_id] = load(_relic_path(relic_id)) as ContentData
+	for relic_id: StringName in ON_HIT_TAIL_IDS:
+		_sources[relic_id] = load(_relic_path(relic_id)) as ContentData
+	for relic_id: StringName in ON_KILL_IDS:
 		_sources[relic_id] = load(_relic_path(relic_id)) as ContentData
 
 
@@ -297,6 +389,62 @@ func _hit(target: Node, owner: Player) -> HitData:
 ## Fires one hit by `owner` onto `target` and returns whether the bus took it.
 func _land_hit(target: Node, owner: Player) -> bool:
 	return _harness.fire(Events.hit_landed, [_hit(target, owner)])
+
+
+## An enemy double the two later batches can act on: a `StatusEnemyStub` — a
+## `CharacterBody2D` in the `enemy` group carrying a `Health` double — with a
+## recording `Hurtbox` added, so a hit dealt to it is recorded by the harness's
+## `SpyWorld` exactly as a hit on a `make_target()` node is. Dev A's real enemy
+## replaces both halves in place: the body is W4-A1's and the hurtbox is
+## W2-A2's, so the swap-in is a delete, not a rewrite (**blocked on Dev A**).
+func _enemy_at(at: Vector2, max_hp: int = 100) -> StatusEnemyStub:
+	_enemy_count += 1
+	var enemy: StatusEnemyStub = StatusEnemyStub.make(_harness.root, at, max_hp)
+	enemy.name = "BatchEnemy%d" % _enemy_count
+	var hurtbox := SpyHurtbox.new()
+	hurtbox.name = &"Hurtbox"
+	hurtbox.world = _harness.world
+	enemy.add_child(hurtbox)
+	return enemy
+
+
+## One `enemy_killed` for `enemy`, credited to `owner` — the payload Dev A's
+## enemy emits when it dies (W4-A4). The killing hit is a weapon hit: depth 0
+## and no tags, so it is nobody's proc first.
+func _kill(enemy: Node, owner: Player) -> bool:
+	var hit: HitData = _hit(enemy, owner)
+	hit.final_damage = LEECH_DAMAGE
+	return _harness.fire(Events.enemy_killed, [enemy, hit])
+
+
+## Installs the `Health` double on the harness player — the node the heal path
+## asks for — and returns it, with the player at part health so a heal has room
+## to land. The real `Health` is combat-core's (**blocked on Dev A (W2-A1)**) and
+## emits `Events.player_healed`; the double records what arrived instead.
+func _install_health() -> StatusHealthStub:
+	var node: Node = _player.get_node_or_null(HEALTH_NODE)
+	assert_not_null(node, "the player scene carries a %s node to heal" % HEALTH_NODE)
+	if node == null:
+		return null
+	node.set_script(load(HEALTH_STUB_PATH) as Script)
+	var health: StatusHealthStub = node as StatusHealthStub
+	assert_not_null(health, "the double installs on the player's %s" % HEALTH_NODE)
+	if health == null:
+		return null
+	health.max_hp = HEALTH_MAX
+	health.current_hp = HEALTH_START
+	return health
+
+
+## Design doc 9.1 nos. 12 to 14 — the second On Hit batch — as
+## `{number: {name, text}}`, parsed out of the document at run time.
+func _on_hit_tail_clauses() -> Dictionary:
+	return _clauses_in_range(ON_HIT_TAIL_FIRST_NUMBER, ON_HIT_TAIL_FIRST_NUMBER + ON_HIT_TAIL_COUNT - 1)
+
+
+## Design doc 9.1 nos. 15 and 16 — the On Kill pair — the same read.
+func _on_kill_clauses() -> Dictionary:
+	return _clauses_in_range(ON_KILL_FIRST_NUMBER, ON_KILL_FIRST_NUMBER + ON_KILL_COUNT - 1)
 
 
 # --- the six relics: one case each -----------------------------------------
@@ -889,6 +1037,420 @@ func test_the_five_fire_for_their_own_players_hit_and_none_for_a_teammates() -> 
 	assert_eq(_harness.status_stacks(target, StatusEffects.Status.SHOCK), 1, "Spark Plug chains")
 	assert_eq(_harness.status_stacks(target, StatusEffects.Status.TOXIN), 1, "Venom Gland poisons")
 	assert_eq((attached[0] as EchoBladeEffect).hits_counted(), 1, "Echo Blade counts the hit")
+
+
+# --- the second "On Hit" batch: one case each -------------------------------
+
+## Design doc 9.1 no. 12 — "Gravity Stone: hits pull nearby enemies slightly
+## toward the target". The pull is the enemy body's movement (Dev A, W4-A1), so
+## the case asserts the request each enemy receives and not a moved position.
+func test_gravity_stone_pulls_nearby_enemies_toward_the_hit_target() -> void:
+	var source: RelicData = _source(&"gravity_stone")
+	assert_not_null(source, "data/relics/gravity_stone.tres exists and loads")
+	if source == null:
+		return
+	var stone: GravityStoneEffect = _harness.attach(source) as GravityStoneEffect
+	assert_not_null(stone, "the Gravity Stone effect attaches through the host")
+	if stone == null:
+		return
+	var target: StatusEnemyStub = _enemy_at(HIT_AT)
+	var near: StatusEnemyStub = _enemy_at(HIT_AT + NEARBY_AT)
+	var far: StatusEnemyStub = _enemy_at(OUT_OF_REACH_AT)
+
+	assert_true(_land_hit(target, _player), "the hit lands")
+	assert_eq(near.pulls.size(), 1, "the enemy inside the pull's reach is asked to pull")
+	if near.pulls.size() == 1:
+		assert_eq(near.pulls[0]["origin"], target, "toward the enemy the hit landed on")
+		assert_eq(near.pulls[0]["radius"], GravityStoneEffect.PULL_RADIUS)
+	assert_eq(far.pulls.size(), 0, "the enemy outside the reach is not asked")
+	assert_eq(target.pulls.size(), 0, "and the target is the centre of the pull, not one of its subjects")
+	assert_eq(_harness.damage_count(target), 0, "the pull deals no damage of its own")
+	assert_eq(_harness.damage_count(near), 0, "nor to the enemy it moves")
+	assert_eq(_harness.spawn_count(&"gravity_stone"), 0, "and spawns nothing")
+
+
+## The reach is this lane's balance call — the design doc says "slightly" and
+## gives no number — so it is pinned here rather than left to drift.
+func test_gravity_stone_pulls_from_the_reach_its_own_constant_states() -> void:
+	assert_eq(GravityStoneEffect.PULL_RADIUS, 96.0, "Gravity Stone pulls from 96 px")
+	assert_true(GravityStoneEffect.PULL_RADIUS < StatusEffects.COLLAPSE_RADIUS,
+		"a lesser pull than the Void combo's 128 px")
+	assert_eq(StringName(GravityStoneEffect.PULL_METHOD), StatusEffects.PULL_METHOD,
+		"and it asks the seam stats-status already publishes, not a second one")
+
+
+## Design doc 9.1 no. 13 — "Leech Fang: heal 2% of damage dealt". The assertion
+## is on the HP that landed, not on the fraction, so a heal path that never ran
+## cannot pass by reading a constant.
+func test_leech_fang_heals_its_holder_two_percent_of_the_damage_dealt() -> void:
+	var source: RelicData = _source(&"leech_fang")
+	assert_not_null(source, "data/relics/leech_fang.tres exists and loads")
+	if source == null:
+		return
+	var fang: LeechFangEffect = _harness.attach(source) as LeechFangEffect
+	assert_not_null(fang, "the Leech Fang effect attaches through the host")
+	if fang == null:
+		return
+	var health: StatusHealthStub = _install_health()
+	var target: Node2D = _harness.make_target(HIT_AT)
+
+	# A hit the pipeline never computed a `final_damage` for dealt nothing, so
+	# there is nothing to leech and the heal is not even asked for.
+	assert_true(_land_hit(target, _player), "a hit whose damage was never computed lands")
+	assert_eq(health.heal_calls.size(), 0, "no damage dealt, so no heal is asked for")
+	assert_eq(health.current_hp, HEALTH_START, "and the HP does not move")
+
+	var first: HitData = _hit(target, _player)
+	first.final_damage = LEECH_DAMAGE
+	assert_true(_harness.fire(Events.hit_landed, [first]), "a %d-damage hit lands" % LEECH_DAMAGE)
+	assert_eq(health.heal_calls.size(), 1, "the holder is healed once")
+	assert_eq(health.healed_total, LEECH_HEAL, "for 2% of the damage that landed")
+	assert_eq(health.current_hp, HEALTH_START + LEECH_HEAL, "and the HP moves by it")
+	assert_eq(fang.heal_requests, [LEECH_HEAL] as Array[int], "the effect's read names the same amount")
+	assert_eq(LeechFangEffect.HEAL_FRACTION, 0.02, "the fraction is the design doc's 2%")
+
+	var second: HitData = _hit(target, _player)
+	second.final_damage = LEECH_DAMAGE / 2
+	assert_true(_harness.fire(Events.hit_landed, [second]), "a %d-damage hit lands" % (LEECH_DAMAGE / 2))
+	assert_eq(health.healed_total, LEECH_HEAL + LEECH_HEAL_HALF, "half the damage leeches half as much")
+
+	# The heal is the *holder's*: a hit somebody else landed leeches for them.
+	var theirs: HitData = _hit(target, null)
+	theirs.final_damage = LEECH_DAMAGE
+	assert_true(_harness.fire(Events.hit_landed, [theirs]), "a team-mate's hit lands")
+	assert_eq(health.heal_calls.size(), 2, "and leeches nothing for this player")
+	assert_eq(health.healed_total, LEECH_HEAL + LEECH_HEAL_HALF, "their damage heals nobody here")
+
+
+## Design doc 9.1 no. 14 — "Rune of Ricochet: projectiles bounce to 2 more
+## enemies". The projectile's body and its ricochet are combat-core's (Dev A,
+## W2-A6), so the case asserts the ask the relic makes of it and the read it
+## publishes beside it.
+func test_rune_of_ricochet_asks_the_projectile_for_two_more_bounces() -> void:
+	var source: RelicData = _source(&"rune_of_ricochet")
+	assert_not_null(source, "data/relics/rune_of_ricochet.tres exists and loads")
+	if source == null:
+		return
+	var rune: RuneOfRicochetEffect = _harness.attach(source) as RuneOfRicochetEffect
+	assert_not_null(rune, "the Rune of Ricochet effect attaches through the host")
+	if rune == null:
+		return
+	assert_eq(rune.extra_bounces(), RuneOfRicochetEffect.EXTRA_BOUNCES,
+		"the read is the number the relic adds, before anything is fired")
+
+	var shot: ProjectileSeamStub = ProjectileSeamStub.make(_harness.root)
+	assert_true(_harness.fire(Events.projectile_fired, [_player, shot]), "the holder's shot is fired")
+	assert_eq(shot.bounces, [RuneOfRicochetEffect.EXTRA_BOUNCES] as Array[int],
+		"the projectile is asked once for 2 more bounces")
+	assert_eq(RuneOfRicochetEffect.EXTRA_BOUNCES, 2, "which is the design doc's `2 more`")
+	assert_eq(_harness.spawn_count(&"rune_of_ricochet"), 0, "the relic fires nothing of its own")
+
+	# A team-mate's projectile, fired on the same bus, is asked nothing.
+	var teammate: Player = _harness.make_player()
+	var theirs: ProjectileSeamStub = ProjectileSeamStub.make(_harness.root)
+	assert_true(_harness.fire(Events.projectile_fired, [teammate, theirs]), "a team-mate's shot is fired")
+	assert_eq(theirs.bounces.size(), 0, "and the relic asks nothing of it")
+
+
+# --- the "On Kill" pair: one case each ---------------------------------------
+
+## Design doc 9.1 no. 15 — "Volatile Core: enemies explode on death". The blast
+## is this lane's own damage, dealt through the same hurtbox seam every relic's
+## damage goes through, and it lands on the enemies around the one that died.
+func test_volatile_core_explodes_the_enemies_its_holder_kills() -> void:
+	var source: RelicData = _source(&"volatile_core")
+	assert_not_null(source, "data/relics/volatile_core.tres exists and loads")
+	if source == null:
+		return
+	var core: VolatileCoreEffect = _harness.attach(source) as VolatileCoreEffect
+	assert_not_null(core, "the Volatile Core effect attaches through the host")
+	if core == null:
+		return
+	core.fx_scene = _fx_root_scene()
+	var victim: StatusEnemyStub = _enemy_at(HIT_AT)
+	var near: StatusEnemyStub = _enemy_at(HIT_AT + NEARBY_AT)
+	var far: StatusEnemyStub = _enemy_at(OUT_OF_REACH_AT)
+
+	assert_true(_kill(victim, _player), "the holder's kill is announced")
+	assert_eq(_harness.spawn_count(&"volatile_core"), 1, "one explosion is spawned")
+	var blast: Node = _spawned(&"volatile_core")
+	assert_not_null(blast, "and the seam handed one back")
+	if blast is Node2D:
+		assert_eq((blast as Node2D).global_position, victim.global_position, "where the enemy died")
+	assert_eq(_harness.damage_count(near), 1, "the enemy inside the blast takes a hit")
+	assert_eq(_harness.damage_total(near), VolatileCoreEffect.EXPLOSION_DAMAGE, "for the blast's damage")
+	assert_eq(_harness.damage_count(far), 0, "the enemy outside it takes none")
+	assert_eq(_harness.damage_count(victim), 0, "and the dying enemy is not hit by its own explosion")
+	var blast_hit: HitData = _harness.world.damage_hits(near)[0]
+	assert_true(blast_hit.tags.has(&"volatile_core"), "the blast carries the relic's own id")
+	assert_eq(blast_hit.proc_depth, 1, "and is one proc link past the kill that caused it")
+	assert_eq(int(blast_hit.element), int(HitData.Element.FIRE),
+		"its element is the fire the design doc's Pyromaniac row gives this relic")
+
+
+## A kill nobody attributes — a team-mate's, a hazard's — is not this player's
+## kill, so nothing explodes and no jar charges.
+func test_the_two_on_kill_relics_fire_for_their_holders_kill_and_not_a_teammates() -> void:
+	var core: VolatileCoreEffect = _harness.attach(_source(&"volatile_core")) as VolatileCoreEffect
+	assert_not_null(core, "Volatile Core attaches")
+	if core == null:
+		return
+	core.fx_scene = _fx_root_scene()
+	var jar: SoulJarEffect = _harness.attach(_source(&"soul_jar")) as SoulJarEffect
+	assert_not_null(jar, "Soul Jar attaches")
+	if jar == null:
+		return
+	jar.fx_scene = _fx_root_scene()
+	var victim: StatusEnemyStub = _enemy_at(HIT_AT)
+
+	# The bus's own emitter: an unattributed kill, the shape a team-mate's is.
+	_emitter.emit_enemy_killed()
+	assert_eq(_harness.spawn_count(&"volatile_core"), 0, "a team-mate's kill explodes nothing")
+	assert_eq(jar.charge(), 0, "and charges nothing")
+
+	assert_true(_kill(victim, _player), "the holder's kill is announced")
+	assert_eq(_harness.spawn_count(&"volatile_core"), 1, "Volatile Core explodes for its holder")
+	assert_eq(jar.charge(), 1, "and Soul Jar charges a kill")
+
+
+## The G17 rule against a real relic: Volatile Core's own blast kills the enemy
+## beside it, that death is announced on the bus exactly as Dev A's enemy
+## announces one — and the blast carries the relic's id, so the relic does not
+## react to its own damage (**blocked on Dev A (W4-A4)**: the emitter is the
+## enemy's; the hit and the rule are this lane's).
+func test_volatile_cores_own_explosion_does_not_retrigger_itself() -> void:
+	var source: RelicData = _source(&"volatile_core")
+	assert_not_null(source, "data/relics/volatile_core.tres exists and loads")
+	if source == null:
+		return
+	var core: VolatileCoreEffect = _harness.attach(source) as VolatileCoreEffect
+	assert_not_null(core, "the Volatile Core effect attaches through the host")
+	if core == null:
+		return
+	core.fx_scene = _fx_root_scene()
+	var victim: StatusEnemyStub = _enemy_at(HIT_AT)
+	var near: StatusEnemyStub = _enemy_at(HIT_AT + NEARBY_AT)
+
+	assert_true(_kill(victim, _player), "the holder's kill is announced")
+	assert_eq(_harness.spawn_count(&"volatile_core"), 1, "the blast is spawned once")
+	assert_eq(_harness.damage_count(near), 1, "and hits the enemy beside it")
+	var blast_hit: HitData = _harness.world.damage_hits(near)[0]
+
+	assert_true(_harness.fire(Events.enemy_killed, [near, blast_hit]),
+		"the blast's victim dies in turn, announced as its death would be")
+	assert_eq(_harness.spawn_count(&"volatile_core"), 1, "and the relic does not explode again")
+	assert_eq(_harness.world.damage_calls.size(), 1, "the chain stops at the blast's own hit")
+
+
+## Design doc 9.1 no. 16 — "Soul Jar: kills charge a jar, at 20 kills it releases
+## a ghost army for 10s". Nineteen kills charge, the twentieth releases, and the
+## twenty-first starts the next jar.
+func test_soul_jar_charges_a_kill_at_a_time_and_releases_at_twenty() -> void:
+	var source: RelicData = _source(&"soul_jar")
+	assert_not_null(source, "data/relics/soul_jar.tres exists and loads")
+	if source == null:
+		return
+	var jar: SoulJarEffect = _harness.attach(source) as SoulJarEffect
+	assert_not_null(jar, "the Soul Jar effect attaches through the host")
+	if jar == null:
+		return
+	jar.fx_scene = _fx_root_scene()
+	assert_eq(SoulJarEffect.SOUL_JAR_KILLS, 20, "the jar holds the design doc's 20 kills")
+	assert_eq(jar.charge(), 0, "a fresh jar is empty")
+	var victim: StatusEnemyStub = _enemy_at(HIT_AT)
+
+	for n: int in SoulJarEffect.SOUL_JAR_KILLS - 1:
+		assert_true(_kill(victim, _player), "kill %d is announced" % (n + 1))
+	assert_eq(jar.charge(), SoulJarEffect.SOUL_JAR_KILLS - 1, "19 kills charge the jar 19 times")
+	assert_eq(jar.armies_released(), 0, "and nothing is released before the twentieth")
+	assert_eq(_harness.spawn_count(&"soul_jar"), 0, "no army yet")
+
+	assert_true(_kill(victim, _player), "the twentieth kill is announced")
+	assert_eq(jar.armies_released(), 1, "the jar releases once")
+	assert_eq(jar.charge(), 0, "and empties")
+	assert_eq(_harness.spawn_count(&"soul_jar"), 1, "one ghost army is spawned")
+	var army: Node = _spawned(&"soul_jar")
+	assert_not_null(army, "and the seam handed it back")
+	if army is Node2D:
+		assert_eq((army as Node2D).global_position, _player.global_position, "at the jar's holder")
+	var root: RelicFxRootStub = army as RelicFxRootStub
+	assert_not_null(root, "the army is the FX root the seam instantiated")
+	if root != null:
+		assert_almost_eq(root.lifetime_seconds, SoulJarEffect.GHOST_ARMY_SECONDS, EPSILON,
+			"armed to stand for the design doc's 10s")
+	assert_eq(SoulJarEffect.GHOST_ARMY_SECONDS, 10.0, "which is the design doc's 10s")
+
+	assert_true(_kill(victim, _player), "a twenty-first kill is announced")
+	assert_eq(jar.armies_released(), 1, "the jar does not release again on the 21st")
+	assert_eq(jar.charge(), 1, "it starts charging the next army instead")
+
+
+## The batch's stack case: `soul_jar` is the one relic of the pair whose data
+## file allows a second copy, and a second copy charges the jar faster — which
+## is what makes `max_stacks = 2` visible rather than decorative.
+func test_soul_jar_more_copies_charge_the_jar_faster() -> void:
+	var source: RelicData = _source(&"soul_jar")
+	assert_not_null(source, "data/relics/soul_jar.tres exists and loads")
+	if source == null:
+		return
+	assert_eq(source.max_stacks, int(LATE_BATCH_MAX_STACKS.get(&"soul_jar", 0)),
+		"the data file allows the two copies this case holds")
+	var jar: SoulJarEffect = _harness.attach(source, 2) as SoulJarEffect
+	assert_not_null(jar, "the Soul Jar effect attaches through the host")
+	if jar == null:
+		return
+	jar.fx_scene = _fx_root_scene()
+	assert_eq(jar.stacks, 2, "the effect is held twice")
+	assert_eq(jar.charge_per_kill(), 2, "each kill charges the jar once per copy")
+	var victim: StatusEnemyStub = _enemy_at(HIT_AT)
+
+	for n: int in SoulJarEffect.SOUL_JAR_KILLS / 2 - 1:
+		assert_true(_kill(victim, _player), "kill %d is announced" % (n + 1))
+	assert_eq(jar.charge(), SoulJarEffect.SOUL_JAR_KILLS - 2, "nine kills charge a two-copy jar eighteen times")
+	assert_eq(jar.armies_released(), 0, "and nothing is released yet")
+
+	assert_true(_kill(victim, _player), "the tenth kill is announced")
+	assert_eq(jar.armies_released(), 1, "the two-copy jar releases at ten kills, not twenty")
+	assert_eq(_harness.spawn_count(&"soul_jar"), 1, "with one ghost army")
+
+
+## The three are On Hit relics like G6's five: one hit the holder landed moves all
+## three, and the same hit attributed to anybody else moves none. The negative
+## control is `EventEmitterHelper` again — the bus's own emitter, whose hit carries
+## no `owner_player` — read on this batch's own three tells: no pull asked, no heal
+## asked, no bounce asked.
+func test_the_three_later_on_hit_relics_fire_for_their_own_players_hit_and_none_for_a_teammates() -> void:
+	for relic_id: StringName in ON_HIT_TAIL_IDS:
+		assert_not_null(_attach(relic_id), "%s attaches" % relic_id)
+	var health: StatusHealthStub = _install_health()
+	var target: StatusEnemyStub = _enemy_at(HIT_AT)
+	var near: StatusEnemyStub = _enemy_at(HIT_AT + NEARBY_AT)
+	var shot: ProjectileSeamStub = ProjectileSeamStub.make(_harness.root)
+	var teammate: Player = _harness.make_player()
+	var theirs: ProjectileSeamStub = ProjectileSeamStub.make(_harness.root)
+
+	# A teammate's hit on the bus's own emitter, and a teammate's shot: neither
+	# moves anything this player holds.
+	_emitter.emit_hit_landed()
+	assert_true(_harness.fire(Events.projectile_fired, [teammate, theirs]), "a team-mate's shot is fired")
+	assert_eq(near.pulls.size(), 0, "a teammate's hit pulls nobody for this player")
+	assert_eq(health.heal_calls.size(), 0, "and leeches nothing for them")
+	assert_eq(theirs.bounces.size(), 0, "and their shot is asked for no bounce")
+
+	# The holder's own hit and shot, and all three react.
+	var mine: HitData = _hit(target, _player)
+	mine.final_damage = LEECH_DAMAGE
+	assert_true(_harness.fire(Events.hit_landed, [mine]), "the holder's hit lands")
+	assert_true(_harness.fire(Events.projectile_fired, [_player, shot]), "the holder's shot is fired")
+	assert_eq(near.pulls.size(), 1, "Gravity Stone pulls from that one hit")
+	assert_eq(health.healed_total, LEECH_HEAL, "Leech Fang heals from it")
+	assert_eq(shot.bounces, [RuneOfRicochetEffect.EXTRA_BOUNCES] as Array[int],
+		"Rune of Ricochet asks for its bounces")
+
+
+# --- the data: the second On Hit batch and the On Kill pair -----------------
+
+## One relic against the design doc clause it was copied from: the id being its
+## file name, the name, the sentence its description contains, its kind, its stack
+## rule, its tags from the vocabulary with the trigger's own on it, and — where it
+## has an element — the element tag first, which is what SPEC-art-audio's
+## `relic_proc_<tag>` rule turns into the proc it names.
+func _check_clause_relic(
+	relic_id: StringName,
+	expected: Dictionary,
+	stack_rules: Dictionary[StringName, int],
+	element_tags: Dictionary[StringName, StringName],
+	trigger_tag: StringName,
+) -> void:
+	var data: RelicData = _source(relic_id)
+	assert_not_null(data, "%s.tres loads as a RelicData" % relic_id)
+	if data == null:
+		return
+	assert_eq(String(data.id), String(relic_id), "the id is the file name")
+	assert_eq(String(data.display_name), String(expected["name"]), "%s is the design doc's name" % relic_id)
+	var sentence: String = String(expected["text"]).to_lower()
+	assert_true(String(data.description).to_lower().contains(sentence),
+		"%s's description is the design doc's sentence (%s)" % [relic_id, sentence])
+	assert_eq(data.kind, RelicData.Kind.PASSIVE, "%s is a passive relic" % relic_id)
+	assert_eq(data.max_stacks, int(stack_rules.get(relic_id, 0)),
+		"%s's stack rule is the batch's own" % relic_id)
+	assert_between(data.tags.size(), 1, 2, "%s carries 1 to 2 tags" % relic_id)
+	assert_true(data.tags.has(trigger_tag), "%s carries the %s tag its trigger gives it" % [relic_id, trigger_tag])
+	for tag: StringName in data.tags:
+		assert_true(Tags.is_valid(tag), "%s's tag `%s` is in the vocabulary" % [relic_id, tag])
+	if element_tags.has(relic_id):
+		assert_eq(data.tags[0], element_tags[relic_id],
+			"%s's element tag comes first, so its proc id is the element's" % relic_id)
+	# SPEC-art-audio: "relic_proc_<tag> (one per relic tag)" — the proc a relic
+	# plays is named for the first tag it carries.
+	if not data.tags.is_empty():
+		assert_eq(String(data.vfx_id), "relic_proc_%s" % data.tags[0],
+			"%s names SPEC-art-audio's proc id for its own tag" % relic_id)
+
+
+## Criterion 1 read against the document it was copied from, for design doc 9.1
+## nos. 12 to 14, parsed out of `SINKHOLE_SPEC.md` at run time rather than restated.
+func test_the_three_on_hit_tail_data_files_are_the_design_docs_own_text() -> void:
+	var clauses: Dictionary = _on_hit_tail_clauses()
+	assert_eq(clauses.size(), ON_HIT_TAIL_COUNT, "design doc 9.1 nos. 12 to 14 parse out of the document")
+
+	var art_spec: String = FileAccess.get_file_as_string(ART_SPEC_PATH)
+	assert_true(art_spec.contains("relic_proc_<tag>"), "SPEC-art-audio states the relic proc id rule")
+
+	for number: int in range(ON_HIT_TAIL_FIRST_NUMBER, ON_HIT_TAIL_FIRST_NUMBER + ON_HIT_TAIL_COUNT):
+		var expected: Dictionary = clauses.get(number, {}) as Dictionary
+		assert_false(expected.is_empty(), "design doc 9.1 no. %d was read" % number)
+		if expected.is_empty():
+			continue
+		var relic_id: StringName = _id_from_display_name(String(expected["name"]))
+		assert_eq(ON_HIT_TAIL_IDS[number - ON_HIT_TAIL_FIRST_NUMBER], relic_id,
+			"no. %d is %s in the batch order" % [number, relic_id])
+		_check_clause_relic(relic_id, expected, LATE_BATCH_MAX_STACKS, LATE_BATCH_ELEMENT_TAGS, Tags.ON_HIT)
+
+
+## The same read for the On Kill pair, design doc 9.1 nos. 15 and 16 — the first
+## relics of the batch that hang off `enemy_killed` rather than `hit_landed`, which
+## is what the `on_kill` tag on both of them says.
+func test_the_two_on_kill_data_files_are_the_design_docs_own_text() -> void:
+	var clauses: Dictionary = _on_kill_clauses()
+	assert_eq(clauses.size(), ON_KILL_COUNT, "design doc 9.1 nos. 15 and 16 parse out of the document")
+
+	for number: int in range(ON_KILL_FIRST_NUMBER, ON_KILL_FIRST_NUMBER + ON_KILL_COUNT):
+		var expected: Dictionary = clauses.get(number, {}) as Dictionary
+		assert_false(expected.is_empty(), "design doc 9.1 no. %d was read" % number)
+		if expected.is_empty():
+			continue
+		var relic_id: StringName = _id_from_display_name(String(expected["name"]))
+		assert_eq(ON_KILL_IDS[number - ON_KILL_FIRST_NUMBER], relic_id,
+			"no. %d is %s in the batch order" % [number, relic_id])
+		_check_clause_relic(relic_id, expected, LATE_BATCH_MAX_STACKS, LATE_BATCH_ELEMENT_TAGS, Tags.ON_KILL)
+
+
+## The numbers these five descriptions state are the effect scripts' constants,
+## read out of the scripts rather than restated here — "2%", "2 more", "20", "10s".
+## The two On Kill relics share a data file each and both are read through the same
+## table, so a description that drifts from its script fails on the pair of them.
+func test_the_late_batch_descriptions_numbers_are_the_effect_scripts_constants() -> void:
+	for link: Dictionary in LATE_BATCH_NUMBER_LINKS:
+		var relic_id: StringName = link["id"]
+		var data: RelicData = _source(relic_id)
+		assert_not_null(data, "%s.tres loads" % relic_id)
+		if data == null:
+			continue
+		var script: GDScript = data.effect_script
+		assert_not_null(script, "%s's effect_script is set" % relic_id)
+		if script == null:
+			continue
+		var constants: Dictionary = script.get_script_constant_map()
+		var name: StringName = link["constant"]
+		assert_true(constants.has(name), "%s's script declares %s" % [relic_id, name])
+		if not constants.has(name):
+			continue
+		assert_almost_eq(float(constants[name]), float(link["value"]), EPSILON,
+			"%s's %s is the design doc's number" % [relic_id, name])
+		assert_true(String(data.description).to_lower().contains(String(link["text"])),
+			"%s's description states it as `%s` (grep it in both: %s and %s.tres)" % [
+				relic_id, link["text"], script.resource_path, relic_id])
 
 
 # --- the data: names, sentences, tags, stacks -------------------------------

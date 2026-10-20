@@ -9,6 +9,7 @@ extends Node2D
 ## - `arm_trail(status)` — Ember Boots. The trail harms what stands in it.
 ## - `arm_fuse(seconds)` — Mirror Step. The clone detonates after the fuse.
 ## - `arm_patch(status)` — Frostwalkers. The patch applies to what crosses it.
+## - `arm_lifetime(seconds)` — Soul Jar. The ghost army stands for that long.
 ##
 ## The real roots are art-audio's `scenes/vfx/relic_proc_<tag>.tscn` and the
 ## gameplay inside them (the hurtbox, the slip, the burn) is **blocked on Dev A
@@ -33,6 +34,8 @@ var armed: bool = false
 var armed_status: int = -1
 ## The fuse the root was armed with, or 0.0 when it was never armed.
 var fuse_seconds: float = 0.0
+## The lifetime the root was armed with, or 0.0 when it was never armed.
+var lifetime_seconds: float = 0.0
 ## Every `arm_*()` call in order, as `{method: StringName, argument: Variant}` —
 ## so a case can also assert that a root was armed *exactly once*.
 var arm_calls: Array[Dictionary] = []
@@ -54,6 +57,15 @@ func arm_patch(status: int) -> void:
 func arm_fuse(seconds: float) -> void:
 	_record(&"arm_fuse", seconds)
 	fuse_seconds = seconds
+
+
+## Arms the root to stand for `seconds` — Soul Jar's ghost army, whose "for 10s"
+## is a duration rather than a fuse that ends in a detonation. The gameplay
+## inside the army is Dev A's W4-A4 and art-audio's W4-B12/B13 either way, so the
+## arming call is what the case asserts.
+func arm_lifetime(seconds: float) -> void:
+	_record(&"arm_lifetime", seconds)
+	lifetime_seconds = seconds
 
 
 func _record(method: StringName, argument: Variant) -> void:

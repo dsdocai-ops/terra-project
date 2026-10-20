@@ -27,6 +27,12 @@ var current_hp: int = 100
 ## Every hit handed to `apply_damage()`, in order.
 var hits: Array[HitData] = []
 
+## Every amount handed to `heal()`, in order — including a zero. Separate from
+## `healed_total` so "the heal path was never reached" (no entry) reads
+## differently from "the heal path was reached and granted nothing" (a 0), which
+## is the distinction Leech Fang's zero-damage case needs.
+var heal_calls: Array[int] = []
+
 ## How much HP this entity has actually been healed for, after every status
 ## penalty — the "through the heal path" half of the TOXIN test: the assertion
 ## is on what landed, not on the multiplier alone.
@@ -53,6 +59,7 @@ func apply_damage(hit: HitData) -> bool:
 ## this double is the swap-in that lets the status penalty be asserted through a
 ## heal rather than by reading the multiplier off the component.
 func heal(amount: int) -> int:
+	heal_calls.append(amount)
 	var granted := maxi(amount, 0)
 	var statuses: StatusEffects = get_parent().get_node_or_null(STATUS_NODE) as StatusEffects
 	if statuses != null:
