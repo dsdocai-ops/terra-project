@@ -16,13 +16,27 @@ extends Node
 ## land intact leaves `PATH` exactly as it was — the previous save is never
 ## replaced by a half one.
 ##
-## `load()` reads `PATH`, steps the migration chain (`SaveMigrations`) and hands
-## the result to `PlayerProfile.from_dict()`, which is where a key the file does
-## not have becomes its `defaults()` value — so a field added by a later build
-## arrives without a migration. Anything that stops the read is named on
-## `load_refusal` instead of being quietly passed over. The `.bak` /
-## `save.corrupt.<timestamp>` half of SPEC-save-system's "start fresh and keep the
-## corrupt file" sentence is G5's and lands behind the same branch.
+## `load()` runs at startup (`_ready()`) and reads `PATH`, steps the migration
+## chain (`SaveMigrations`) and hands the result to `PlayerProfile.from_dict()`,
+## which is where a key the file does not have becomes its `defaults()` value — so
+## a field added by a later build arrives without a migration.
+##
+## SPEC-save-system, "On startup": "If parse fails, load `save.bak`; if that
+## fails, start fresh and keep the corrupt file as `save.corrupt.<timestamp>`."
+## So a load has four outcomes, and every one of them is observable:
+##
+##   * the file reads — the profile it holds, and no refusal;
+##   * there is no file and no backup — a fresh profile, and no refusal either,
+##     because the refusal vocabulary is for files that exist and cannot be used;
+##   * the file parses but this build cannot migrate it — refused by name, fresh
+##     profile, and the file is **left exactly where it is**, because moving a
+##     newer build's save aside would destroy the only copy of that town;
+##   * the file is not a save at all — kept as `user://save.corrupt.<timestamp>`,
+##     then `BACKUP_PATH` is tried, and only if that fails too does the player
+##     start fresh (the unreadable backup is kept as well).
+##
+## A load never writes: it repairs nothing and rewrites nothing, so the backup it
+## just recovered from is still there for the next launch.
 ##
 ## Sync: local file per machine; the host never writes a client's profile.
 
@@ -38,6 +52,9 @@ const TMP_PATH: String = PATH + ".tmp"
 const BACKUP_PATH: String = "user://save.bak"
 ## The file at `PATH` is not a JSON object — truncated, or not a save at all.
 const REFUSAL_CORRUPT_FILE: StringName = &"save_file_is_not_a_json_object"
+## Where a file this build cannot read is kept: `save.corrupt.<timestamp>`, the
+## name SPEC-save-system's recovery sentence gives it.
+const CORRUPT_PREFIX: String = "user://save.corrupt."
 
 ## The live profile; null until `load()` or a caller sets one.
 var profile: PlayerProfile = null
@@ -47,6 +64,29 @@ var profile: PlayerProfile = null
 ## refusal names, or `REFUSAL_CORRUPT_FILE`. Read-only state; `ui-hud` may show
 ## it, and nothing in gameplay decides anything from it.
 var load_refusal: StringName = SaveMigrations.REFUSAL_NONE
+
+## True when the last `load()` used `BACKUP_PATH` because the file at `PATH`
+## could not be read as a save. Read-only state; the UI owns what it says about
+## it, and nothing in gameplay decides anything from it.
+var recovered_from_backup: bool = false
+
+## Where the last `load()` kept each file it could not read, as the
+## `user://save.corrupt.<timestamp>` path it was moved to. Empty on a clean load.
+## Read-only state, and the reason a recovery is not a silent one.
+var corrupt_files_kept: Array[String] = []
+
+
+## What one attempt at one save file produced. A file is either a profile, or a
+## named reason it is not one, or it was not there at all — and the three are kept
+## apart because `load()` does something different for each.
+class Read extends RefCounted:
+	## The profile the file held, or null when it could not be used.
+	var profile: PlayerProfile = null
+	## Why the file could not be used; empty when `profile` is set.
+	var reason: StringName = SaveMigrations.REFUSAL_NONE
+	## True when there was no file at the path — a new game, not a refusal.
+	var file_missing: bool = false
+
 
 ## True when the profile has changed since the last completed write.
 var _dirty: bool = false
@@ -66,39 +106,115 @@ func save() -> void:
 	_flush.call_deferred()
 
 
-## Reads `PATH` on startup, steps the migrations and fills the profile's missing
-## keys from the defaults (SPEC-save-system, "Loading and migration"). A read
-## that cannot be trusted never becomes half a profile: the caller is given a
-## fresh one and the reason on `load_refusal`.
+## SPEC-save-system's "On startup: read file, parse JSON, check `save_version`."
+## The first frame of the game is the one that has to find last session's town, so
+## the read happens here rather than waiting for a caller that might never come.
 ##
-## Three outcomes, and each is observable:
-##   * **no file** — a new game. A fresh profile, no refusal: SPEC-save-system
-##     reserves the refusal vocabulary for files that exist and cannot be used.
-##   * **a file that is not a JSON object** — refused by name and a fresh
-##     profile. G5 replaces this branch with the `BACKUP_PATH` fallback and the
-##     `save.corrupt.<timestamp>` keep.
-##   * **a file that is a JSON object** — the migration chain runs; if it refuses
-##     (a newer build's save, or a version with no step) the reason is kept and
-##     the profile is a fresh one.
+## A `-s` main loop does not add autoloads, so a test that wants a restart makes a
+## *scene* (`tests/fixtures/save_relaunch_probe.tscn`).
+func _ready() -> void:
+	# `self.` because a bare `load()` is the engine's global `load(path)`.
+	self.load()
+
+
+## Reads `PATH`, steps the migrations and fills the profile's missing keys from
+## the defaults (SPEC-save-system, "Loading and migration"). A read that cannot be
+## trusted never becomes half a profile: the caller gets a fresh one, the reason
+## on `load_refusal`, and — when there was a file that could not be read — the
+## path it was kept at on `corrupt_files_kept`.
+##
+## The outcomes are spelled out in this script's header. Two orderings are
+## deliberate. A file that parses but refuses to migrate is returned to its own
+## path untouched, while a file that is not a save at all is moved aside and the
+## backup is tried — a newer build's save is the one thing here that must never be
+## treated as damage. And the backup is consulted whenever `PATH` yielded no
+## profile, **including when `PATH` holds no file at all**: a recovery moves the
+## unreadable file aside, so the launch after it would otherwise find an empty
+## path and start a new game over a town that is still sitting in `save.bak`.
+## `load_refusal` keeps its one meaning through both — the reason `PATH` could not
+## be used — and names nothing when the path was simply empty.
 func load() -> void:
 	load_refusal = SaveMigrations.REFUSAL_NONE
-	var parsed: Variant = null
-	var exists: bool = FileAccess.file_exists(PATH)
-	if exists:
-		parsed = _parse_object(FileAccess.get_file_as_string(PATH))
-	if not parsed is Dictionary:
-		if exists:
-			load_refusal = REFUSAL_CORRUPT_FILE
-		profile = PlayerProfile.defaults()
+	recovered_from_backup = false
+	corrupt_files_kept.clear()
+	var primary := _read_profile_at(PATH)
+	if primary.profile != null:
+		profile = primary.profile
 		loaded.emit(profile)
 		return
-	var outcome := SaveMigrations.migrate(parsed as Dictionary)
-	load_refusal = outcome.reason
-	if outcome.ok():
-		profile = PlayerProfile.from_dict(outcome.data)
-	else:
-		profile = PlayerProfile.defaults()
+	if primary.reason != REFUSAL_CORRUPT_FILE and not primary.file_missing:
+		# The file parses and this build cannot migrate it. Refused by name, and
+		# left exactly where it is: it is the only copy of that town.
+		load_refusal = primary.reason
+		_fresh_profile()
+		return
+	if primary.reason == REFUSAL_CORRUPT_FILE:
+		# Not a save at all: keep it, then fall back to the previous good one.
+		load_refusal = REFUSAL_CORRUPT_FILE
+		_keep_corrupt(PATH)
+	var backup := _read_profile_at(BACKUP_PATH)
+	if backup.profile != null:
+		recovered_from_backup = true
+		profile = backup.profile
+		loaded.emit(profile)
+		return
+	if backup.reason == REFUSAL_CORRUPT_FILE:
+		_keep_corrupt(BACKUP_PATH)
+	_fresh_profile()
+
+
+## The profile a machine with nothing usable at either path starts with. Emitted
+## like any other load, so a listener never has to wonder whether one happened.
+func _fresh_profile() -> void:
+	profile = PlayerProfile.defaults()
 	loaded.emit(profile)
+
+
+## One attempt at one file: the migration chain runs here and nowhere else, and
+## `PlayerProfile.from_dict()` is what fills each key the file does not have.
+func _read_profile_at(path: String) -> Read:
+	var read := Read.new()
+	if not FileAccess.file_exists(path):
+		read.file_missing = true
+		return read
+	var parsed: Variant = _parse_object(FileAccess.get_file_as_string(path))
+	if not parsed is Dictionary:
+		read.reason = REFUSAL_CORRUPT_FILE
+		return read
+	var outcome := SaveMigrations.migrate(parsed as Dictionary)
+	read.reason = outcome.reason
+	if outcome.ok():
+		read.profile = PlayerProfile.from_dict(outcome.data)
+	return read
+
+
+## Moves a file this build cannot read to `user://save.corrupt.<timestamp>` and
+## records where it went. The file is *moved* rather than copied so it cannot be
+## read again as if it were the save — a player who relaunches gets the same
+## recovery, not the same failure. Returns the new path, or "" when there was
+## nothing to keep or the move failed.
+func _keep_corrupt(path: String) -> String:
+	if not FileAccess.file_exists(path):
+		return ""
+	var kept := _free_corrupt_path()
+	if DirAccess.rename_absolute(path, kept) != OK:
+		return ""
+	corrupt_files_kept.append(kept)
+	return kept
+
+
+## The name the next kept file takes: `save.corrupt.<date>T<time>`, UTC so the
+## stamp parses back with `Time.get_unix_time_from_datetime_string()` and a folder
+## of them sorts, with no colon — which a Windows path cannot hold. A second keep
+## inside the same second takes `.2`, `.3` … so an earlier one is never lost.
+func _free_corrupt_path() -> String:
+	var base := CORRUPT_PREFIX + Time.get_datetime_string_from_system(true, false).replace(":", "")
+	var candidate := base
+	var nth: int = 2
+	while FileAccess.file_exists(candidate):
+		candidate = "%s.%d" % [base, nth]
+		nth += 1
+	return candidate
 
 
 ## A new game: `PlayerProfile.defaults()` with the settings carried over, so a

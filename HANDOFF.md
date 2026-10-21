@@ -4522,6 +4522,69 @@ lands. W5-B1 stays `[ ]` for that reason. No Dev A dependency in this goal.
 
 ---
 
+### G5 — corrupt-save recovery and the save-survives-restart case (W5-B1, PLAN G5) (`save-system`)
+
+**What landed.** `SaveManager.load()`'s recovery half and the startup call:
+`_ready()` now runs `self.load()`, so the first frame of the game is the one that
+finds last session's town (SPEC-save-system, "On startup": *"read file, parse
+JSON, check `save_version`. ... If parse fails, load `save.bak`; if that fails,
+start fresh and keep the corrupt file as `save.corrupt.<timestamp>`."*). Four
+outcomes now, each observable on two new read-only fields, `recovered_from_backup`
+and `corrupt_files_kept` (decision 111). The file reads → that profile, no
+refusal; nothing at `PATH` and no backup → `PlayerProfile.defaults()` **and no
+refusal either**, the refusal vocabulary being for files that exist and cannot be
+used; the file parses but this build cannot migrate it → refused by name and
+**left exactly where it is**, since moving a newer build's save aside destroys the
+only copy of that town. Not a save at all → **moved** (not copied) to
+`user://save.corrupt.<UTC date>T<HHMMSS>`, `.2`/`.3` … on a collision so a second
+recovery in the same second cannot overwrite the first, and only then is
+`save.bak` tried, with a fresh profile only if that fails too. **The judgement
+call the spec leaves open** (decision 110 has every rule) is that the backup is
+consulted whenever `PATH` yielded no profile, *including when `PATH` holds no file
+at all* — a recovery moves the unreadable file aside, so the launch after it would
+otherwise start a new game over a town still sitting in `save.bak` — and that **a
+load never writes**, so the backup it recovered from is still there next launch.
+
+**The relaunch case is a real second process.** Nothing in-process can prove
+SPEC-save-system's "Integration: save, quit, relaunch headless, profile equal" — a
+profile that stayed in memory passes every unit case here. So
+`tests/fixtures/save_relaunch_probe.tscn` is a **scene** launched by
+`OS.execute(OS.get_executable_path(), …)` from inside the test, printing one
+`SAVE_RELAUNCH_PROBE <JSON>` line and quitting, and the test asserts the child's
+`OS.get_process_id()` differs from its own — "relaunched" is a measurement, not a
+claim. A scene because a **`-s` main loop does not register autoloads** (measured:
+the first probe failed with `Identifier not found: SaveManager`), and it calls nothing
+itself — the shipped `_ready()` does the read. The child also carries Godot's
+`--quit-after 600` backstop: against the previous revision these cases **hung**, the
+probe erroring on a field that revision lacks and `OS.execute()` blocking until the
+orphan was killed by hand — a hanging suite says nothing in a log.
+
+**Accept.** New `tests/unit/test_save_recovery.gd` **16/16 / 87 asserts** and new
+`tests/integration/test_save_survives_restart.gd` **3/3 / 32 asserts**, both exit
+0 (1.28 s / 3.111 s), **red first for both** — the unit file at 2 passing / 14
+failing against the stub, and both suites at 2/14 and 0/3 against G4's shipped
+`save_manager.gd` (`red-first-both-suites.log`) — driven against the real files
+under `user://` through the new static `tests/helpers/save_file_fixture.gd`, which
+restores the three live paths after every case. Full suite **65 scripts / 1 202 tests
+/ 1 202 passing / 62 232 asserts**, exit 0, 80.33 s (G4: 63/1 183/1 183/62 113 —
+exactly this goal's +2 scripts / +19 cases / +119 asserts); `--import` exit 0 with
+**0** `ERROR` lines; both standing greps (`grep -rn "Engine.time_scale" scripts/
+scenes/`, `grep -rn "\.base\[" scripts/`) empty; two-instance smoke `tools/smoke_two.sh`
+**35 `ok` / 0 FAIL / exit 0** (run because `_ready()` reads the save at boot). The
+relaunch suite's own control is case 2 (no save → the child reports `defaults()`), so
+case 1 cannot pass by reading its own output; one forced negative control — the backup
+read made to point at `TMP_PATH` — fails **exactly the six recovery cases that state
+the fallback rule** (10/16, 75/87 asserts) and **exactly one of the three relaunch
+cases**, reverted from a snapshot (`diff -q` clean, `sha256` `4712d983…`), logs in
+`.goals/evidence/r1792536096839/g5/`.
+
+**Not claimed.** Recovery is proven on this machine's real filesystem and on a real
+relaunch, not against a torn write *during* the rename, and nothing in the game
+reads `SaveManager.profile` at startup yet — hooking the town and the HUD to it is
+a later task. W5-B1 stays `[ ]` and this goal is not ticked; no Dev A dependency.
+
+---
+
 ## Decisions made without a human
 
 
@@ -7422,6 +7485,56 @@ already recorded in a spec or a comment, the location is given.
     (`tests/integration/test_data_loads.gd`) walks `res://data` only and is
     unaffected.
 
+110. **The four outcomes of a load, and what a recovery may touch (2026-10-20).**
+    G5. The spec's recovery is one sentence — *"If parse fails, load `save.bak`;
+    if that fails, start fresh and keep the corrupt file as
+    `save.corrupt.<timestamp>`"* — and the two states worth *not* destroying are
+    the ones it does not name. So:
+    - **A file that parses but this build cannot use is never moved.** A save
+      from a newer build (`save_is_from_a_newer_build`) and a version with no
+      migration both refuse **by name** and leave the file **byte for byte** at
+      `PATH`. The alternative — filing it as corrupt, or replacing it with a
+      fresh profile — destroys the only copy of that town, and it is the one
+      failure here whose damage is permanent. Refusing by name still yields a
+      playable fresh profile, so the player is never stuck.
+    - **An unreadable file is *moved*, not copied**, to
+      `user://save.corrupt.<UTC date>T<HHMMSS>` (UTC so the stamp parses back
+      with `Time.get_unix_time_from_datetime_string()` and a folder of them
+      sorts; no colon, which a Windows path cannot hold). A copy would leave the
+      same unreadable bytes where the next launch reads them again. A second
+      keep inside the same second takes `.2`, `.3` … so an earlier one is never
+      lost.
+    - **The backup is consulted whenever `PATH` yielded no profile, including
+      when `PATH` holds no file at all.** This is the ordering a recovery
+      *creates*: it moves the unreadable file aside, so the very next launch — a
+      plain relaunch, nothing broken in it — finds an empty path with a
+      perfectly good save in `save.bak`, and starting a new game over it would
+      lose a save that is on disk and readable. `load_refusal` keeps its one
+      meaning through both paths: the reason `PATH` could not be used, and
+      nothing when the path was simply empty.
+    - **A load never writes.** It repairs nothing and rewrites nothing — no
+      profile flush, no tmp file, no rewrite of the backup it recovered from.
+      A load that "fixed" the file by writing would be a bug visible only on the
+      second launch, which is the launch a save system exists for.
+    - A **missing** file is not a refusal: the refusal vocabulary is for files
+      that exist and cannot be used, so a new machine gets a fresh profile and
+      an empty `load_refusal` (`test_a_missing_save_starts_fresh`).
+111. **`SaveManager._ready()` loads at startup, and two new read-only fields
+    (2026-10-20).** G5. SPEC-save-system's "On startup" is *"read file, parse
+    JSON, check `save_version`"* with no caller named, and G4 shipped `load()`
+    with nothing calling it — so a save still did not survive a restart. The
+    call lands here, in `_ready()`, and it is an autoload behaviour change
+    recorded under BRIEF C29: the alternative is a caller (`main`, `town`) that
+    has to remember to read the profile before anything else touches it, and
+    "first frame of the game" is the one moment the autoload already owns. The
+    two fields exist so a recovery is never silent — `recovered_from_backup:
+    bool` and `corrupt_files_kept: Array[String]` (the path each kept file was
+    moved to) — and both are **read-only by contract**: `ui-hud` may tell the
+    player, and nothing in gameplay decides anything from them. `_ready()` also
+    has the one wart this file could not avoid: a bare `load()` in GDScript
+    resolves to the engine's global `load(path)`, so the startup call is written
+    `self.load()` with a comment saying why.
+
 ---
 
 ## Running the game
@@ -7585,6 +7698,17 @@ decision 100; the perf scene itself is still open as W4-B11 / G28.
 Week 5 has begun: **G2 (`PlayerProfile`) on 2026-10-20** — import exit 0 with 0
 `ERROR` lines, new `tests/unit/test_save_round_trip.gd` **25/25 / 218 asserts**
 exit 0, full suite **61 scripts / 1 136 tests / 1 136 passing / 61 914 asserts,
-exit 0**, 75.509 s (logs in `.goals/evidence/r1792536096839/g2/`). Week 5 has no
-`specs/WEEKLY.md` entry yet, because the week is in progress and only W5-B1's
-second item has landed.
+exit 0**, 75.509 s (logs in `.goals/evidence/r1792536096839/g2/`). W5-B1's
+remaining items followed on the same day: **G3 (the debounced atomic write with
+`.bak`)** — new `tests/unit/test_save_manager.gd` 23/23 / 57 asserts, full suite
+**62 scripts / 1 159 tests / 1 159 passing / 61 971 asserts** — **G4 (`load()`
+with ordered migrations and the v1 fixture)** — new
+`tests/unit/test_save_migrations.gd` 24/24 / 142 asserts, full suite **63 / 1 183
+/ 1 183 / 62 113** — and **G5 (corrupt-save recovery and the
+save-survives-restart case)** — new `tests/unit/test_save_recovery.gd` 16/16 / 87
+asserts plus new `tests/integration/test_save_survives_restart.gd` 3/3 / 32
+asserts, full suite **65 / 1 202 / 1 202 / 62 232, exit 0**, 80.35 s. Every gate
+log for each is in its own `.goals/evidence/r1792536096839/g<N>/` folder. W5-B1
+is still `[ ]` in `tasks/todo.md`, because this goal's own checklist line is
+reviewed by a judge before it is ticked. Week 5 has no `specs/WEEKLY.md` entry
+yet: the week is in progress and Dev A's W5-A1…W5-A9 are untouched.
