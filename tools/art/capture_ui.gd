@@ -3,7 +3,7 @@ extends Node
 ## review sheets). Needs a window (not --headless).
 ##   godot --path . --resolution 960x540 res://tools/art/capture_ui.tscn -- <out_dir>
 ## (a scene, not a -s script, so the autoloads exist when the HUD scripts compile)
-## Writes hud.png, choice.png, vote.png and pause.png into <out_dir>.
+## Writes hud.png, choice.png, vote.png, pause.png and menu.png into <out_dir>.
 
 const HUD_SCENE := "res://scenes/ui/hud.tscn"
 
@@ -100,6 +100,11 @@ func _process(_delta: float) -> void:
 		_hud.set_paused_view(true)
 	elif _frames == 26:
 		_save("pause.png")
+		_hud.visible = false
+		var menu: Control = (load("res://scenes/main/placeholder_menu.tscn") as PackedScene).instantiate() as Control
+		get_tree().root.add_child(menu)
+	elif _frames == 34:
+		_save("menu.png")
 		get_tree().quit()
 
 
