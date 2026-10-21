@@ -107,6 +107,7 @@ var _visibility_peer: int = VISIBLE_TO_ALL
 func _ready() -> void:
 	synced_position = global_position
 	apply_visibility()
+	apply_art()
 
 
 ## Host: integrate the magnet and publish the pose. Client: present the pose the
@@ -247,3 +248,22 @@ func is_visible_to(peer_id: int) -> bool:
 ## `Pickup.new()`).
 func state_sync() -> MultiplayerSynchronizer:
 	return get_node_or_null(NodePath(SYNC_NODE_NAME)) as MultiplayerSynchronizer
+
+
+# --- art --------------------------------------------------------------------
+
+const ART_DIR: String = "res://assets/sprites/props/"
+
+
+## The sprite for a pickup `kind`: pickup_<kind>.png under ART_DIR.
+static func art_path_for(pickup_kind: StringName) -> String:
+	return ART_DIR + "pickup_" + String(pickup_kind) + ".png"
+
+
+## Puts this kind's sprite on the Body node. A kind with no sprite keeps the
+## scene's default (the gold nugget) rather than blanking the pickup.
+func apply_art() -> void:
+	var body: Sprite2D = get_node_or_null("Body") as Sprite2D
+	var path: String = art_path_for(kind)
+	if body != null and ResourceLoader.exists(path):
+		body.texture = load(path) as Texture2D

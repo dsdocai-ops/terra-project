@@ -25,14 +25,14 @@ func after_each() -> void:
 
 
 func test_floor_label_follows_the_run_lifecycle() -> void:
-	var label := _hud.get_node("Root/TopCenter/FloorLabel") as Label
-	assert_eq(label.text, "FLOOR -", "the HUD placeholders until the first floor arrives")
+	var label := _hud.floor_sign
+	assert_eq(label.floor_text, "FLOOR -", "the HUD placeholders until the first floor arrives")
 	GameState.start_run(77, 1, [])
 	GameState.next_floor()
-	assert_eq(label.text, "FLOOR 2",
+	assert_eq(label.floor_text, "FLOOR 2",
 		"floor_changed reaches the HUD through its Resource-typed biome parameter")
 	GameState.end_run(RunEndReason.Reason.ABORT)
-	assert_eq(label.text, "FLOOR 2", "ending the run leaves the last floor on screen")
+	assert_eq(label.floor_text, "FLOOR 2", "ending the run leaves the last floor on screen")
 
 
 func test_run_result_reaches_a_run_ended_listener() -> void:

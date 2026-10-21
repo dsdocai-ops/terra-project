@@ -1,6 +1,7 @@
 [gd_scene load_steps=3 format=3]
 
 [ext_resource type="Script" path="res://scripts/run/mining_node.gd" id="1_mining"]
+[ext_resource type="Texture2D" path="res://assets/sprites/props/mining_node.png" id="tex_body"]
 
 [sub_resource type="CircleShape2D" id="CircleShape2D_interact"]
 radius = 26.0
@@ -13,6 +14,6 @@ script = ExtResource("1_mining")
 [node name="InteractShape" type="CollisionShape2D" parent="."]
 shape = SubResource("CircleShape2D_interact")
 
-[node name="Body" type="Polygon2D" parent="."]
-color = Color(0.42, 0.45, 0.5, 1)
-polygon = PackedVector2Array(0, -24, 18, -10, 16, 14, -16, 14, -18, -10)
+[node name="Body" type="Sprite2D" parent="."]
+texture = ExtResource("tex_body")
+offset = Vector2(0, -10)

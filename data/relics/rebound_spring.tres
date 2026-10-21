@@ -1,12 +1,14 @@
 [gd_resource type="Resource" script_class="RelicData" load_steps=3 format=3]
 
 [ext_resource type="Script" path="res://scripts/data/relic_data.gd" id="1_relic"]
+[ext_resource type="Texture2D" path="res://assets/sprites/icons/relics/rebound_spring.png" id="3_icon"]
 [ext_resource type="Script" path="res://scripts/effects/relics/rebound_spring.gd" id="2_effect"]
 
 [resource]
 script = ExtResource("1_relic")
 id = &"rebound_spring"
 display_name = "Rebound Spring"
+icon = ExtResource("3_icon")
 tags = Array[StringName]([&"dodge"])
 effect_script = ExtResource("2_effect")
 vfx_id = &"relic_proc_dodge"

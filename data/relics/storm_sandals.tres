@@ -1,12 +1,14 @@
 [gd_resource type="Resource" script_class="RelicData" load_steps=3 format=3]
 
 [ext_resource type="Script" path="res://scripts/data/relic_data.gd" id="1_relic"]
+[ext_resource type="Texture2D" path="res://assets/sprites/icons/relics/storm_sandals.png" id="3_icon"]
 [ext_resource type="Script" path="res://scripts/effects/relics/storm_sandals.gd" id="2_effect"]
 
 [resource]
 script = ExtResource("1_relic")
 id = &"storm_sandals"
 display_name = "Storm Sandals"
+icon = ExtResource("3_icon")
 tags = Array[StringName]([&"storm", &"dodge"])
 effect_script = ExtResource("2_effect")
 vfx_id = &"relic_proc_storm"

@@ -1,0 +1,21 @@
+[gd_resource type="TileSet" format=3 uid="uid://catlgpgb4nr6t"]
+
+[ext_resource type="Texture2D" path="res://assets/tilesets/the_heart/atlas.png" id="1_iid3f"]
+
+[sub_resource type="TileSetAtlasSource" id="TileSetAtlasSource_rv747"]
+texture = ExtResource("1_iid3f")
+texture_region_size = Vector2i(64, 64)
+0:0/0 = 0
+0:0/0/custom_data_0 = true
+1:0/0 = 0
+1:0/0/physics_layer_0/polygon_0/points = PackedVector2Array(0, -16, 32, 0, 0, 16, -32, 0)
+2:0/0 = 0
+
+[resource]
+tile_shape = 1
+tile_layout = 5
+tile_size = Vector2i(64, 32)
+physics_layer_0/collision_layer = 1
+custom_data_layer_0/name = "walkable"
+custom_data_layer_0/type = 1
+sources/0 = SubResource("TileSetAtlasSource_rv747")

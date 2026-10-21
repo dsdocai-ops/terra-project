@@ -1,8 +1,14 @@
 [gd_scene format=3]
 
 [ext_resource type="Script" path="res://scenes/ui/hud.gd" id="1_hud"]
-[ext_resource type="Script" path="res://scenes/ui/hp_bar.gd" id="2_hp_bar"]
 [ext_resource type="Theme" path="res://assets/ui/theme.tres" id="3_theme"]
+[ext_resource type="Script" path="res://scenes/ui/widgets/lantern_orb.gd" id="4_orb"]
+[ext_resource type="Script" path="res://scenes/ui/widgets/status_row.gd" id="5_status"]
+[ext_resource type="Script" path="res://scenes/ui/widgets/ability_row.gd" id="6_ability"]
+[ext_resource type="Script" path="res://scenes/ui/widgets/relic_rope.gd" id="7_rope"]
+[ext_resource type="Script" path="res://scenes/ui/widgets/floor_sign.gd" id="8_sign"]
+[ext_resource type="Script" path="res://scenes/ui/widgets/lamp_map.gd" id="9_map"]
+[ext_resource type="Script" path="res://scenes/ui/widgets/currency_readout.gd" id="10_cur"]
 
 [node name="HUD" type="CanvasLayer"]
 script = ExtResource("1_hud")
@@ -14,58 +20,123 @@ anchor_right = 1.0
 anchor_bottom = 1.0
 grow_horizontal = 2
 grow_vertical = 2
+mouse_filter = 2
 theme = ExtResource("3_theme")
 
-[node name="TopLeft" type="VBoxContainer" parent="Root"]
-layout_mode = 1
-anchor_top = 0.1
-anchor_bottom = 0.1
-offset_left = 12.0
-offset_top = 10.0
-offset_right = 212.0
-offset_bottom = 94.0
-grow_vertical = 0
-theme_override_constants/separation = 6
+[node name="Teammates" type="HBoxContainer" parent="Root"]
+layout_mode = 0
+offset_left = 8.0
+offset_top = 8.0
+offset_right = 208.0
+offset_bottom = 66.0
+mouse_filter = 2
+theme_override_constants/separation = 2
 
-[node name="OwnHpBar" type="Control" parent="Root/TopLeft"]
-custom_minimum_size = Vector2(200, 16)
-layout_mode = 2
-script = ExtResource("2_hp_bar")
-
-[node name="TeammateBars" type="VBoxContainer" parent="Root/TopLeft"]
-layout_mode = 2
-theme_override_constants/separation = 4
-
-[node name="TopCenter" type="Control" parent="Root"]
+[node name="FloorSign" type="Control" parent="Root"]
 layout_mode = 1
 anchors_preset = 5
 anchor_left = 0.5
 anchor_right = 0.5
-offset_left = -200.0
-offset_top = 8.0
-offset_right = 200.0
-offset_bottom = 32.0
+offset_left = -88.0
+offset_right = 88.0
+offset_bottom = 50.0
 grow_horizontal = 2
+mouse_filter = 2
+script = ExtResource("8_sign")
 
-[node name="FloorLabel" type="Label" parent="Root/TopCenter"]
+[node name="LampMap" type="Control" parent="Root"]
 layout_mode = 1
-anchors_preset = 15
+anchors_preset = 1
+anchor_left = 1.0
 anchor_right = 1.0
-anchor_bottom = 1.0
-grow_horizontal = 2
-grow_vertical = 2
-theme_override_font_sizes/font_size = 16
-text = "FLOOR -"
-horizontal_alignment = 1
+offset_left = -128.0
+offset_top = 4.0
+offset_right = -8.0
+offset_bottom = 124.0
+grow_horizontal = 0
+mouse_filter = 2
+script = ExtResource("9_map")
 
-[node name="WeaponSlots" type="HBoxContainer" parent="Root"]
+[node name="Currencies" type="Control" parent="Root"]
 layout_mode = 1
-anchors_preset = 3
+anchors_preset = 1
+anchor_left = 1.0
+anchor_right = 1.0
+offset_left = -128.0
+offset_top = 128.0
+offset_right = -8.0
+offset_bottom = 216.0
+grow_horizontal = 0
+mouse_filter = 2
+script = ExtResource("10_cur")
+
+[node name="LanternOrb" type="Control" parent="Root"]
+layout_mode = 1
+anchors_preset = 2
 anchor_top = 1.0
 anchor_bottom = 1.0
-offset_left = 12.0
-offset_top = -66.0
-offset_right = 164.0
-offset_bottom = -10.0
+offset_left = 6.0
+offset_top = -150.0
+offset_right = 146.0
+offset_bottom = -6.0
 grow_vertical = 0
-theme_override_constants/separation = 8
+mouse_filter = 2
+script = ExtResource("4_orb")
+
+[node name="StatusRow" type="Control" parent="Root"]
+layout_mode = 1
+anchors_preset = 2
+anchor_top = 1.0
+anchor_bottom = 1.0
+offset_left = 150.0
+offset_top = -116.0
+offset_right = 330.0
+offset_bottom = -86.0
+grow_vertical = 0
+mouse_filter = 2
+script = ExtResource("5_status")
+
+[node name="Weapons" type="HBoxContainer" parent="Root"]
+layout_mode = 1
+anchors_preset = 2
+anchor_top = 1.0
+anchor_bottom = 1.0
+offset_left = 150.0
+offset_top = -80.0
+offset_right = 300.0
+offset_bottom = -6.0
+grow_vertical = 0
+mouse_filter = 2
+theme_override_constants/separation = 6
+
+[node name="AbilityRow" type="Control" parent="Root"]
+layout_mode = 1
+anchors_preset = 7
+anchor_left = 0.5
+anchor_top = 1.0
+anchor_right = 0.5
+anchor_bottom = 1.0
+offset_left = -120.0
+offset_top = -84.0
+offset_right = 120.0
+offset_bottom = -4.0
+grow_horizontal = 2
+grow_vertical = 0
+mouse_filter = 2
+script = ExtResource("6_ability")
+
+[node name="RelicRope" type="Control" parent="Root"]
+layout_mode = 1
+anchors_preset = 3
+anchor_left = 1.0
+anchor_top = 1.0
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_left = -300.0
+offset_top = -92.0
+offset_right = -8.0
+offset_bottom = -6.0
+grow_horizontal = 0
+grow_vertical = 0
+mouse_filter = 2
+script = ExtResource("7_rope")

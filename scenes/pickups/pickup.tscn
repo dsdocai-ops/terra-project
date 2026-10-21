@@ -1,6 +1,7 @@
 [gd_scene load_steps=4 format=3]
 
 [ext_resource type="Script" path="res://scripts/run/pickup.gd" id="1_pickup"]
+[ext_resource type="Texture2D" path="res://assets/sprites/props/pickup_gold.png" id="tex_body"]
 
 [sub_resource type="SceneReplicationConfig" id="SceneReplicationConfig_state"]
 properties/0/path = NodePath(".:synced_position")
@@ -27,9 +28,8 @@ script = ExtResource("1_pickup")
 [node name="TouchShape" type="CollisionShape2D" parent="."]
 shape = SubResource("CircleShape2D_touch")
 
-[node name="Body" type="Polygon2D" parent="."]
-color = Color(0.95, 0.82, 0.28, 1)
-polygon = PackedVector2Array(0, -5, 5, 0, 0, 5, -5, 0)
+[node name="Body" type="Sprite2D" parent="."]
+texture = ExtResource("tex_body")
 
 [node name="StateSync" type="MultiplayerSynchronizer" parent="."]
 root_path = NodePath("..")
