@@ -48,7 +48,7 @@ var _player: Player
 var _target: Node2D
 var _source: ContentData
 ## Hits `SpyWorld` announced on the bus, for the chain-case affordance.
-var _announced: Array[HitData] = []
+var _announced: Array[HitInfo] = []
 
 
 func before_each() -> void:
@@ -181,7 +181,7 @@ func test_the_harness_can_announce_a_landed_hit_for_a_chain_case() -> void:
 	assert_almost_eq(_announced[0].base_damage, HIT_DAMAGE, EPSILON, "carrying the hit the effect produced")
 
 
-func _on_hit_landed(hit: HitData) -> void:
+func _on_hit_landed(hit: HitInfo) -> void:
 	_announced.append(hit)
 
 

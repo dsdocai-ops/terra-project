@@ -249,7 +249,7 @@ func detach(source: ContentData, player: Player = null) -> bool:
 ##
 ## `args` must match the signal's declared arity; the harness does not invent
 ## arguments, because the fake ones are the case's choice (a real `Player`, a
-## fabricated `HitData`, a null enemy).
+## fabricated `HitInfo`, a null enemy).
 func fire(sig: Signal, args: Array = []) -> bool:
 	var signal_name: StringName = sig.get_name()
 	var script: Script = Events.get_script()

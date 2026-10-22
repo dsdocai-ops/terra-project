@@ -55,7 +55,7 @@ func hits_counted() -> int:
 
 ## One of this player's own hits: count it, and answer every fourth one with a
 ## second strike on the same enemy.
-func _on_hit_landed(hit: HitData) -> void:
+func _on_hit_landed(hit: HitInfo) -> void:
 	if not _is_my_hit(hit):
 		return
 	_hits_counted += 1
@@ -68,7 +68,7 @@ func _on_hit_landed(hit: HitData) -> void:
 ## procs this player's own effects produced. The three-line filter every On Hit
 ## relic of the batch writes, because the base class's player filter has no
 ## `Player` argument to read on this signal.
-func _is_my_hit(hit: HitData) -> bool:
+func _is_my_hit(hit: HitInfo) -> bool:
 	if player == null or hit == null or hit.owner_player != player:
 		return false
 	return hit.proc_depth == 0
@@ -80,8 +80,8 @@ func _is_my_hit(hit: HitData) -> bool:
 ## and `deal_damage` stamps the depth and the `proc` tag on what it is handed. A
 ## forced crit, a mark's consumption and the computed `is_crit`/`final_damage`
 ## belong to the hit that already landed, so they are not copied.
-func _echo_of(hit: HitData) -> HitData:
-	var echo := HitData.new()
+func _echo_of(hit: HitInfo) -> HitInfo:
+	var echo := HitInfo.new()
 	echo.base_damage = hit.base_damage
 	echo.multiplier = hit.multiplier
 	echo.bonus_crit_chance = hit.bonus_crit_chance

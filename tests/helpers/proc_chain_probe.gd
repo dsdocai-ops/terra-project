@@ -31,7 +31,7 @@ extends Effect
 ##
 ## Sync: none — a test double. The real effects it stands in for are host-only.
 
-## Every signal on the bus that carries a `HitData`, so the gate can be asserted
+## Every signal on the bus that carries a `HitInfo`, so the gate can be asserted
 ## through any of them rather than through `hit_landed` alone.
 const HIT_SIGNAL_NAMES: Array[StringName] = [
 	&"hit_landed",
@@ -73,23 +73,23 @@ func _on_attach() -> void:
 	listen(Events.elite_killed, _on_elite_killed)
 
 
-func _on_hit_landed(hit: HitData) -> void:
+func _on_hit_landed(hit: HitInfo) -> void:
 	_react(&"hit_landed", hit)
 
 
-func _on_crit_landed(hit: HitData) -> void:
+func _on_crit_landed(hit: HitInfo) -> void:
 	_react(&"crit_landed", hit)
 
 
-func _on_player_damaged(_victim: Player, hit: HitData) -> void:
+func _on_player_damaged(_victim: Player, hit: HitInfo) -> void:
 	_react(&"player_damaged", hit)
 
 
-func _on_enemy_killed(_enemy: Node, hit: HitData) -> void:
+func _on_enemy_killed(_enemy: Node, hit: HitInfo) -> void:
 	_react(&"enemy_killed", hit)
 
 
-func _on_elite_killed(_enemy: Node, hit: HitData) -> void:
+func _on_elite_killed(_enemy: Node, hit: HitInfo) -> void:
 	_react(&"elite_killed", hit)
 
 
@@ -97,7 +97,7 @@ func _on_elite_killed(_enemy: Node, hit: HitData) -> void:
 ## advance. The record happens before the chain check, so a probe that has run
 ## out of links is still counted as having reacted — the gate is asserted on
 ## what ran, not on what it produced.
-func _react(signal_name: StringName, hit: HitData) -> void:
+func _react(signal_name: StringName, hit: HitInfo) -> void:
 	handler_calls += 1
 	if hit == null:
 		return
@@ -113,7 +113,7 @@ func _react(signal_name: StringName, hit: HitData) -> void:
 	if spawn_scene != null:
 		spawn(spawn_scene, spawn_at)
 		return
-	var next: HitData = HitData.new()
+	var next: HitInfo = HitInfo.new()
 	next.base_damage = hit.base_damage
 	if emit_tag != &"":
 		next.tags.append(emit_tag)

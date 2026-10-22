@@ -302,7 +302,7 @@ func _configure(probe: ProcChainProbe) -> ProcChainProbe:
 ## arity-checked `fire()` so a signal that changed shape is a refusal and not an
 ## error inside an effect.
 func _fire_hit(tags: Array[StringName]) -> void:
-	var hit := HitData.new()
+	var hit := HitInfo.new()
 	hit.base_damage = BASE_DAMAGE
 	hit.tags = tags
 	assert_true(_harness.fire(Events.hit_landed, [hit]), "the bus announced a landed hit")

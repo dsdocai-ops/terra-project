@@ -77,7 +77,7 @@ const EXPLOSION_DAMAGE: float = 24.0
 ## Heart, Volatile Core, Glass Cannonball (explosions tagged fire), Prism" — the
 ## parenthetical is why this relic's first tag, and therefore its proc id, is
 ## fire.
-const EXPLOSION_ELEMENT: HitData.Element = HitData.Element.FIRE
+const EXPLOSION_ELEMENT: HitInfo.Element = HitInfo.Element.FIRE
 ## The folder SPEC-art-audio keeps the per-id emitter scenes in, and the extension
 ## every scene in that library uses — the same two constants Ember Boots uses, so
 ## the batch resolves its scenes one way.
@@ -95,7 +95,7 @@ func _on_attach() -> void:
 
 
 ## One of this player's kills: the corpse explodes.
-func _on_enemy_killed(enemy: Node, hit: HitData) -> void:
+func _on_enemy_killed(enemy: Node, hit: HitInfo) -> void:
 	if not _is_my_kill(enemy, hit):
 		return
 	_explode(enemy)
@@ -105,7 +105,7 @@ func _on_enemy_killed(enemy: Node, hit: HitData) -> void:
 ## `owner_player` read is the pair's second half — see the class comment's rule-2
 ## note — and the null check is what keeps an unattributed kill (a hazard's, a
 ## double's) inert rather than credited to nobody's player.
-func _is_my_kill(enemy: Node, hit: HitData) -> bool:
+func _is_my_kill(enemy: Node, hit: HitInfo) -> bool:
 	if player == null or enemy == null or not is_instance_valid(enemy):
 		return false
 	if hit == null:
@@ -162,8 +162,8 @@ func _blast_targets(centre: Node2D) -> Array[Node]:
 ## carry `source_id()` so rule 2 can stop the chain at this link. Built fresh per
 ## target so each enemy's hit is its own object — the hurtbox may consume or retag
 ## what it is handed.
-func _blast_hit() -> HitData:
-	var hit := HitData.new()
+func _blast_hit() -> HitInfo:
+	var hit := HitInfo.new()
 	hit.base_damage = EXPLOSION_DAMAGE
 	hit.element = EXPLOSION_ELEMENT
 	hit.owner_player = player

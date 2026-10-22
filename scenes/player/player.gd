@@ -157,8 +157,9 @@ var _missing_anims: Dictionary[StringName, bool] = {}
 
 ## Components. Typed to their real classes as each module lands.
 ## TODO(stats-status): stat_block -> StatBlock, status_effects -> StatusEffects
-## TODO(combat-core): health -> Health, hurtbox -> Hurtbox
 @onready var stat_block: Node = $StatBlock
+## Health and Hurtbox stay duck-typed: the effect and status tests build
+## players around recording doubles with the same method names.
 @onready var health: Node = $Health
 @onready var hurtbox: Area2D = $Hurtbox
 @onready var status_effects: Node = $StatusEffects

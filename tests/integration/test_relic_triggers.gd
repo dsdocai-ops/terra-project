@@ -145,7 +145,7 @@ const HIT_AT: Vector2 = Vector2(64.0, 0.0)
 const HIT_DAMAGE: float = 100.0
 ## The element every hit the On Hit cases fire carries, so "the split inherits
 ## the hit's element" is asserted against something that is not the default.
-const HIT_ELEMENT: HitData.Element = HitData.Element.STORM
+const HIT_ELEMENT: HitInfo.Element = HitInfo.Element.STORM
 ## The five relics do not all stack: the design doc marks no. 9 as "(stacks)"
 ## and gives the other four no stack rule at all. What each `.tres` must hold.
 const ON_HIT_MAX_STACKS: Dictionary[StringName, int] = {
@@ -456,8 +456,8 @@ func _clauses_in_range(first: int, last: int) -> Dictionary:
 ## element — the payload `combat-core`'s real hurtbox will emit once W4-A4 lands.
 ## `proc_depth` stays 0: this is a weapon-class hit, the only kind a relic counts
 ## as "a hit".
-func _hit(target: Node, owner: Player) -> HitData:
-	var hit := HitData.new()
+func _hit(target: Node, owner: Player) -> HitInfo:
+	var hit := HitInfo.new()
 	hit.base_damage = HIT_DAMAGE
 	hit.element = HIT_ELEMENT
 	hit.owner_player = owner
@@ -491,7 +491,7 @@ func _enemy_at(at: Vector2, max_hp: int = 100) -> StatusEnemyStub:
 ## enemy emits when it dies (W4-A4). The killing hit is a weapon hit: depth 0
 ## and no tags, so it is nobody's proc first.
 func _kill(enemy: Node, owner: Player) -> bool:
-	var hit: HitData = _hit(enemy, owner)
+	var hit: HitInfo = _hit(enemy, owner)
 	hit.final_damage = LEECH_DAMAGE
 	return _harness.fire(Events.enemy_killed, [enemy, hit])
 
@@ -538,7 +538,7 @@ func _final_batch_clauses() -> Dictionary:
 ## `elite_killed(enemy, hit)` and no `Player` argument — so the filter is the
 ## killing hit's `owner_player`.
 func _elite_kill(enemy: Node, owner: Player) -> bool:
-	var hit: HitData = _hit(enemy, owner)
+	var hit: HitInfo = _hit(enemy, owner)
 	hit.final_damage = LEECH_DAMAGE
 	return _harness.fire(Events.elite_killed, [enemy, hit])
 
@@ -902,7 +902,7 @@ func test_echo_blade_makes_every_fourth_hit_strike_twice() -> void:
 
 	assert_true(_land_hit(target, _player), "the fourth hit lands")
 	assert_eq(_harness.damage_count(target), 1, "and it strikes twice: one echo lands on the same target")
-	var echo: HitData = _harness.world.damage_hits(target)[0]
+	var echo: HitInfo = _harness.world.damage_hits(target)[0]
 	assert_almost_eq(echo.base_damage, HIT_DAMAGE, EPSILON, "the echo is a full hit, not a fraction of one")
 	assert_true(echo.tags.has(&"echo_blade"), "and it carries the relic's own id, so it cannot echo itself")
 	assert_eq(echo.proc_depth, 1, "it is one proc link deeper than the hit that caused it")
@@ -1224,7 +1224,7 @@ func test_leech_fang_heals_its_holder_two_percent_of_the_damage_dealt() -> void:
 	assert_eq(health.heal_calls.size(), 0, "no damage dealt, so no heal is asked for")
 	assert_eq(health.current_hp, HEALTH_START, "and the HP does not move")
 
-	var first: HitData = _hit(target, _player)
+	var first: HitInfo = _hit(target, _player)
 	first.final_damage = LEECH_DAMAGE
 	assert_true(_harness.fire(Events.hit_landed, [first]), "a %d-damage hit lands" % LEECH_DAMAGE)
 	assert_eq(health.heal_calls.size(), 1, "the holder is healed once")
@@ -1233,13 +1233,13 @@ func test_leech_fang_heals_its_holder_two_percent_of_the_damage_dealt() -> void:
 	assert_eq(fang.heal_requests, [LEECH_HEAL] as Array[int], "the effect's read names the same amount")
 	assert_eq(LeechFangEffect.HEAL_FRACTION, 0.02, "the fraction is the design doc's 2%")
 
-	var second: HitData = _hit(target, _player)
+	var second: HitInfo = _hit(target, _player)
 	second.final_damage = LEECH_DAMAGE / 2
 	assert_true(_harness.fire(Events.hit_landed, [second]), "a %d-damage hit lands" % (LEECH_DAMAGE / 2))
 	assert_eq(health.healed_total, LEECH_HEAL + LEECH_HEAL_HALF, "half the damage leeches half as much")
 
 	# The heal is the *holder's*: a hit somebody else landed leeches for them.
-	var theirs: HitData = _hit(target, null)
+	var theirs: HitInfo = _hit(target, null)
 	theirs.final_damage = LEECH_DAMAGE
 	assert_true(_harness.fire(Events.hit_landed, [theirs]), "a team-mate's hit lands")
 	assert_eq(health.heal_calls.size(), 2, "and leeches nothing for this player")
@@ -1305,10 +1305,10 @@ func test_volatile_core_explodes_the_enemies_its_holder_kills() -> void:
 	assert_eq(_harness.damage_total(near), VolatileCoreEffect.EXPLOSION_DAMAGE, "for the blast's damage")
 	assert_eq(_harness.damage_count(far), 0, "the enemy outside it takes none")
 	assert_eq(_harness.damage_count(victim), 0, "and the dying enemy is not hit by its own explosion")
-	var blast_hit: HitData = _harness.world.damage_hits(near)[0]
+	var blast_hit: HitInfo = _harness.world.damage_hits(near)[0]
 	assert_true(blast_hit.tags.has(&"volatile_core"), "the blast carries the relic's own id")
 	assert_eq(blast_hit.proc_depth, 1, "and is one proc link past the kill that caused it")
-	assert_eq(int(blast_hit.element), int(HitData.Element.FIRE),
+	assert_eq(int(blast_hit.element), int(HitInfo.Element.FIRE),
 		"its element is the fire the design doc's Pyromaniac row gives this relic")
 
 
@@ -1358,7 +1358,7 @@ func test_volatile_cores_own_explosion_does_not_retrigger_itself() -> void:
 	assert_true(_kill(victim, _player), "the holder's kill is announced")
 	assert_eq(_harness.spawn_count(&"volatile_core"), 1, "the blast is spawned once")
 	assert_eq(_harness.damage_count(near), 1, "and hits the enemy beside it")
-	var blast_hit: HitData = _harness.world.damage_hits(near)[0]
+	var blast_hit: HitInfo = _harness.world.damage_hits(near)[0]
 
 	assert_true(_harness.fire(Events.enemy_killed, [near, blast_hit]),
 		"the blast's victim dies in turn, announced as its death would be")
@@ -1762,7 +1762,7 @@ func test_the_three_later_on_hit_relics_fire_for_their_own_players_hit_and_none_
 	assert_eq(theirs.bounces.size(), 0, "and their shot is asked for no bounce")
 
 	# The holder's own hit and shot, and all three react.
-	var mine: HitData = _hit(target, _player)
+	var mine: HitInfo = _hit(target, _player)
 	mine.final_damage = LEECH_DAMAGE
 	assert_true(_harness.fire(Events.hit_landed, [mine]), "the holder's hit lands")
 	assert_true(_harness.fire(Events.projectile_fired, [_player, shot]), "the holder's shot is fired")

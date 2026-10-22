@@ -326,7 +326,7 @@ func test_callable_for_refuses_a_name_that_is_not_a_signal() -> void:
 
 func test_emitter_arguments_have_the_declared_types() -> void:
 	# The player-first signals carry a real Player and the hit signals carry a
-	# real HitData, so an effect listening to them can read the fields the
+	# real HitInfo, so an effect listening to them can read the fields the
 	# spec names.
 	var recorder := Recorder.new()
 	# `player_dodged(player, perfect)` takes two arguments, so the handler must
@@ -345,7 +345,7 @@ func test_emitter_arguments_have_the_declared_types() -> void:
 	_emitter.emit_hit_landed()
 	Events.hit_landed.disconnect(hit_cb)
 	assert_eq(hit_recorder.calls, 1, "hit_landed fired")
-	assert_true(hit_recorder.first_arg is HitData, "hit_landed's argument is a HitData")
+	assert_true(hit_recorder.first_arg is HitInfo, "hit_landed's argument is a HitInfo")
 
 
 # --- the emitters Dev B owns, firing from their real owners ------------------

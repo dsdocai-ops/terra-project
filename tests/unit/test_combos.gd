@@ -179,7 +179,7 @@ func _target_status() -> StatusEffects:
 ## critical" is `_crit_count() == _health.hit_count()`.
 func _crit_count() -> int:
 	var crits := 0
-	for hit: HitData in _health.hits:
+	for hit: HitInfo in _health.hits:
 		if hit.is_crit:
 			crits += 1
 	return crits

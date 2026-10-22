@@ -1,25 +1,25 @@
-class_name HitData
+class_name HitInfo
 extends RefCounted
-## The hit payload Damage.compute reads. Owned by stats-status.
-## A week-2 mirror of combat-core's HitInfo (which has not landed yet): it
-## carries exactly the damage-relevant fields the formula needs
-## (base_damage, multiplier, bonus_crit_chance, element, is_heavy,
-## from_behind, tags) plus the two flags Damage.compute consults directly
-## (force_crit whether or not the caller forced it, scales_with_ability_power
-## for the ability-power term). is_crit and final_damage are filled by
-## Damage.compute. It also carries the two payload fields the WEEK-4 relics
-## needed and `HitInfo` names — `owner_player` (who the hit is attributed to) and
-## `target` (what it landed on), both additive and null by default — which is how
-## an On Hit relic reads "my hit" off a signal that carries no `Player`
-## argument. When Dev A's
-## HitInfo lands, compute can be re-pointed at it — the field names match.
+## The payload of one hit: built by the attacker, copied per target, read by
+## `Damage.compute`, `Hurtbox`, `Health` and every effect that listens to a hit.
+## Owned by combat-core (SPEC-combat-core, "HitInfo"); it replaced stats-status's
+## `HitData` stand-in by the 2026-10-21 decision, so there is one payload type.
+## `is_crit` and `final_damage` are filled by `Damage.compute`, `from_behind` by
+## `Hurtbox`.
 ## Sync: none. An ephemeral value object built by the attacker on the host.
 
-## Element of a hit. Statuses/combos consume this in week 4; week 2 only
-## needs the enum to exist so the payload mirrors HitInfo.
+## Element of a hit; statuses and combos key off it.
 enum Element { NONE, FIRE, FROST, STORM, SHADOW, POISON, EARTH, BLOOD, VOID }
 
 const AP_REFERENCE: float = 100.0
+## A hit whose direction differs from the target's facing by more than this many
+## degrees came from behind (SPEC-combat-core, "Hurtbox").
+const BEHIND_ANGLE_DEGREES: float = 120.0
+## Stun a hit applies unless its builder says otherwise.
+const DEFAULT_HIT_STUN_SECONDS: float = 0.15
+
+## The attacker entity: player, enemy, minion or turret.
+var source: Node = null
 
 ## Raw damage before any scaling, from WeaponData / AbilityData ranks.
 var base_damage: float = 0.0
@@ -30,7 +30,8 @@ var multiplier: float = 1.0
 var bonus_crit_chance: float = 0.0
 var element: Element = Element.NONE
 var is_heavy: bool = false
-## Set by Hurtbox's from-behind check; Rogue and Backstab read it.
+## Set by Hurtbox's from-behind check; Rogue, Backstab, Geode Turtle and Heart
+## Guard read it.
 var from_behind: bool = false
 ## The player this hit is attributed to: the one whose weapon, ability, minion or
 ## proc produced it. Mirrors `HitInfo.owner_player`, whose spec comment is "for
@@ -45,11 +46,20 @@ var from_behind: bool = false
 var owner_player: Player = null
 ## The entity the hit landed on, when whoever built the payload knows it: what
 ## "the same enemy" (Hungry Steel) and "splits on hit" (Splitting Shot) act on.
-## Mirrors the `target` SPEC-effect-system's `hit_landed` line names beside
-## `source` and `owner_player`. `null` on a payload that never reached one, which
+## The `target` SPEC-effect-system's `hit_landed` line names beside `source`
+## and `owner_player`. `null` on a payload that never reached one, which
 ## every effect reading it treats as a skipped trigger rather than a crash.
 var target: Node = null
 var tags: Array[StringName] = []
+## Statuses (and stacks) to apply to the target when the hit connects.
+var statuses: Array[StatusApplication] = []
+## Impulse along the hit direction; its length is the strength.
+var knockback: Vector2 = Vector2.ZERO
+var hit_stun_seconds: float = DEFAULT_HIT_STUN_SECONDS
+var is_projectile: bool = false
+## Set by an `about_to_die` handler (Second Wind, Undying, Twin Souls) to keep
+## the target alive.
+var prevented: bool = false
 ## How many effect links deep this hit is (SPEC-effect-system, "Proc chain
 ## limits"). A weapon or ability hit a player landed is 0; a hit an `Effect`
 ## produces through `deal_damage` is its trigger's depth + 1. `Effect.listen`'s
@@ -76,10 +86,47 @@ var final_damage: int = 0
 
 ## The `ability_power_scale` term from the damage formula. Ability hits scale
 ## linearly around the AP reference (AP 100 -> x1.0, AP 150 -> x1.5, AP 0 ->
-## x0.0); weapon hits return a flat 1.0. The exact curve is HitInfo's
-## (combat-core) once it lands; the week-12 balance pass revises it in the
-## golden file.
+## x0.0); weapon hits return a flat 1.0. The week-12 balance pass revises the
+## curve in the golden file.
 func ability_power_scale(ability_power: float) -> float:
 	if not scales_with_ability_power:
 		return 1.0
 	return maxf(1.0 + (ability_power - AP_REFERENCE) / AP_REFERENCE, 0.0)
+
+
+## Whether a hit that reached a target facing `target_facing` from
+## `direction_to_attacker` (target toward attacker) came from behind: the two
+## differ by more than `BEHIND_ANGLE_DEGREES`. A zero vector on either side has no
+## angle, so it is never "behind".
+static func is_from_behind(target_facing: Vector2, direction_to_attacker: Vector2) -> bool:
+	if target_facing.is_zero_approx() or direction_to_attacker.is_zero_approx():
+		return false
+	return absf(rad_to_deg(target_facing.angle_to(direction_to_attacker))) > BEHIND_ANGLE_DEGREES
+
+
+## A copy for one target: the template stays untouched so the next target (or the
+## next swing) starts from the same numbers. Arrays are copied, `StatusApplication`
+## entries are shared (they are never mutated after the builder makes them).
+func copy() -> HitInfo:
+	var clone := HitInfo.new()
+	clone.source = source
+	clone.owner_player = owner_player
+	clone.target = target
+	clone.base_damage = base_damage
+	clone.multiplier = multiplier
+	clone.bonus_crit_chance = bonus_crit_chance
+	clone.element = element
+	clone.statuses = statuses.duplicate()
+	clone.knockback = knockback
+	clone.hit_stun_seconds = hit_stun_seconds
+	clone.is_heavy = is_heavy
+	clone.is_projectile = is_projectile
+	clone.is_crit = is_crit
+	clone.from_behind = from_behind
+	clone.final_damage = final_damage
+	clone.tags = tags.duplicate()
+	clone.proc_depth = proc_depth
+	clone.prevented = prevented
+	clone.force_crit = force_crit
+	clone.scales_with_ability_power = scales_with_ability_power
+	return clone
