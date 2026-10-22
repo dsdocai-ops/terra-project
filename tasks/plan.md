@@ -16,7 +16,7 @@ Sources: `specs/CAPABILITY_MAP.md` (modules, dependencies, build order), `specs/
 - **Deterministic floors.** Seeded `RandomNumberGenerator` per floor, every peer generates locally, host hash asserts equality, 500-seed soak in CI.
 - **Strict typing, GUT, CI on every PR.** `untyped_declaration` is an error; headless import + GUT gate every merge.
 - **960x540 base, 64x32 isometric tiles, Compatibility renderer, nearest filter, integer scaling.**
-- **Claude Code makes and sources every asset (decision 2026-10-19).** Pixel art from Python/PIL generators in `tools/art/` against a locked per-biome palette; VFX as Godot particles and shaders; SFX from `tools/audio/synth.py`; music sourced CC0/CC-BY or generated chiptune; sourced files only under CC0, CC-BY, OFL, logged in `CREDITS.md`. Developers never draw, record, or compose; they approve review sheets. 4 drawn directions mirrored to 8. Placeholder first, real asset in the same week the content lands.
+- **Claude Code makes and sources every asset (decision 2026-10-19).** Pixel art from Python/PIL generators in `tools/art/` against a locked per-biome palette; VFX as Godot particles and shaders; SFX from `tools/audio/synth.py`; music sourced CC0/CC-BY or generated chiptune; sourced files only under CC0, CC-BY, OFL, logged in `CREDITS.md`. Developers never draw, record, or compose; they approve review sheets. All 8 directions drawn per sheet, no mirroring (decision 2026-10-21, Dev A). Placeholder first, real asset in the same week the content lands.
 - **Ownership lanes.** Lane A owns Pit modules, Lane B owns Surface + Systems modules; cross-owner seams listed in the capability map are PRs into the owning module with the owner's review.
 
 ## Dependency graph (modules)
