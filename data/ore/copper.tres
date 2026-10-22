@@ -1,0 +1,9 @@
+[gd_resource type="Resource" script_class="OreData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/data/ore_data.gd" id="1_ore"]
+
+[resource]
+script = ExtResource("1_ore")
+id = &"copper"
+display_name = "Copper"
+biome_index = 1

@@ -1,0 +1,17 @@
+[gd_resource type="Resource" script_class="LootTable" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/data/loot_table.gd" id="1_loot"]
+
+[resource]
+script = ExtResource("1_loot")
+entries = Array[Dictionary]([{
+"kind": &"gold",
+"weight": 60.0,
+"min": 15,
+"max": 30
+}, {
+"kind": &"ore",
+"weight": 40.0,
+"min": 1,
+"max": 2
+}])

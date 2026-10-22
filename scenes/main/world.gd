@@ -22,6 +22,9 @@ extends Node2D
 @onready var entities: Node2D = $Entities
 @onready var enemy_spawner: EnemySpawner = $Entities/EnemySpawner
 @onready var projectile_spawner: ProjectileSpawner = $Entities/ProjectileSpawner
+## run-economy's drop path (W4-B8): the host's loot rolls land here.
+@onready var pickup_spawner: PickupSpawner = $Entities/PickupSpawner
+@onready var loot_drops: LootDrops = $Entities/LootDrops
 @onready var players: Node2D = $Players
 @onready var player_spawner: PlayerSpawner = $PlayerSpawner
 @onready var camera: GameCamera = $Camera

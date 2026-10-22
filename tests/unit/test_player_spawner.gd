@@ -75,6 +75,19 @@ func test_spawn_player_creates_a_player_under_players_with_authority_set() -> vo
 	assert_eq(player.state_sync.get_multiplayer_authority(), 1, "state belongs to the host")
 
 
+func test_a_spawned_player_carries_the_player_tag_the_status_gate_reads() -> void:
+	# SPEC-stats-status's last line keeps players away from MARK, UNRAVEL and
+	# FREEZE, and StatusEffects reads that off this group rather than off a
+	# script class (W4-B4, G20). Networking owns the tag so the player scene
+	# stays the other lane's.
+	NetworkManager.start_solo()
+	var player := _world.player_spawner.spawn_player(PlayerSpawnInfo.new(1))
+	assert_true(player.is_in_group(StatusEffects.PLAYER_TAG),
+		"a spawned player joins %s" % StatusEffects.PLAYER_TAG)
+	assert_false(_world.players.is_in_group(StatusEffects.PLAYER_TAG),
+		"the container is not a player; only the entity is tagged")
+
+
 func test_spawned_player_input_authority_follows_peer_id() -> void:
 	NetworkManager.start_solo()
 	var player := _world.player_spawner.spawn_player(PlayerSpawnInfo.new(5))

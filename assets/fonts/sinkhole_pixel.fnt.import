@@ -1,0 +1,17 @@
+[remap]
+
+importer="font_data_bmfont"
+type="FontFile"
+uid="uid://dlqasiysi7atk"
+path="res://.godot/imported/sinkhole_pixel.fnt-4909fe47970b6fc5fb7e72d415c9f5fd.fontdata"
+
+[deps]
+
+source_file="res://assets/fonts/sinkhole_pixel.fnt"
+dest_files=["res://.godot/imported/sinkhole_pixel.fnt-4909fe47970b6fc5fb7e72d415c9f5fd.fontdata"]
+
+[params]
+
+fallbacks=[]
+compress=true
+scaling_mode=2

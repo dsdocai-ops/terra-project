@@ -38,8 +38,9 @@ var floor_index: int = 1
 var biome_id: int = 1
 var modifiers: Array[int] = []
 var room_count: int = 0
-## Room rectangles in tiles. Dev A's generator paints real rooms from its own
-## layout; this is the content the placeholder's hash is built from.
+## Room rectangles in tiles, every one of them inside GRID_TILES x GRID_TILES.
+## Dev A's generator paints real rooms from its own layout; this is the content
+## the placeholder's hash is built from.
 var rooms: Array[Rect2i] = []
 var layout_hash: int = 0
 ## Where this layout came from: SOURCE, or the generating class's own name.
@@ -61,7 +62,10 @@ static func for_floor(run_seed: int, floor_index: int, biome_id: int, modifiers:
 	layout.room_count = rng.randi_range(MIN_ROOMS, MAX_ROOMS)
 	for _index: int in layout.room_count:
 		var size := Vector2i(rng.randi_range(MIN_ROOM_W, MAX_ROOM_W), rng.randi_range(MIN_ROOM_H, MAX_ROOM_H))
-		var offset := Vector2i(rng.randi_range(0, GRID_TILES - 1), rng.randi_range(0, GRID_TILES - 1))
+		# The offset is bounded by the grid **minus the room**, so every room rect
+		# lies inside GRID_TILES x GRID_TILES — a room placed at a flat 0..95
+		# origin can run up to 16 tiles past the edge of a 96-tile grid.
+		var offset := Vector2i(rng.randi_range(0, GRID_TILES - size.x), rng.randi_range(0, GRID_TILES - size.y))
 		layout.rooms.append(Rect2i(offset, size))
 	layout.layout_hash = hash_rooms(layout.rooms, floor_index, biome_id, modifiers)
 	return layout

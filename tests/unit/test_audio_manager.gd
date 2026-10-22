@@ -8,6 +8,13 @@ extends GutTest
 ## every side effect this file can leave behind (LESSONS G6). Fades are driven
 ## with explicit _tick_fades calls (no awaits), so the idle _process cannot
 ## drift the assertions.
+##
+## A pooled player stands still for exactly as long as the stream under it has
+## audio left, and `playing` flips false the moment the audio thread mixes past
+## that end: the bank's real `ui_click` is 1448 bytes (~16 ms). Any test that
+## needs a pooled player to still be busy therefore fills the pool with
+## `_looping_click()` instead of a real click, so the property it asserts is the
+## fixture's and not the machine's speed.
 
 const WEEK2_SFX_IDS: Array[StringName] = [
 	&"hit_light", &"hit_heavy", &"crit", &"dodge", &"perfect_dodge",
@@ -45,6 +52,31 @@ func after_each() -> void:
 ## A real short click so the player stays `playing` through the whole test.
 func _track() -> AudioStream:
 	return SfxBank.make_click(440.0)
+
+
+## A click that never ends, so a pooled player carrying it cannot finish part
+## way through a test however slow the machine is between two statements.
+## The bank's real `ui_click` is 1448 bytes (~16 ms), and a fill loop that
+## outlasts it reuses an already-finished player instead of filling to the cap
+## (`[15] expected to equal [16]`, the pre-G15a flake).
+func _looping_click() -> AudioStreamWAV:
+	var wav := SfxBank.make_click(440.0)
+	wav.loop_mode = AudioStreamWAV.LOOP_FORWARD
+	wav.loop_begin = 0
+	wav.loop_end = wav.data.size() / 2
+	return wav
+
+
+## Fills the plain pool to `count` through the real acquire path, each player
+## playing `stream`. Asserts every acquire grew the pool by one, so a stream
+## that ended mid-fill is reported as the fixture failure it is rather than
+## resurfacing as a cap failure.
+func _fill_plain_pool(count: int, stream: AudioStream) -> void:
+	for i in count:
+		var player := AudioManager._acquire_plain()
+		player.stream = stream
+		player.play()
+		assert_eq(AudioManager._plain_pool.size(), i + 1, "fixture: acquire %d grew the pool" % i)
 
 
 # Crossfade state machine
@@ -154,11 +186,28 @@ func test_plain_pool_grows_while_players_are_busy() -> void:
 
 func test_plain_pool_respects_the_cap() -> void:
 	var cap: int = AudioManager.SFX_POOL_CAP
-	for i in cap:
-		AudioManager.play_sfx(&"ui_click", Vector2.INF, 0.0)
+	var looping := _looping_click()
+	_fill_plain_pool(cap, looping)
 	assert_eq(AudioManager._plain_pool.size(), AudioManager.SFX_POOL_CAP)
+	for player: AudioStreamPlayer in AudioManager._plain_pool:
+		assert_true(player.playing, "fixture: the looping click keeps every pooled player playing")
+	var oldest: AudioStreamPlayer = AudioManager._plain_pool[0]
 	AudioManager.play_sfx(&"ui_click", Vector2.INF, 0.0)
 	assert_eq(AudioManager._plain_pool.size(), AudioManager.SFX_POOL_CAP, "the cap holds; the oldest player is stolen")
+	assert_eq(AudioManager._plain_pool[0], oldest, "the stolen player is the oldest in the pool")
+	assert_ne(oldest.stream, looping, "the stolen player carries the new stream")
+
+
+func test_plain_pool_reclaims_a_stopped_player() -> void:
+	var cap: int = AudioManager.SFX_POOL_CAP
+	_fill_plain_pool(cap, _looping_click())
+	assert_eq(AudioManager._plain_pool.size(), cap, "fixture: the pool is full, so it cannot grow")
+	var victim: AudioStreamPlayer = AudioManager._plain_pool[3]
+	victim.stop()
+	assert_false(victim.playing, "fixture: a stopped player is idle")
+	var reused := AudioManager._acquire_plain()
+	assert_eq(reused, victim, "an idle player is reclaimed rather than the pool growing")
+	assert_eq(AudioManager._plain_pool.size(), cap, "reclaiming does not grow the pool")
 
 
 func test_positional_sfx_uses_a_separate_pool_and_position() -> void:

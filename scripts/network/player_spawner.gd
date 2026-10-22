@@ -72,6 +72,12 @@ func _spawn_from_data(data: Variant) -> Node:
 	player.slot = info.slot
 	player.position = info.spawn_position
 	player.synced_position = info.spawn_position
+	# SPEC-stats-status, "Status effects", last line: "Players can receive BURN,
+	# CHILL, TOXIN, BLEED from enemies and hazards, never MARK/UNRAVEL/FREEZE."
+	# StatusEffects reads that off this group (W4-B4, G20) rather than off a
+	# script class, so the tag is applied here, by the module that composes a
+	# player, and the player scene stays the other lane's.
+	player.add_to_group(StatusEffects.PLAYER_TAG)
 	# Input is the owning peer's; it is sent to the host only.
 	var input_sync := player.get_node("InputSync") as MultiplayerSynchronizer
 	input_sync.set_multiplayer_authority(info.peer_id)

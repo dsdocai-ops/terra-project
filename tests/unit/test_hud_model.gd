@@ -181,3 +181,50 @@ func test_set_floor_label() -> void:
 	model.set_floor_label("FLOOR 3")
 	assert_eq(model.floor_label, "FLOOR 3")
 	assert_eq(_changed_count, 1)
+
+# Run state: currencies, relics, weapon names
+
+var _run: RunState = null
+
+
+func _bound_run() -> RunState:
+	return _run
+
+
+func test_run_values_are_zero_outside_a_run() -> void:
+	var model := _make_model()
+	model.bind_run(_bound_run)
+	model.refresh(1)
+	assert_eq(model.gold, 0)
+	assert_eq(model.ore_total, 0)
+	assert_true(model.relics.is_empty())
+
+
+func test_currencies_and_relics_come_from_the_run() -> void:
+	_run = RunState.new(5, 1)
+	_run.shared_gold = 1240
+	_run.shared_ore = {&"copper": 10, &"iron": 8}
+	var mine := RunPlayerState.new(1)
+	mine.echo_shards_earned = 6
+	mine.weapon_ids = [&"pickaxe"]
+	mine.relics = [&"ember_boots", &"ember_boots"]
+	_run.add_player(mine)
+	var model := _make_model()
+	model.bind_run(_bound_run)
+	model.refresh(1)
+	assert_eq(model.gold, 1240)
+	assert_eq(model.ore_total, 18)
+	assert_eq(model.echo_shards, 6)
+	assert_eq(model.relics.size(), 1, "a repeated relic is one entry")
+	assert_eq(model.relics[0].stacks, 2)
+	assert_eq(model.weapon_slots[0].display_name, "Pickaxe")
+	assert_eq(model.weapon_slots[1].display_name, "-")
+	_run = null
+
+
+func test_local_hp_numbers_are_exposed() -> void:
+	_make_player(1, 0, 40, 100, false)
+	var model := _make_model()
+	model.refresh(1)
+	assert_eq(model.local_hp_current, 40)
+	assert_eq(model.local_hp_max, 100)

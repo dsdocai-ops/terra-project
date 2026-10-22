@@ -1,0 +1,19 @@
+[gd_scene load_steps=3 format=3]
+
+[ext_resource type="Script" path="res://scripts/relics/shrine.gd" id="1_shrine"]
+[ext_resource type="Texture2D" path="res://assets/sprites/props/shrine.png" id="tex_body"]
+
+[sub_resource type="CircleShape2D" id="CircleShape2D_interact"]
+radius = 32.0
+
+[node name="Shrine" type="Area2D"]
+collision_layer = 32
+collision_mask = 0
+script = ExtResource("1_shrine")
+
+[node name="InteractShape" type="CollisionShape2D" parent="."]
+shape = SubResource("CircleShape2D_interact")
+
+[node name="Body" type="Sprite2D" parent="."]
+texture = ExtResource("tex_body")
+offset = Vector2(0, -18)

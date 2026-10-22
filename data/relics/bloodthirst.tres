@@ -1,0 +1,22 @@
+[gd_resource type="Resource" script_class="RelicData" load_steps=3 format=3]
+
+[ext_resource type="Script" path="res://scripts/data/relic_data.gd" id="1_relic"]
+[ext_resource type="Texture2D" path="res://assets/sprites/icons/relics/bloodthirst.png" id="3_icon"]
+[ext_resource type="Script" path="res://scripts/effects/relics/bloodthirst.gd" id="2_effect"]
+
+[resource]
+script = ExtResource("1_relic")
+id = &"bloodthirst"
+display_name = "Bloodthirst"
+icon = ExtResource("3_icon")
+tags = Array[StringName]([&"on_kill"])
+effect_script = ExtResource("2_effect")
+vfx_id = &"relic_proc_on_kill"
+sfx_id = &""
+rarity = 1
+kind = 0
+description = "Kills give +10% attack speed for 3s (stacks 5x)."
+max_stacks = 5
+active_cooldown = 0.0
+active_charges = 0
+weight = 1.0

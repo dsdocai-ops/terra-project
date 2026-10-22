@@ -60,9 +60,11 @@ func _ready() -> void:
 	_maybe_add_debug_console()
 	_maybe_add_hud()
 	# Module startup registration (SPEC-floor-generation: each owning module
-	# registers its room populators at startup). Guarded in Rope itself: a
-	# no-op that records the blocker until the registry exists.
+	# registers its room populators at startup). Guarded in each module itself:
+	# a no-op that records its blocker once until the registry exists.
 	Rope.register_populator()
+	Shrine.register_populator()
+	Chest.register_populator()
 	_start_from_options()
 	if options.smoke_seconds > 0.0:
 		_start_smoke(options.smoke_seconds)

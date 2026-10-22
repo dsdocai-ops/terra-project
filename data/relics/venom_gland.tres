@@ -1,0 +1,22 @@
+[gd_resource type="Resource" script_class="RelicData" load_steps=3 format=3]
+
+[ext_resource type="Script" path="res://scripts/data/relic_data.gd" id="1_relic"]
+[ext_resource type="Texture2D" path="res://assets/sprites/icons/relics/venom_gland.png" id="3_icon"]
+[ext_resource type="Script" path="res://scripts/effects/relics/venom_gland.gd" id="2_effect"]
+
+[resource]
+script = ExtResource("1_relic")
+id = &"venom_gland"
+display_name = "Venom Gland"
+icon = ExtResource("3_icon")
+tags = Array[StringName]([&"poison", &"on_hit"])
+effect_script = ExtResource("2_effect")
+vfx_id = &"relic_proc_poison"
+sfx_id = &""
+rarity = 0
+kind = 0
+description = "Hits apply Toxin."
+max_stacks = 1
+active_cooldown = 0.0
+active_charges = 0
+weight = 1.0

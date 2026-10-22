@@ -1,0 +1,22 @@
+[gd_resource type="Resource" script_class="RelicData" load_steps=3 format=3]
+
+[ext_resource type="Script" path="res://scripts/data/relic_data.gd" id="1_relic"]
+[ext_resource type="Texture2D" path="res://assets/sprites/icons/relics/echo_blade.png" id="3_icon"]
+[ext_resource type="Script" path="res://scripts/effects/relics/echo_blade.gd" id="2_effect"]
+
+[resource]
+script = ExtResource("1_relic")
+id = &"echo_blade"
+display_name = "Echo Blade"
+icon = ExtResource("3_icon")
+tags = Array[StringName]([&"on_hit"])
+effect_script = ExtResource("2_effect")
+vfx_id = &"relic_proc_on_hit"
+sfx_id = &""
+rarity = 0
+kind = 0
+description = "Every 4th hit strikes twice."
+max_stacks = 1
+active_cooldown = 0.0
+active_charges = 0
+weight = 1.0
