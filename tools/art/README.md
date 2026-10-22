@@ -5,12 +5,25 @@ Python generators for every pixel-art asset. The contract (palettes, sizes, outl
 | File | What it is |
 |---|---|
 | `requirements.txt` | Pillow, numpy, pytest (Python 3.12) |
-| `palette.py` | Master palette: 8 hue ramps x 5 steps, 7 neutrals, 2 accents (`GLOBAL`), the 7 biome palettes (`biome(id)`), `UI`, `RARITY`, `ELEMENT`. Generators take every color from here by name |
-| `pixel.py` | Shared primitives (`Canvas`, `outline`, `shade`, `dither`, `iso_diamond`, `iso_box`, `mirror_h`, `sheet`, `save_png`). Stub until W2-A11 |
+| `palette.py` | Master palette: 8 hue ramps x 5 steps, 7 neutrals, 2 accents (`GLOBAL`), the 7 biome palettes (`biome(id)`, each with `ground_ramp`, `wall_ramp` and qualified `"<biome>.<name>"` accents), `MATERIAL` ramps (cloth, iron, timber, ...), `UI`, `RARITY`, `ELEMENT`, and `ALL` (every name a Canvas resolves). Generators take every color from here by name |
+| `pixel.py` | Shared primitives: `Canvas` (indexed-color grid of palette names; `put`, `rect`, `line`, `ellipse`, `ellipse_shaded`, `polygon`, `blit`, `outline`, `save`), `outline`, `shade`, `dither`, `iso_diamond`, `iso_box`, `mirror_h` (symmetric props and UI only), `sheet`, `save_png`, `seeded` |
+| `gen_font.py` | `assets/fonts/sinkhole_pixel.png` + `.fnt`, the 5x7 UI font (own work) |
+| `gen_ui.py` | `assets/ui/icons/`: 8 status icons, 2 weapon icons, pointer, potion flask |
+| `gen_icons.py` | `assets/sprites/icons/relics/` (20 relic icons) and the 5 pickup sprites under `assets/sprites/props/` |
+| `gen_props.py` | Collapsed Mines props: chest, shrine, rope, breakable, mining node, gold pickup |
+| `gen_character.py` | The miner sheet, 48x48, 8 drawn facings x (2 idle + 6 walk) |
+| `gen_enemies.py` | The 27 base enemy sheets, same layout as the miner |
+| `gen_tiles.py` | Floor, wall and pit atlas (3 x 64x64) per pit biome, drawn from that biome's palette only |
 | `build_all.py` | Runs every registered generator. `--check` verifies the committed outputs |
-| `tests/` | pytest suite |
+| `capture.gd`, `capture_ui.gd/.tscn` | Godot scripts for in-engine review screenshots |
+| `tests/` | pytest suite: palette against the spec, primitives, every generator (files, palette, determinism, 8 rows), `build_all` |
 
-Week 1 has no generators. Placeholders still come from `tools/make_placeholders.gd` and `tools/make_placeholder_tileset.gd`.
+## Rules the tools enforce
+
+- **Names, not RGB.** `Canvas.put` raises `KeyError` for anything that is not a palette name. Biome-only colors are `"collapsed_mines.lantern"` from any canvas, or bare `"lantern"` on a canvas built with `palette.colors_for("collapsed_mines")` (what `gen_tiles.py` does, so a tile cannot borrow another biome's color).
+- **8 drawn directions.** Character, enemy and boss sheets draw every facing as its own row in `Facing.SUFFIXES` order (`s, sw, w, nw, n, ne, e, se`); nothing is mirrored at build or run time (decision 2026-10-21, Dev A). `mirror_h` exists for symmetric props and UI pieces.
+- **No alpha, no blends.** Every opaque pixel is fully opaque and one of the generator's allowed colors; `build_all.py --check` fails otherwise. Ground shadows are a separate sprite, never baked into frames.
+- **Deterministic.** Same inputs, same bytes (`pixel.seeded(name)` for any randomness).
 
 ## Commands
 
@@ -18,17 +31,20 @@ From the repo root:
 
 ```powershell
 python -m pip install -r tools/art/requirements.txt   # once
-python -m pytest tools/art                             # tests
+python -m pytest tools/art                             # tests (about 90 s: every generator runs twice)
 python tools/art/build_all.py                          # regenerate every generated asset into assets/
 python tools/art/build_all.py --check                  # exit 1 if a committed file differs or a PNG is off-palette
+python tools/art/gen_enemies.py rock_tick              # one generator, one id (each gen_*.py runs on its own)
 ```
+
+After regenerating sheets or atlases, run `godot --headless --path . --import`; the `SpriteFrames` and `TileSet` resources (`tools/make_sprite_frames.gd`, `tools/make_placeholder_tileset.gd`) only need re-running when the sheet layout changes.
 
 `--check` compares PNGs by decoded pixels, so a different Pillow or zlib version does not fail it, and every other output by bytes. A PNG fails the palette check if any non-transparent pixel uses a color outside the generator's declared palette.
 
 ## Adding a generator
 
-1. Write `gen_<thing>.py` with a function that takes an output root and writes its files at their repo-relative paths (`assets/...`). Colors come from `palette.py` by name; a literal RGB is a review failure.
-2. Register it in `build_all.GENERATORS` with its allowed colors, for example `palette.biome("collapsed_mines").rgb()`.
+1. Write `gen_<thing>.py` with a `build(root: Path)` that writes its files under `root` at their repo-relative paths (`assets/...`). Colors come from `palette.py` by name; a literal RGB is a review failure.
+2. Register it in `build_all.GENERATORS` with its allowed colors, for example `palette.biome("collapsed_mines").rgb()` for a tile generator or `palette.all_rgb()` for one that spans biomes.
 3. Run `build_all.py`, commit the generator and its output together, then run `--check`.
 4. Make a review sheet under `docs/asset-review/week-N/` and add a row to `docs/asset-review/INDEX.md`.
 

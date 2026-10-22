@@ -1,207 +1,234 @@
-"""16x16 relic icons (the twenty Week 4 relics) and the six pickup sprites.
+"""16x16 relic icons (the twenty Week 4 relics) and the five pickup sprites.
 
 Icons carry no rarity frame: the UI draws that around them in the rarity colour,
-so one icon works on a charm, a choice tablet or the codex.
+so one icon works on a charm, a choice tablet or the codex. Colors are palette
+names: palette.MATERIAL ramps, palette.ramp4 hue ramps, ELEMENT tints and the
+qualified biome accents. Pickups bake no ground shadow (separate sprite).
 
-    py gen_icons.py <sprites_dir>
+    python tools/art/gen_icons.py
 """
-import sys
+
+from __future__ import annotations
+
+import math
+from pathlib import Path
 
 import palette
 from pixel import Canvas
 
-R = palette.RAMPS
-ramp = palette.ramp_from
-HEX = palette.hex_rgb
-W = palette.WHITE
+REPO_ROOT = Path(__file__).resolve().parents[2]
+RELIC_DIR = Path("assets/sprites/icons/relics")
+PROP_DIR = Path("assets/sprites/props")
+
+M = palette.MATERIAL
+W = "hit_flash"
+CRYSTAL = palette.biome("crystal_hollows")
+PINK = CRYSTAL.accent_1_ref
+STORM = "storm"
+FIRE = "fire"
+HOT = "yellow_light"
+POISON = "poison"
+BONE = M["bone"]
+GREEN = palette.ramp4("green", high=True)
+VIOLET = palette.ramp4("violet", high=True)
 
 
-def boot(c, sole, upper):
+def boot(c: Canvas, sole: str, upper: str) -> None:
     c.polygon([(5, 4), (9, 4), (9, 9), (13, 10), (13, 13), (3, 13), (3, 9), (5, 9)], upper)
     c.rect(3, 12, 13, 13, sole)
 
 
-def ember_boots():
+def ember_boots() -> Canvas:
     c = Canvas(16, 16)
-    boot(c, R["iron"][3], R["cloth"][1])
+    boot(c, M["iron"][3], M["cloth"][1])
     for x, y in ((6, 1), (7, 2), (6, 3), (8, 3)):
-        c.put(x, y, HEX("#FF6A1F"))
-    c.put(7, 3, HEX("#FFD23F")); c.put(7, 2, HEX("#FFD23F"))
+        c.put(x, y, FIRE)
+    c.put(7, 3, HOT)
+    c.put(7, 2, HOT)
     return c
 
 
-def storm_sandals():
+def storm_sandals() -> Canvas:
     c = Canvas(16, 16)
-    boot(c, R["timber"][3], R["timber"][1])
-    c.polygon([(10, 0), (7, 5), (9, 5), (6, 9), (12, 3), (10, 3)], HEX("#FFE14A"))
+    boot(c, M["timber"][3], M["timber"][1])
+    c.polygon([(10, 0), (7, 5), (9, 5), (6, 9), (12, 3), (10, 3)], STORM)
     return c
 
 
-def mirror_step():
+def mirror_step() -> Canvas:
     c = Canvas(16, 16)
-    for x0, col in ((2, R["relic"][1]), (9, R["relic"][2])):
+    for x0, col in ((2, M["relic"][1]), (9, M["relic"][2])):
         c.ellipse(x0 + 2, 9, 2, 3, col)
         c.ellipse(x0 + 2, 13, 1.5, 1.5, col)
     c.line(8, 2, 8, 14, W)
     return c
 
 
-def frostwalkers():
+def frostwalkers() -> Canvas:
     c = Canvas(16, 16)
-    boot(c, R["relic"][2], ramp("#6AA8D8")[1])
+    boot(c, M["relic"][2], "blue_light")
     for dx, dy in ((0, -1), (0, 1), (-1, 0), (1, 0)):
         c.put(8 + dx, 2 + dy, W)
-    c.put(8, 2, R["relic"][0])
+    c.put(8, 2, M["relic"][0])
     return c
 
 
-def ghost_wrap():
+def ghost_wrap() -> Canvas:
     c = Canvas(16, 16)
-    c.polygon([(4, 14), (4, 6), (8, 2), (12, 6), (12, 14), (10, 12), (8, 14), (6, 12)], ramp("#E8E8F0")[1])
-    c.put(6, 7, palette.OUTLINE); c.put(10, 7, palette.OUTLINE); c.put(8, 9, palette.OUTLINE)
+    c.polygon([(4, 14), (4, 6), (8, 2), (12, 6), (12, 14), (10, 12), (8, 14), (6, 12)], "neutral_5")
+    c.put(6, 7, "outline")
+    c.put(10, 7, "outline")
+    c.put(8, 9, "outline")
     return c
 
 
-def rebound_spring():
+def rebound_spring() -> Canvas:
     c = Canvas(16, 16)
     for i in range(5):
         y = 3 + i * 2
-        c.line(4, y, 12, y + 1, R["iron"][0] if i % 2 == 0 else R["iron"][2])
-    c.rect(3, 13, 12, 14, R["iron"][2])
-    c.rect(3, 1, 12, 2, R["iron"][2])
-    c.put(13, 7, R["gold"][0])
+        c.line(4, y, 12, y + 1, M["iron"][0] if i % 2 == 0 else M["iron"][2])
+    c.rect(3, 13, 12, 14, M["iron"][2])
+    c.rect(3, 1, 12, 2, M["iron"][2])
+    c.put(13, 7, M["gold"][0])
     return c
 
 
-def echo_blade():
+def echo_blade() -> Canvas:
     c = Canvas(16, 16)
-    c.line(3, 13, 11, 5, R["iron"][0])
-    c.line(4, 13, 12, 5, R["iron"][1])
-    c.line(2, 14, 4, 12, R["gold"][2])
-    c.line(1, 10, 5, 14, R["timber"][2])
+    c.line(3, 13, 11, 5, M["iron"][0])
+    c.line(4, 13, 12, 5, M["iron"][1])
+    c.line(2, 14, 4, 12, M["gold"][2])
+    c.line(1, 10, 5, 14, M["timber"][2])
     for k in (0, 1):
-        c.line(7 + k * 3, 3 + k, 14, 3 + k, R["echo"][1] if k == 0 else R["echo"][2])
+        c.line(7 + k * 3, 3 + k, 14, 3 + k, M["echo"][1] if k == 0 else M["echo"][2])
     return c
 
 
-def spark_plug():
+def spark_plug() -> Canvas:
     c = Canvas(16, 16)
-    c.rect(6, 9, 9, 14, R["iron"][1])
-    c.rect(5, 8, 10, 9, R["iron"][2])
-    c.rect(7, 4, 8, 8, R["iron"][0])
+    c.rect(6, 9, 9, 14, M["iron"][1])
+    c.rect(5, 8, 10, 9, M["iron"][2])
+    c.rect(7, 4, 8, 8, M["iron"][0])
     for x, y in ((3, 2), (11, 1), (12, 5), (2, 6)):
-        c.put(x, y, HEX("#FFE14A"))
-    c.line(7, 4, 10, 1, HEX("#FFE14A"))
+        c.put(x, y, STORM)
+    c.line(7, 4, 10, 1, STORM)
     return c
 
 
-def hungry_steel():
+def hungry_steel() -> Canvas:
     c = Canvas(16, 16)
-    c.polygon([(2, 5), (14, 5), (14, 12), (2, 12)], R["iron"][1])
-    c.rect(2, 8, 14, 9, palette.OUTLINE)
+    c.polygon([(2, 5), (14, 5), (14, 12), (2, 12)], M["iron"][1])
+    c.rect(2, 8, 14, 9, "outline")
     for x in range(3, 14, 2):
-        c.put(x, 7, W); c.put(x, 10, W)
-    c.put(5, 3, R["blood"][1]); c.put(10, 3, R["blood"][1])
+        c.put(x, 7, W)
+        c.put(x, 10, W)
+    c.put(5, 3, M["blood"][1])
+    c.put(10, 3, M["blood"][1])
     return c
 
 
-def venom_gland():
+def venom_gland() -> Canvas:
     c = Canvas(16, 16)
-    c.ellipse_shaded(8, 9, 5, 5, ramp("#7AC943"))
-    c.polygon([(8, 1), (10, 5), (6, 5)], ramp("#7AC943")[1])
+    c.ellipse_shaded(8, 9, 5, 5, GREEN)
+    c.polygon([(8, 1), (10, 5), (6, 5)], GREEN[1])
     c.put(6, 8, W)
-    c.put(8, 14, HEX("#7AC943"))
+    c.put(8, 14, POISON)
     return c
 
 
-def splitting_shot():
+def splitting_shot() -> Canvas:
     c = Canvas(16, 16)
-    c.line(2, 8, 8, 8, R["timber"][1])
+    c.line(2, 8, 8, 8, M["timber"][1])
     for dy in (-5, 0, 5):
-        c.line(8, 8, 13, 8 + dy, R["iron"][0])
-        c.put(14, 8 + dy, R["gold"][1])
+        c.line(8, 8, 13, 8 + dy, M["iron"][0])
+        c.put(14, 8 + dy, M["gold"][1])
     return c
 
 
-def gravity_stone():
+def gravity_stone() -> Canvas:
     c = Canvas(16, 16)
-    c.ellipse_shaded(8, 8, 4, 4, R["rock"])
+    c.ellipse_shaded(8, 8, 4, 4, M["rock"])
     for a in range(0, 360, 20):
-        import math
         x = 8 + math.cos(math.radians(a)) * 7
         y = 8 + math.sin(math.radians(a)) * 3
-        c.put(x, y, R["echo"][1])
+        c.put(x, y, M["echo"][1])
     return c
 
 
-def leech_fang():
+def leech_fang() -> Canvas:
     c = Canvas(16, 16)
-    c.polygon([(5, 2), (11, 2), (10, 8), (8, 14), (6, 8)], ramp("#E8DCC8")[1])
-    c.polygon([(5, 2), (8, 2), (7, 10), (6, 8)], ramp("#E8DCC8")[0])
-    c.put(8, 14, R["blood"][1]); c.put(8, 15, R["blood"][2])
+    c.polygon([(5, 2), (11, 2), (10, 8), (8, 14), (6, 8)], BONE[1])
+    c.polygon([(5, 2), (8, 2), (7, 10), (6, 8)], BONE[0])
+    c.put(8, 14, M["blood"][1])
+    c.put(8, 15, M["blood"][2])
     return c
 
 
-def rune_of_ricochet():
+def rune_of_ricochet() -> Canvas:
     c = Canvas(16, 16)
-    c.ellipse_shaded(8, 8, 6, 6, R["rock"])
-    c.line(4, 11, 8, 5, R["echo"][0]); c.line(8, 5, 12, 11, R["echo"][0])
-    c.line(5, 8, 11, 8, R["echo"][1])
+    c.ellipse_shaded(8, 8, 6, 6, M["rock"])
+    c.line(4, 11, 8, 5, M["echo"][0])
+    c.line(8, 5, 12, 11, M["echo"][0])
+    c.line(5, 8, 11, 8, M["echo"][1])
     return c
 
 
-def volatile_core():
+def volatile_core() -> Canvas:
     c = Canvas(16, 16)
-    c.ellipse_shaded(8, 8, 6, 6, ramp("#FF6A1F"))
-    c.line(5, 5, 8, 8, palette.OUTLINE); c.line(8, 8, 11, 6, palette.OUTLINE); c.line(8, 8, 9, 12, palette.OUTLINE)
-    c.put(7, 7, HEX("#FFD23F"))
+    c.ellipse_shaded(8, 8, 6, 6, ("orange_highlight", FIRE, "orange_base", "orange_dark"))
+    c.line(5, 5, 8, 8, "outline")
+    c.line(8, 8, 11, 6, "outline")
+    c.line(8, 8, 9, 12, "outline")
+    c.put(7, 7, HOT)
     return c
 
 
-def soul_jar():
+def soul_jar() -> Canvas:
     c = Canvas(16, 16)
-    c.rect(5, 3, 10, 4, R["iron"][1])
-    c.polygon([(4, 5), (11, 5), (12, 12), (11, 14), (4, 14), (3, 12)], ramp("#9CC8D8")[2])
-    c.ellipse(8, 10, 3, 3, ramp("#B58AF0")[1])
+    c.rect(5, 3, 10, 4, M["iron"][1])
+    c.polygon([(4, 5), (11, 5), (12, 12), (11, 14), (4, 14), (3, 12)], "teal_base")
+    c.ellipse(8, 10, 3, 3, VIOLET[1])
     c.put(7, 9, W)
     return c
 
 
-def bloodthirst():
+def bloodthirst() -> Canvas:
     c = Canvas(16, 16)
-    c.polygon([(8, 1), (13, 9), (8, 14), (3, 9)], R["blood"][1])
-    c.polygon([(8, 1), (3, 9), (8, 9)], R["blood"][0])
+    c.polygon([(8, 1), (13, 9), (8, 14), (3, 9)], M["blood"][1])
+    c.polygon([(8, 1), (3, 9), (8, 9)], M["blood"][0])
     c.put(6, 8, W)
     return c
 
 
-def corpse_bloom():
+def corpse_bloom() -> Canvas:
     c = Canvas(16, 16)
-    c.ellipse_shaded(8, 11, 5, 4, ramp("#E8DCC8"))
-    c.put(6, 11, palette.OUTLINE); c.put(10, 11, palette.OUTLINE)
-    for dx, dy, col in ((-3, -5, "#F28CC9"), (0, -7, "#FFD23F"), (3, -5, "#F28CC9"), (0, -4, "#B58AF0")):
-        c.ellipse(8 + dx, 8 + dy + 3, 2, 2, HEX(col))
-    c.line(8, 8, 8, 6, ramp("#3F7A52")[1])
+    c.ellipse_shaded(8, 11, 5, 4, BONE)
+    c.put(6, 11, "outline")
+    c.put(10, 11, "outline")
+    for dx, dy, col in ((-3, -5, PINK), (0, -7, HOT), (3, -5, PINK), (0, -4, VIOLET[1])):
+        c.ellipse(8 + dx, 8 + dy + 3, 2, 2, col)
+    c.line(8, 8, 8, 6, "green_dark")
     return c
 
 
-def domino():
+def domino() -> Canvas:
     c = Canvas(16, 16)
-    c.polygon([(5, 2), (11, 2), (11, 14), (5, 14)], ramp("#E8DCC8")[0])
-    c.rect(5, 8, 11, 8, palette.OUTLINE)
+    c.polygon([(5, 2), (11, 2), (11, 14), (5, 14)], BONE[0])
+    c.rect(5, 8, 11, 8, "outline")
     for x, y in ((7, 4), (9, 6), (7, 11), (9, 11), (7, 13), (9, 13)):
-        c.put(x, y, palette.OUTLINE)
+        c.put(x, y, "outline")
     return c
 
 
-def trophy_belt():
+def trophy_belt() -> Canvas:
     c = Canvas(16, 16)
-    c.rect(1, 6, 14, 9, R["timber"][2])
-    c.rect(1, 6, 14, 6, R["timber"][1])
-    c.rect(6, 5, 9, 10, R["gold"][1])
+    c.rect(1, 6, 14, 9, M["timber"][2])
+    c.rect(1, 6, 14, 6, M["timber"][1])
+    c.rect(6, 5, 9, 10, M["gold"][1])
     for x in (2, 12):
-        c.ellipse(x + 1, 12, 1.6, 1.6, ramp("#E8DCC8")[0])
-        c.put(x, 12, palette.OUTLINE); c.put(x + 2, 12, palette.OUTLINE)
+        c.ellipse(x + 1, 12, 1.6, 1.6, BONE[0])
+        c.put(x, 12, "outline")
+        c.put(x + 2, 12, "outline")
     return c
 
 
@@ -218,56 +245,54 @@ RELICS = {
 
 # --- pickups (14x14, drawn bottom-aligned like the gold nugget) -----------------
 
-def pickup_ore():
+def pickup_ore() -> Canvas:
     c = Canvas(14, 14)
-    c.ellipse(7, 12, 5, 2, palette.SHADOW)
-    c.polygon([(2, 9), (4, 3), (9, 2), (12, 7), (10, 11), (4, 11)], R["rock"][2])
-    c.polygon([(2, 9), (4, 3), (6, 6)], R["rock"][0])
+    c.polygon([(2, 9), (4, 3), (9, 2), (12, 7), (10, 11), (4, 11)], M["rock"][2])
+    c.polygon([(2, 9), (4, 3), (6, 6)], M["rock"][0])
     for x, y in ((6, 5), (8, 8), (4, 8)):
-        c.rect(x, y, x + 1, y, R["ore"][1])
+        c.rect(x, y, x + 1, y, M["ore"][1])
     c.outline()
     return c
 
 
-def pickup_echo():
+def pickup_echo() -> Canvas:
     c = Canvas(14, 14)
-    c.ellipse(7, 12, 4, 2, palette.SHADOW)
-    c.polygon([(7, 1), (11, 6), (7, 12), (3, 6)], R["echo"][1])
-    c.polygon([(7, 1), (3, 6), (7, 6)], R["echo"][0])
-    c.polygon([(7, 6), (11, 6), (7, 12)], R["echo"][3])
+    c.polygon([(7, 1), (11, 6), (7, 12), (3, 6)], M["echo"][1])
+    c.polygon([(7, 1), (3, 6), (7, 6)], M["echo"][0])
+    c.polygon([(7, 6), (11, 6), (7, 12)], M["echo"][3])
     c.put(5, 4, W)
     c.outline()
     return c
 
 
-def pickup_rune():
+def pickup_rune() -> Canvas:
     c = Canvas(14, 14)
-    c.ellipse(7, 12, 5, 2, palette.SHADOW)
-    c.polygon([(3, 10), (3, 3), (11, 3), (11, 10), (7, 12)], R["rock"][1])
-    c.polygon([(3, 10), (3, 3), (6, 3), (6, 11)], R["rock"][0])
-    c.line(5, 6, 9, 6, R["relic"][0]); c.line(7, 5, 7, 9, R["relic"][0]); c.put(5, 9, R["relic"][1]); c.put(9, 9, R["relic"][1])
+    c.polygon([(3, 10), (3, 3), (11, 3), (11, 10), (7, 12)], M["rock"][1])
+    c.polygon([(3, 10), (3, 3), (6, 3), (6, 11)], M["rock"][0])
+    c.line(5, 6, 9, 6, M["relic"][0])
+    c.line(7, 5, 7, 9, M["relic"][0])
+    c.put(5, 9, M["relic"][1])
+    c.put(9, 9, M["relic"][1])
     c.outline()
     return c
 
 
-def pickup_relic():
+def pickup_relic() -> Canvas:
     c = Canvas(14, 14)
-    c.ellipse(7, 12, 5, 2, palette.SHADOW)
-    c.ellipse(7, 7, 6, 6, (127, 214, 255, 50))
-    c.polygon([(7, 1), (9, 5), (13, 5), (10, 8), (11, 12), (7, 10), (3, 12), (4, 8), (1, 5), (5, 5)], R["relic"][1])
-    c.polygon([(7, 1), (5, 5), (1, 5), (4, 8), (7, 7)], R["relic"][0])
+    c.polygon([(7, 1), (9, 5), (13, 5), (10, 8), (11, 12), (7, 10), (3, 12), (4, 8), (1, 5), (5, 5)], M["relic"][1])
+    c.polygon([(7, 1), (5, 5), (1, 5), (4, 8), (7, 7)], M["relic"][0])
     c.put(6, 4, W)
     c.outline()
     return c
 
 
-def pickup_potion():
+def pickup_potion() -> Canvas:
     c = Canvas(14, 14)
-    c.ellipse(7, 12, 5, 2, palette.SHADOW)
-    c.rect(6, 1, 8, 3, R["timber"][1])
-    c.polygon([(6, 3), (8, 3), (8, 6), (12, 11), (2, 11), (6, 6)], R["blood"][1])
-    c.polygon([(6, 6), (8, 6), (12, 11), (2, 11)], R["blood"][2])
-    c.put(5, 8, R["blood"][0]); c.put(4, 9, R["blood"][0])
+    c.rect(6, 1, 8, 3, M["timber"][1])
+    c.polygon([(6, 3), (8, 3), (8, 6), (12, 11), (2, 11), (6, 6)], M["blood"][1])
+    c.polygon([(6, 6), (8, 6), (12, 11), (2, 11)], M["blood"][2])
+    c.put(5, 8, M["blood"][0])
+    c.put(4, 9, M["blood"][0])
     c.outline()
     return c
 
@@ -275,15 +300,16 @@ def pickup_potion():
 PICKUPS = {"ore": pickup_ore, "echo": pickup_echo, "rune": pickup_rune, "relic": pickup_relic, "potion": pickup_potion}
 
 
-def build(sprites_dir):
+def build(root: Path) -> None:
+    root = Path(root)
     for name, fn in RELICS.items():
         c = fn()
         c.outline()
-        c.save("%s/icons/relics/%s.png" % (sprites_dir, name))
+        c.save(root / RELIC_DIR / f"{name}.png")
     for name, fn in PICKUPS.items():
-        fn().save("%s/props/pickup_%s.png" % (sprites_dir, name))
+        fn().save(root / PROP_DIR / f"pickup_{name}.png")
 
 
 if __name__ == "__main__":
-    build(sys.argv[1] if len(sys.argv) > 1 else "../../assets/sprites")
+    build(REPO_ROOT)
     print("icons:", len(RELICS), "relics,", len(PICKUPS), "pickups")

@@ -4,13 +4,23 @@ construction). Writes assets/fonts/sinkhole_pixel.png and .fnt (BMFont text
 format, which Godot imports as a bitmap FontFile).
 
 Cap height 7, x-height 5, descenders 2. Draw it at 8 px (1x) or 16 px (2x); the
-importer scales bitmap fonts in whole steps.
+importer scales bitmap fonts in whole steps. Glyph pixels are pure white
+(palette "hit_flash") so the theme tints them.
 
-    py gen_font.py <fonts_dir>
+    python tools/art/gen_font.py
 """
-import sys
+
+from __future__ import annotations
+
+from pathlib import Path
 
 from PIL import Image
+
+import palette
+
+REPO_ROOT = Path(__file__).resolve().parents[2]
+OUT_DIR = Path("assets/fonts")
+NAME = "sinkhole_pixel"
 
 CELL_W = 7
 CELL_H = 11
@@ -18,11 +28,13 @@ BASE = 7        # rows from the line top to the baseline
 LINE = 10       # line height
 COLUMNS = 16
 
+GLYPH_RGBA = (*palette.rgb(palette.ACCENT["hit_flash"]), 255)
+
 # glyph: (top_row, rows). A row is a string of '#' and '.'; width = longest row.
-G = {}
+G: dict[str, tuple[int, tuple[str, ...]]] = {}
 
 
-def g(ch, top, *rows):
+def g(ch: str, top: int, *rows: str) -> None:
     G[ch] = (top, rows)
 
 
@@ -121,7 +133,9 @@ g("|", 0, "#", "#", "#", "#", "#", "#", "#", "#", "#")
 g(" ", 0, "...")
 
 
-def build(fonts_dir):
+def build(root: Path) -> Image.Image:
+    out_dir = Path(root) / OUT_DIR
+    out_dir.mkdir(parents=True, exist_ok=True)
     codes = sorted(ord(ch) for ch in G)
     rows = (len(codes) + COLUMNS - 1) // COLUMNS
     atlas = Image.new("RGBA", (COLUMNS * CELL_W, rows * CELL_H), (0, 0, 0, 0))
@@ -135,23 +149,22 @@ def build(fonts_dir):
         for dy, row in enumerate(glyph_rows):
             for dx, ch in enumerate(row):
                 if ch == "#":
-                    px[ox + dx, oy + top + dy] = (255, 255, 255, 255)
+                    px[ox + dx, oy + top + dy] = GLYPH_RGBA
         lines.append(
             "char id=%d x=%d y=%d width=%d height=%d xoffset=0 yoffset=0 xadvance=%d page=0 chnl=15"
             % (code, ox, oy, width, CELL_H - 1, width + 1 if chr(code) != " " else 3)
         )
-    atlas.save(fonts_dir + "/sinkhole_pixel.png")
+    atlas.save(out_dir / f"{NAME}.png", format="PNG", optimize=False, compress_level=9)
     header = (
-        'info face="sinkhole_pixel" size=8 bold=0 italic=0 charset="" unicode=1 stretchH=100 smooth=0 aa=1 padding=0,0,0,0 spacing=1,1\n'
+        'info face="%s" size=8 bold=0 italic=0 charset="" unicode=1 stretchH=100 smooth=0 aa=1 padding=0,0,0,0 spacing=1,1\n'
         "common lineHeight=%d base=%d scaleW=%d scaleH=%d pages=1 packed=0 alphaChnl=0 redChnl=0 greenChnl=0 blueChnl=0\n"
-        'page id=0 file="sinkhole_pixel.png"\n'
-        "chars count=%d\n" % (LINE, BASE, atlas.width, atlas.height, len(codes))
+        'page id=0 file="%s.png"\n'
+        "chars count=%d\n" % (NAME, LINE, BASE, atlas.width, atlas.height, NAME, len(codes))
     )
-    with open(fonts_dir + "/sinkhole_pixel.fnt", "w", newline="\n") as handle:
-        handle.write(header + "\n".join(lines) + "\n")
+    (out_dir / f"{NAME}.fnt").write_bytes((header + "\n".join(lines) + "\n").encode("ascii"))
     return atlas
 
 
 if __name__ == "__main__":
-    build(sys.argv[1] if len(sys.argv) > 1 else "../../assets/fonts")
+    build(REPO_ROOT)
     print("font:", len(G), "glyphs")

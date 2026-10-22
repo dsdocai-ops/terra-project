@@ -9,8 +9,10 @@ it is given, at their repo-relative paths (assets/...). --check runs them into
 a temp folder and compares: PNGs by decoded RGBA pixels (so a different zlib
 or Pillow version does not fail the check), everything else by bytes.
 
-Week 1 has no generators yet (SPEC-art-audio: placeholders stay on the Godot
-tools), so --check passes on an empty set. Generators land from W2-A11.
+Registered generators (2026-10-21): the UI font, UI icons, relic icons and
+pickups, Collapsed Mines props, the miner sheet, the 27 base enemy sheets and
+the six pit-biome tile atlases. Tile generators are checked against their own
+biome palette; everything else against palette.ALL.
 """
 
 from __future__ import annotations
@@ -25,7 +27,20 @@ from pathlib import Path
 
 from PIL import Image
 
-REPO_ROOT = Path(__file__).resolve().parents[2]
+ART_DIR = Path(__file__).resolve().parent
+if str(ART_DIR) not in sys.path:
+    sys.path.insert(0, str(ART_DIR))
+
+import gen_character  # noqa: E402
+import gen_enemies  # noqa: E402
+import gen_font  # noqa: E402
+import gen_icons  # noqa: E402
+import gen_props  # noqa: E402
+import gen_tiles  # noqa: E402
+import gen_ui  # noqa: E402
+import palette  # noqa: E402
+
+REPO_ROOT = ART_DIR.parents[1]
 _MAX_LISTED_COLORS = 8
 
 
@@ -40,7 +55,25 @@ class Generator:
     run: Callable[[Path], None]
 
 
-GENERATORS: tuple[Generator, ...] = ()
+def _tile_generator(biome_id: str) -> Generator:
+    return Generator(
+        name=f"tiles:{biome_id}",
+        allowed_colors=palette.biome(biome_id).rgb(),
+        run=lambda root, b=biome_id: gen_tiles.build(root, b),
+    )
+
+
+_FONT_COLORS = frozenset({palette.rgb(palette.ACCENT["hit_flash"])})
+
+GENERATORS: tuple[Generator, ...] = (
+    Generator("font", _FONT_COLORS, gen_font.build),
+    Generator("ui_icons", palette.all_rgb(), gen_ui.build),
+    Generator("relic_icons_pickups", palette.all_rgb(), gen_icons.build),
+    Generator("props", palette.all_rgb(), gen_props.build),
+    Generator("character:miner", palette.all_rgb(), gen_character.build),
+    Generator("enemies", palette.all_rgb(), gen_enemies.build),
+    *(_tile_generator(b) for b in gen_tiles.BIOMES),
+)
 
 
 def _files_under(root: Path) -> list[Path]:
