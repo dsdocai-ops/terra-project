@@ -1,0 +1,5 @@
+# Dev-only asset pipeline dependencies (Python 3.12). The game never runs Python.
+# Install from the repo root: python -m pip install -r tools/art/requirements.txt
+Pillow>=10
+numpy>=1.26
+pytest>=8

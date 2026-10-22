@@ -18,7 +18,7 @@ Checklist
 - [ ] Time effects tested in co-op (from week 4)
 - [ ] New relics/mutations/abilities trigger-tested and co-op checked: counts
 - [ ] External playtest notes (from week 9)
-- [ ] Every [art-audio] task this week has an approved review sheet in docs/asset-review/week-N/ (or a dated polish-list entry)
+- [ ] Asset review sheets approved: every real asset landed this week (every [art-audio] task) has an approved review sheet in docs/asset-review/week-N/ (or a dated polish-list entry)
 
 Decisions and spec updates
 - ...

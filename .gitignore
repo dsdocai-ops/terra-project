@@ -4,3 +4,7 @@
 
 # graphify knowledge graph output (rebuild with tools/graphify/rebuild.py)
 graphify-out/
+
+# Python asset pipeline (tools/art, tools/audio)
+__pycache__/
+.pytest_cache/
