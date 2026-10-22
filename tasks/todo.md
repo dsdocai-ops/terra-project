@@ -398,7 +398,7 @@ Every week carries `[art-audio]` tasks: Claude Code generates or sources every a
 ### Dev A
 - [x] W2-A1 `[combat-core]` `Health`, `Hitbox`, `Hurtbox`, `HitInfo`, `StatusApplication`, `Team`. Accept: components on player; `about_to_die` prevention hook; from-behind angle; host-only hit resolution. **Decision 2026-10-21 (Dev A and Dev B): `HitInfo` replaces `HitData`.** `scripts/components/hit_data.gd` (stats-status's week-2 stand-in) is renamed to `HitInfo` in this task's PR and every `HitData` reference (`Events` signal types, `Damage.compute`, `StatusEffects`, relic effect scripts, `LootDrops`, test helpers) is retyped in the same PR; no adapter and no second payload type (SPEC-combat-core, "HitInfo").
 - [ ] W2-A2 `[combat-core]` `AttackController`: light combo with step reset and input buffer, heavy charge/release, tap heavy, swap with lockout, attack speed scale. Accept: spec behaviors.
-- [ ] W2-A3 `[combat-core]` Hit reactions: `HitStun` state, knockback impulse with wall block, 0.4 s player i-frames. Accept: spec values.
+- [x] W2-A3 `[combat-core]` Hit reactions: `HitStun` state, knockback impulse with wall block, 0.4 s player i-frames. Accept: spec values.
 - [ ] W2-A4 `[combat-core]` Hit feedback: `hit_flash.gdshader`, camera shake tiers, `TimeManager.hit_stop` calls, `DamageNumberPool` in `World/FX`. Accept: visible on every hit; crits distinguished.
 - [ ] W2-A5 `[combat-core]` `AttackPattern` Resource + `Telegraph` scene (circle, cone, line, ring, fill over windup) + windup/active/recovery driver. Accept: no hit without telegraph.
 - [ ] W2-A6 `[combat-core]` `Projectile` base + `ProjectilePool` (pierce, bounce, homing, lifetime, reflectable, time-scaled). Accept: 500 pooled projectiles no allocs.

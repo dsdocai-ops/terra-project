@@ -96,7 +96,7 @@ func _compute_damage(hit: HitInfo, statuses: StatusEffects) -> void:
 ## Knockback along the hit direction and the hit's statuses. Skipped for a dead
 ## target.
 func _apply_reactions(entity: Node, hit: HitInfo, statuses: StatusEffects) -> void:
-	if not hit.knockback.is_zero_approx() and entity.has_method(KNOCKBACK_METHOD):
+	if entity.has_method(KNOCKBACK_METHOD):
 		entity.call(KNOCKBACK_METHOD, hit.knockback, hit.hit_stun_seconds)
 	if statuses == null:
 		return

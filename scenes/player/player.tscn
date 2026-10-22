@@ -4,6 +4,7 @@
 [ext_resource type="SpriteFrames" uid="uid://bxb0swmmkrfpo" path="res://assets/sprites/player/placeholder_frames.tres" id="2_frames"]
 [ext_resource type="Script" uid="uid://bjea7scc16d1c" path="res://scripts/components/state_machine.gd" id="3_machine"]
 [ext_resource type="Script" uid="uid://dqr7re3q06tjd" path="res://scenes/player/states/idle.gd" id="4_idle"]
+[ext_resource type="Script" path="res://scenes/player/states/hit_stun.gd" id="10_hitstun"]
 [ext_resource type="Script" uid="uid://t750fwxr173v" path="res://scenes/player/states/move.gd" id="5_move"]
 [ext_resource type="Script" uid="uid://bx8myavf68dko" path="res://scenes/player/slot_ring.gd" id="6_ring"]
 [ext_resource type="Script" uid="uid://cqgxkxygbnd77" path="res://scripts/components/stat_block.gd" id="9_stats"]
@@ -82,6 +83,9 @@ script = ExtResource("4_idle")
 
 [node name="Move" type="Node" parent="StateMachine"]
 script = ExtResource("5_move")
+
+[node name="HitStun" type="Node" parent="StateMachine"]
+script = ExtResource("10_hitstun")
 
 [node name="SlotRing" type="Node2D" parent="."]
 script = ExtResource("6_ring")
