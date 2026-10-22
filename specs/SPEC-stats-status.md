@@ -90,7 +90,7 @@ Reactive skill node (+40%) and Elementalist synergy (x2) multiply combo damage. 
 
 ## Interfaces provided
 
-- `StatBlock`, `Stat` enum, `Damage.compute()`, `HitInfo` (defined in combat-core but its damage-relevant fields are read here: `base_damage`, `element`, `multiplier`, `bonus_crit_chance`, `is_heavy`, `from_behind`, `tags`).
+- `StatBlock`, `Stat` enum, `Damage.compute()`, `HitInfo` (defined in combat-core but its damage-relevant fields are read here: `base_damage`, `element`, `multiplier`, `bonus_crit_chance`, `is_heavy`, `from_behind`, `tags`). Until W2-A1 lands, `scripts/components/hit_data.gd` (`HitData`) is the payload `Damage.compute` reads; decision 2026-10-21 (Dev A and Dev B): `HitInfo` replaces `HitData`, see SPEC-combat-core "HitInfo". `HitData` is renamed, not kept beside it.
 - `StatusEffects`: `apply_status()`, `has(status)`, `stacks(status)`, `clear(status)`, `clear_all()`, signals `status_applied(status, stacks)`, `status_expired(status)`.
 - `Element` enum: `NONE, FIRE, FROST, STORM, SHADOW, POISON, EARTH, BLOOD, VOID`. Earth has no status; it is a school for abilities only.
 - `Combo` enum and `Scaling`.

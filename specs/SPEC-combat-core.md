@@ -47,6 +47,8 @@ var proc_depth: int = 0          # effect-system increments
 var prevented: bool = false      # set by about_to_die handlers
 ```
 
+Decision 2026-10-21 (Dev A and Dev B): **`HitInfo` replaces `HitData`.** `scripts/components/hit_data.gd` (`class_name HitData`) is stats-status's week-2 stand-in for this class, written while W2-A1 was open; it already carries the damage-relevant fields above under the same names plus `owner_player`, `target`, `proc_depth`, `force_crit` and `scales_with_ability_power`. When W2-A1 lands, that script becomes `HitInfo` (rename, same file moved to `scripts/components/hit_info.gd`, fields merged with the list above, `target` and the two compute flags kept), and every `HitData` reference (`Events` signal types, `Damage.compute`, `StatusEffects`, the relic effect scripts, `LootDrops`, test helpers) is retyped in the same PR. There is no second payload type and no adapter between the two.
+
 ### Attack input layer (`AttackController` on player)
 
 - `attack_light` press: advance the current weapon's light combo (step index resets after 0.6 s idle). Buffer one input during active frames so mashing feels responsive.
