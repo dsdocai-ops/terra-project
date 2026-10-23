@@ -7581,7 +7581,7 @@ already recorded in a spec or a comment, the location is given.
 
 116. **Town art (W5-B7).** `gen_town.py` and `gen_portraits.py` are registered in
     `build_all.py` (--check clean). The review sheets under `docs/asset-review/week-5/`
-    are `pending` Dev B approval. No new UI theme assets were drawn: the menu, pause,
+    were approved by Dev B on 2026-10-22. No new UI theme assets were drawn: the menu, pause,
     inventory and death screens use the existing theme and procedural slabs. W5-B8 (music)
     was skipped on instruction. `py` (Python 3.14 with Pillow, numpy, pytest) exists on this
     machine; the `python` alias does not.
