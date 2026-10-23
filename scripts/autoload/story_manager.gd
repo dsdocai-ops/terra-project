@@ -156,9 +156,243 @@ func lore_unlocked_count() -> int:
 	return _lore.size()
 
 
-## Dialogue condition language. TODO(story-dialogue): all operators.
-func evaluate(_condition: Dictionary) -> bool:
+## What one talker sees when a dialogue condition is judged. Town dialogue is
+## per player (SPEC-story-dialogue), so the world the conditions read is the
+## *local* player's: their character and class, their deepest floor, their ore,
+## rescues and town levels. A caller with the player at hand (a town NPC
+## reading the local SelectionState, or a run reading the live slice) fills the
+## fields itself; the profile-carried half is filled by `from_profile()`.
+## Sync: none (a snapshot built per conversation, read-only once built).
+class EvalContext extends RefCounted:
+	## The talking player's character and class ids; empty when unknown, which
+	## makes `character`/`class` conditions fail — nothing matches nobody.
+	var character_id: StringName = &""
+	var class_id: StringName = &""
+	## The player's deepest floor (the profile stat, or the caller's live value
+	## during a run).
+	var deepest_floor: int = 0
+	## Ore id -> amount the player holds.
+	var ore: Dictionary[StringName, int] = {}
+	## Miner ids this player has rescued.
+	var rescued_miners: Array[StringName] = []
+	## Building id -> level (0 when absent — the profile's rule).
+	var town_levels: Dictionary[StringName, int] = {}
+	## Roll source for `random_chance`. Null means StoryManager's shared one; a
+	## test (or a host wanting reproducible dialogue) seeds one and hands it in.
+	var rng: RandomNumberGenerator = null
+
+
+	## The context a saved profile carries: ore, rescued miners, town levels and
+	## the deepest-floor stat. The identity fields stay empty — they belong to
+	## the talking player, which the profile does not name; the caller (town
+	## NPC, run slice) sets them from SelectionState or RunPlayerState.
+	static func from_profile(profile: PlayerProfile) -> EvalContext:
+		var context := EvalContext.new()
+		if profile == null:
+			return context
+		for ore_key: String in profile.ore:
+			context.ore[StringName(ore_key)] = int(profile.ore[ore_key])
+		for miner: String in profile.rescued_miners:
+			context.rescued_miners.append(StringName(miner))
+		for building: String in profile.town:
+			context.town_levels[StringName(building)] = int(profile.town[building])
+		context.deepest_floor = int(profile.stats.get(PlayerProfile.STAT_DEEPEST_FLOOR, 0))
+		return context
+
+
+## The fallback entry's line (PLAN G3): what an NPC says when no entry's
+## conditions pass.
+const FALLBACK_TEXT: String = "..."
+
+## The roll source used when the context brings none. Created once, lazily —
+## `random_chance` rolls must not rebuild a generator per call.
+var _condition_rng: RandomNumberGenerator = null
+
+
+## The dialogue condition language (SPEC-story-dialogue): `all`, `any`, `not`
+## and the ten leaf operators the loader structurally validated. An empty
+## condition passes; several keys in one object are an implicit `all` (the
+## loader validates each key independently, so this only tightens what it
+## already allowed). An operator the loader would have rejected fails *safe* —
+## warned and false — because a condition dict can also be built by hand at
+## runtime, outside the loader's reach.
+##
+## `context` is the talker's world; null means "build it from the saved
+## profile", the town-without-a-selection case. During a run, or for a
+## specific player in co-op, the caller builds one and passes it.
+func evaluate(condition: Dictionary, context: EvalContext = null) -> bool:
+	return _evaluate(condition, _context_or_profile(context), 0)
+
+
+## The highest-priority entry whose conditions pass (SPEC-story-dialogue: "the
+## highest-priority entry whose conditions pass is the NPC's current
+## dialogue"), or the fallback stub when none do. `entries_by_priority()`
+## already orders descending with ties to file order, so the scan is a first
+## match over it. Not act-filtered on purpose: an entry whose top-level
+## `act_min` is above the current act fails `_evaluate` like any other
+## condition, so a caller that wants the pre-filter uses
+## `entries_for_act()`; one that wants live state judged (an `act_min` nested
+## in `all`) gets it here.
+func select_entry(dialogue: DialogueData, context: EvalContext = null) -> DialogueData.Entry:
+	var talker := _context_or_profile(context)
+	for entry: DialogueData.Entry in dialogue.entries_by_priority():
+		if _evaluate(entry.conditions, talker, 0):
+			return entry
+	return fallback_entry(dialogue)
+
+
+## The stub response for an NPC whose every entry failed its conditions
+## (PLAN G3): a one-line entry speaking with the NPC's name and the same
+## noncommittal line, built fresh each call and never added to the dialogue's
+## own entries.
+static func fallback_entry(dialogue: DialogueData) -> DialogueData.Entry:
+	var entry := DialogueData.Entry.new()
+	entry.id = &"fallback"
+	entry.priority = 0
+	entry.lines = [{"speaker": _speaker_from_id(dialogue.id), "text": FALLBACK_TEXT}]
+	return entry
+
+
+## "mayor_hilde" -> "Mayor Hilde": the fallback's speaker, humanized from the
+## dialogue id. Good enough for a stub line only ever seen when content forgot
+## to cover a state.
+static func _speaker_from_id(dialogue_id: StringName) -> String:
+	var words := PackedStringArray()
+	for part: String in String(dialogue_id).split("_", false):
+		words.append(part.capitalize())
+	return " ".join(words) if not words.is_empty() else String(dialogue_id)
+
+
+func _context_or_profile(context: EvalContext) -> EvalContext:
+	if context != null:
+		return context
+	return EvalContext.from_profile(SaveManager.profile)
+
+
+func _evaluate(condition: Variant, context: EvalContext, depth: int) -> bool:
+	if condition == null:
+		return true
+	if not (condition is Dictionary):
+		push_warning("StoryManager: condition is not an object; failing safe")
+		return false
+	var expr := condition as Dictionary
+	if expr.is_empty():
+		return true
+	if depth > DialogueData.MAX_CONDITION_DEPTH:
+		push_warning("StoryManager: condition nests deeper than %d; failing safe" % DialogueData.MAX_CONDITION_DEPTH)
+		return false
+	for op: String in expr.keys():
+		if not _evaluate_op(op, expr[op], context, depth):
+			return false
 	return true
+
+
+func _evaluate_op(op: String, value: Variant, context: EvalContext, depth: int) -> bool:
+	match op:
+		"all":
+			if not (value is Array):
+				return _warn_false(op, "an array of conditions")
+			for sub: Variant in value:
+				if not _evaluate(sub, context, depth + 1):
+					return false
+			return true
+		"any":
+			if not (value is Array):
+				return _warn_false(op, "an array of conditions")
+			if (value as Array).is_empty():
+				return false
+			for sub: Variant in value:
+				if _evaluate(sub, context, depth + 1):
+					return true
+			return false
+		"not":
+			# The loader accepts both shapes ({"not": expr} and {"not": [expr]}),
+			# so both must evaluate; an empty array is malformed and fails safe.
+			if value is Array and (value as Array).size() != 1:
+				return _warn_false(op, "exactly one condition")
+			var sub: Variant = value[0] if value is Array else value
+			return not _evaluate(sub, context, depth + 1)
+		"flag":
+			return _is_string(value, op) and has_flag(StringName(value as String))
+		"flag_not":
+			return _is_string(value, op) and not has_flag(StringName(value as String))
+		"character":
+			return _is_string(value, op) and context.character_id == StringName(value as String)
+		"class":
+			return _is_string(value, op) and context.class_id == StringName(value as String)
+		"town_level":
+			if not _has_string_key(value, op, "building") or not _has_int_key(value, op, "min"):
+				return false
+			var spec := value as Dictionary
+			var level: int = context.town_levels.get(StringName(String(spec["building"])), 0)
+			return level >= spec["min"] as int
+		"ore_min":
+			if not _has_string_key(value, op, "ore") or not _has_int_key(value, op, "min"):
+				return false
+			var spec := value as Dictionary
+			var held: int = context.ore.get(StringName(String(spec["ore"])), 0)
+			return held >= spec["min"] as int
+		"deepest_floor_min":
+			if not (value is int):
+				return _warn_false(op, "an integer floor")
+			return context.deepest_floor >= value as int
+		"rescued":
+			return _is_string(value, op) and context.rescued_miners.has(StringName(value as String))
+		"act_min":
+			if not (value is int):
+				return _warn_false(op, "an integer act")
+			return act() >= value as int
+		"random_chance":
+			if not ((value is float) or (value is int)):
+				return _warn_false(op, "a number in 0..1")
+			return _roll_chance(context) < float(value)
+		_:
+			push_warning("StoryManager: unknown condition operator \"%s\"; failing safe" % op)
+			return false
+
+
+## True when `value` is a non-empty string; warns and answers false otherwise,
+## so a mistyped leaf never silently compares against a default.
+func _is_string(value: Variant, op: String) -> bool:
+	if value is String and not (value as String).is_empty():
+		return true
+	push_warning("StoryManager: condition \"%s\" must be a non-empty string" % op)
+	return false
+
+
+## True when `value` is an object holding `key` as a non-empty string; warns
+## and answers false otherwise, so a half-written `{building, min}` object
+## fails safe rather than reading the missing side as 0.
+func _has_string_key(value: Variant, op: String, key: String) -> bool:
+	if value is Dictionary:
+		var held: Variant = (value as Dictionary).get(key)
+		if held is String and not (held as String).is_empty():
+			return true
+	push_warning("StoryManager: condition \"%s\" must carry a \"%s\" string" % [op, key])
+	return false
+
+
+## The integer half of the same rule.
+func _has_int_key(value: Variant, op: String, key: String) -> bool:
+	if value is Dictionary and (value as Dictionary).get(key) is int:
+		return true
+	push_warning("StoryManager: condition \"%s\" must carry an integer \"%s\"" % [op, key])
+	return false
+
+
+func _warn_false(op: String, expected: String) -> bool:
+	push_warning("StoryManager: condition \"%s\" must be %s" % [op, expected])
+	return false
+
+
+## One `random_chance` roll. The context's generator wins when the caller
+## brought one; otherwise the autoload's shared one is built once and kept.
+func _roll_chance(context: EvalContext) -> float:
+	if context.rng != null:
+		return context.rng.randf()
+	if _condition_rng == null:
+		_condition_rng = RandomNumberGenerator.new()
+	return _condition_rng.randf()
 
 
 func start_dialogue(_dialogue_id: StringName, _npc: Node = null) -> void:
