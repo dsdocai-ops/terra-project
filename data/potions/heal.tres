@@ -1,0 +1,11 @@
+[gd_resource type="Resource" script_class="PotionData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/data/potion_data.gd" id="1_potion"]
+
+[resource]
+script = ExtResource("1_potion")
+id = &"heal"
+display_name = "Healing Potion"
+kind = 0
+heal_fraction = 0.35
+price = 40

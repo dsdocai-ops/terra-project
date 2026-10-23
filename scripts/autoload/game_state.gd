@@ -204,6 +204,7 @@ func _on_player_downed(player: Player) -> void:
 		return
 	slice.is_downed = true
 	_check_run_defeat()
+	_resolve_extract_vote()
 
 
 ## Host only. One player died (SPEC-player-controller's player_died). A dead
@@ -218,6 +219,7 @@ func _on_player_died(player: Player) -> void:
 		return
 	slice.is_dead = true
 	_check_run_defeat()
+	_resolve_extract_vote()
 
 
 ## Host only. A downed teammate stood back up (W3-B4b's revive). Clears the
@@ -300,16 +302,92 @@ func _run_summary_line(result: RunResult, finished: RunState) -> String:
 	]
 
 
-## Host only. A client's rope vote (SPEC-run-economy). Week 3 ships the
-## signature and the host guard only: solo extraction is immediate (Rope), and
-## the co-op vote prompt with its rope_vote_updated broadcast lands in week 5.
+## Host only. One rope vote, arrived over the wire or sent by the host's own
+## prompt (NetworkManager.request_vote_rope is the transport; this is Owned by
+## run-economy (week 5)). A solo run extracts immediately — there is nobody
+## else to agree with. In co-op a yes is recorded and, once every living
+## player (not downed, not dead) has voted yes, the run ends with EXTRACT; a
+## `no` cancels the call and empties the tally, so the rope stays usable and
+## the next use starts fresh (BRIEF Assumptions 1–6). Downed and dead players
+## neither vote nor count towards the unanimity, so a living player's yes
+## extracts even with a downed teammate waiting on a revive. Every change is
+## broadcast through Events.rope_vote_updated so every peer sees the same vote
+## state; the vote prompt UI itself is week-5 scope and stays out of here.
 func request_extract_vote(peer_id: int, yes: bool) -> void:
 	if not NetworkManager.is_host:
 		push_warning("[run] request_extract_vote refused: votes are applied on the host")
 		return
-	# TODO(run-economy, week 5): tally the living players' votes, broadcast
-	# rope_vote_updated, and end_run(EXTRACT) once every living player voted yes.
-	print("[run] rope vote from peer %d (%s) ignored — the vote prompt lands in week 5" % [peer_id, "yes" if yes else "no"])
+	if run == null:
+		push_warning("[run] request_extract_vote refused: no run is live")
+		return
+	var slice: RunPlayerState = run.get_player(peer_id)
+	if slice == null:
+		push_warning("[run] request_extract_vote refused: peer %d is not in this run" % peer_id)
+		return
+	if not slice.is_standing():
+		# Downed and dead players are excluded from the tally — their vote must
+		# neither count nor cancel one (BRIEF Assumption 3).
+		push_warning("[run] request_extract_vote refused: peer %d is downed or dead" % peer_id)
+		return
+	if not yes:
+		var was_open: bool = run.has_open_vote()
+		run.reset_vote_state()
+		if was_open:
+			Events.rope_vote_updated.emit(run.vote_state())
+		print("[run] peer %d voted no; the rope vote is canceled and the rope stays usable" % peer_id)
+		return
+	if run.players.size() == 1:
+		# Solo extraction is immediate, without tallying (BRIEF Assumption 1).
+		end_run(RunEndReason.Reason.EXTRACT)
+		return
+	if run.has_voted_yes(peer_id):
+		# A repeat yes from a peer whose vote is already recorded is the rope
+		# being used again (Rope re-enters through the same transport), so the
+		# call starts fresh: prior votes clear and this peer's yes opens the new
+		# tally (BRIEF Assumption 6). Rope.gd only forwards uses, so this is the
+		# one signal GameState gets that a fresh vote call began.
+		run.reset_vote_state()
+	run.record_yes_vote(peer_id)
+	var votes: Dictionary[int, bool] = run.vote_state()
+	Events.rope_vote_updated.emit(votes)
+	print("[run] rope vote: %d of %d living player(s) agreed" % [_standing_yes_count(), _living_voter_count()])
+	_resolve_extract_vote()
+
+
+## Host only. Extracts once every living player has a yes recorded. Run after
+## each yes and after each down or death, so a teammate going down after the
+## rest voted cannot leave the vote stuck.
+func _resolve_extract_vote() -> void:
+	if run == null or not run.has_open_vote():
+		return
+	var living: int = _living_voter_count()
+	if living > 0 and _standing_yes_count() >= living:
+		print("[run] every living player voted yes; extracting")
+		end_run(RunEndReason.Reason.EXTRACT)
+
+
+## Host only. Recorded yes votes from players who still stand: a yes from
+## someone since downed or dead must not stand in for a living player's consent.
+func _standing_yes_count() -> int:
+	var count: int = 0
+	for peer_id: int in run.vote_state():
+		var slice: RunPlayerState = run.get_player(peer_id)
+		if slice != null and slice.is_standing():
+			count += 1
+	return count
+
+
+## Host only. How many players in the live run still stand (not downed, not
+## dead): the set whose yes votes must be unanimous before the rope extracts.
+## An all-downed party counts zero, and a vote can never extract a run with
+## zero living players — the defeat rule owns that case.
+func _living_voter_count() -> int:
+	var count: int = 0
+	for peer_id: int in run.players:
+		var slice: RunPlayerState = run.get_player(peer_id)
+		if slice != null and slice.is_standing():
+			count += 1
+	return count
 
 
 ## Host only. Ends the live run: builds the RunResult from the run's final
@@ -326,8 +404,7 @@ func end_run(reason: RunEndReason.Reason) -> void:
 		return
 	var finished: RunState = run
 	var result: RunResult = RunResult.new(reason, finished.seed, finished.floors_cleared)
-	for peer_id: int in finished.players:
-		result.set_player_tables(peer_id, RunResult.empty_table(), RunResult.empty_table())
+	RunEconomyRules.settle(result, finished, _skill_ranks_for(finished))
 	run = null
 	_unsubscribe_room_cleared()
 	_unsubscribe_player_events()
@@ -338,6 +415,21 @@ func end_run(reason: RunEndReason.Reason) -> void:
 	print(last_run_summary)
 	run_ended.emit(result)
 	Events.run_ended.emit(result)
+
+
+## Host only. The skill-tree ranks the keep rules read, peer_id -> {node_id:
+## rank}. The host knows only its own profile (`skill_tree`, node id -> ranks),
+## so remote peers settle at rank 0 until their ranks travel with the party
+## (TODO(progression-trees)).
+func _skill_ranks_for(finished: RunState) -> Dictionary[int, Dictionary]:
+	var ranks: Dictionary[int, Dictionary] = {}
+	var host_profile: PlayerProfile = (profile if profile != null else SaveManager.profile) as PlayerProfile
+	if host_profile == null:
+		return ranks
+	for peer_id: int in finished.players:
+		if peer_id == NetworkManager.local_peer_id:
+			ranks[peer_id] = host_profile.skill_tree
+	return ranks
 
 
 ## Host only. Starts counting cleared rooms for the live run. Idempotent, so a

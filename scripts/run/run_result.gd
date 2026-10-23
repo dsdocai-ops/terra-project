@@ -25,6 +25,8 @@ var floors_cleared: int = 0
 var kept: Dictionary[int, Dictionary] = {}
 ## peer_id -> lost table.
 var lost: Dictionary[int, Dictionary] = {}
+## peer_id -> the class that player ran, so banking knows whose class gets the XP.
+var classes: Dictionary[int, StringName] = {}
 
 
 func _init(
