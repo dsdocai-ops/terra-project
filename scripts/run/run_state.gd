@@ -1,8 +1,9 @@
 class_name RunState
 extends RefCounted
 ## One live run: seed, current floor and biome, party-wide pools, per-player
-## slices and the floor-advance threshold state. Owned by run-economy (week 3);
-## built by the host's GameState.start_run() and read by HUD/networking.
+## slices, the floor-advance threshold state and the open rope vote. Owned by
+## run-economy (week 5); built by the host's GameState.start_run() and read by
+## HUD/networking.
 ## Sync: host-authoritative. The host mutates the run state; shared totals are
 ## broadcast on change and each per-player slice is sent to its owning peer.
 
@@ -49,6 +50,22 @@ var exit_open: bool:
 
 var _floor_index: int = MIN_FLOOR
 
+## Votes recorded on the currently open rope extraction call: peer_id -> true
+## for a recorded yes; a peer's absence means it has not voted. Owned by
+## run-economy (week 5). Host-authoritative like the rest of the run: only the
+## host's GameState tally writes it, a `no` vote or a finished call empties it,
+## so the next rope use always starts a fresh call (SPEC-run-economy "Rope
+## points"). Downed and dead players are never recorded here — GameState
+## refuses their votes before tallying.
+var _vote_yes: Dictionary[int, bool] = {}
+
+## How many yes votes the open rope call has recorded. Derived from _vote_yes
+## rather than kept alongside it, so the count and the per-player record can
+## never disagree.
+var _vote_tally: int:
+	get:
+		return _vote_yes.size()
+
 
 func _init(p_seed: int = 0, p_start_floor: int = MIN_FLOOR) -> void:
 	seed = p_seed
@@ -82,3 +99,33 @@ func add_player(player: RunPlayerState) -> void:
 func get_player(peer_id: int) -> RunPlayerState:
 	var player: Variant = players.get(peer_id)
 	return player as RunPlayerState
+
+
+## Host only. Records `peer_id`'s yes vote on the open rope call. The host's
+## tally (GameState.request_extract_vote) checks standing and repeats first.
+func record_yes_vote(peer_id: int) -> void:
+	_vote_yes[peer_id] = true
+
+
+## True when a rope vote call is open with at least one yes recorded. A
+## canceled call and a call nobody has voted on both count as closed.
+func has_open_vote() -> bool:
+	return not _vote_yes.is_empty()
+
+
+## True when `peer_id` already voted yes on the open rope call, so a repeat
+## vote from the same peer must not count twice.
+func has_voted_yes(peer_id: int) -> bool:
+	return _vote_yes.has(peer_id)
+
+
+## The open rope call's vote state as a broadcast payload: peer_id -> true for
+## each recorded yes. A copy, so listeners can hold it while the tally moves.
+func vote_state() -> Dictionary[int, bool]:
+	return _vote_yes.duplicate()
+
+
+## Empties the vote record: a `no` canceled the call, or the rope is being used
+## again and the next call must start fresh (BRIEF Assumption 6).
+func reset_vote_state() -> void:
+	_vote_yes.clear()
