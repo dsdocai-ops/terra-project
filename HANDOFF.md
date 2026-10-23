@@ -7535,6 +7535,57 @@ already recorded in a spec or a comment, the location is given.
     resolves to the engine's global `load(path)`, so the startup call is written
     `self.load()` with a comment saying why.
 
+### Week 5 decisions (2026-10-22)
+
+112. **Rope vote and the death/extract table (W5-B2).** `GameState.request_extract_vote`
+    tallies yes votes in `RunState._vote_yes`; solo extracts at once, a `no` clears
+    the tally, a repeat yes from a peer already recorded starts a fresh call, and
+    downed or dead peers are refused (their vote neither counts nor cancels).
+    `RunEconomyRules.settle()` is the table as pure functions (Deep Pockets 10%/rank
+    on top of 25%, Ore Heart 50%, Safe Line one seeded relic on extract only).
+    **Per-player ranks, not party-wide:** shared pools are split first and each
+    player's own ranks apply to their share, which equals the spec's "rule once, then
+    split" when ranks match. Only the host's profile is known, so remote peers settle
+    at rank 0 (TODO progression-trees). `RunResult.classes` was added so banking knows
+    whose class takes the XP. BRIEF's "relics kept on death" contradicts the spec table;
+    the spec wins (relics lost on both).
+
+113. **Potions, shops and Map Room (W5-B3).** New `PotionData` (`scripts/data/`, four
+    `data/potions/*.tres`) is a Resource definition: flagged for review. `PotionController`
+    works through the player's nodes by name (Health.heal if present, else the StatBlock
+    ratio) because Dev A's Health has not landed; the shield is a hit counter the damage
+    path must call (`absorb_hit()`, blocked on Dev A). `ShopStock` prices live as
+    constants (the spec's open question): relic 60/110/180/300 by rarity, cursed 90, rune
+    100, ore 45 for 3. `merchants_badge` and `greed_chain` are guessed ids. `MapRoom`
+    maps a boss-arena rope to the next biome's floor 1. `RunState` gained `start_floor`,
+    `ascension_pick_at_start`, `starts_tier_two`. The SHOP populator is registered in
+    `main.gd` behind the same guarded no-op as the chest (blocked on Dev A W3-A3).
+
+114. **Town and run setup (W5-B4, W5-B5).** New `BuildingData` and `BuildingLevel`
+    definitions (flagged for review) and 11 generated `data/town/*.tres` with placeholder
+    ore costs of 10/25/50 per level, ores in the spec table's order. Touching an unbuilt
+    building asks first (`Town.build_prompt_requested`). `RunSetup` validates unlocks only
+    against a profile it is handed; a remote peer's selection is checked for shape alone
+    until profiles travel with the party. Blacksmith prices are constants in `Blacksmith`
+    until WeaponData carries one. The pit logic radius (`PIT_RADIUS_BY_STAGE`) is coarser
+    than the 256x128 art and the tile layer is hidden under the art.
+
+115. **Week 5 screens (W5-B6).** One shared `ScreenPanel` (title, sections, columns, carved
+    menu) drives inventory, death, Blacksmith, build prompt and run setup; `ScreenModels`
+    holds every row as a tested pure function. Pause is built from the session (Quit to
+    Town only in a run, asks twice; Leave Co-op only with peers). The vote prompt now waits
+    for the living and hides for whoever already answered; it has no timer (the spec names
+    one without a length). Return to Town banks the local kept row (`gains_for`) and saves;
+    entering the town scene waits on the walkable player (W5-A1). Layout was checked from
+    real captures and fixed in d31231d.
+
+116. **Town art (W5-B7).** `gen_town.py` and `gen_portraits.py` are registered in
+    `build_all.py` (--check clean). The review sheets under `docs/asset-review/week-5/`
+    are `pending` Dev B approval. No new UI theme assets were drawn: the menu, pause,
+    inventory and death screens use the existing theme and procedural slabs. W5-B8 (music)
+    was skipped on instruction. `py` (Python 3.14 with Pillow, numpy, pytest) exists on this
+    machine; the `python` alias does not.
+
 ---
 
 ## Running the game
