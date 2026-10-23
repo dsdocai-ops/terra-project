@@ -65,6 +65,7 @@ func _ready() -> void:
 	Rope.register_populator()
 	Shrine.register_populator()
 	Chest.register_populator()
+	Shopkeeper.register_populator()
 	_start_from_options()
 	if options.smoke_seconds > 0.0:
 		_start_smoke(options.smoke_seconds)

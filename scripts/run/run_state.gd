@@ -50,6 +50,18 @@ var exit_open: bool:
 
 var _floor_index: int = MIN_FLOOR
 
+## The floor this run began on (the Map Room shortcut, or 1). Never moves after
+## the run starts; classes-characters reads it for the Tier 2 start.
+var start_floor: int = MIN_FLOOR
+## True when the Ascension is picked at run start (start past biome 1).
+var ascension_pick_at_start: bool:
+	get:
+		return MapRoom.ascension_picked_at_start(start_floor)
+## True when the run starts at Tier 2 (start past biome 4).
+var starts_tier_two: bool:
+	get:
+		return MapRoom.starts_tier_two(start_floor)
+
 ## Votes recorded on the currently open rope extraction call: peer_id -> true
 ## for a recorded yes; a peer's absence means it has not voted. Owned by
 ## run-economy (week 5). Host-authoritative like the rest of the run: only the
@@ -70,6 +82,7 @@ var _vote_tally: int:
 func _init(p_seed: int = 0, p_start_floor: int = MIN_FLOOR) -> void:
 	seed = p_seed
 	floor_index = p_start_floor
+	start_floor = _floor_index
 	time_started = Time.get_ticks_msec()
 
 
