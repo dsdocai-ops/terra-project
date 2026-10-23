@@ -153,7 +153,19 @@ func test_haste_ends_when_its_source_is_removed() -> void:
 	var before: float = _block().get_value(StatBlock.Stat.MOVE_SPEED)
 	_slice().potions = [&"haste"]
 	_controller.use()
-	_controller._end_haste(_block())
+	_controller._end_haste(_block(), _controller._haste_serial)
+	assert_almost_eq(_block().get_value(StatBlock.Stat.MOVE_SPEED), before, 0.001)
+
+
+func test_a_stale_haste_timer_does_not_end_a_renewed_haste() -> void:
+	var before: float = _block().get_value(StatBlock.Stat.MOVE_SPEED)
+	_slice().potions = [&"haste", &"haste"]
+	_controller.use()
+	var first_serial: int = _controller._haste_serial
+	_controller.use()
+	_controller._end_haste(_block(), first_serial)
+	assert_almost_eq(_block().get_value(StatBlock.Stat.MOVE_SPEED), before * 1.3, 0.001, "first timer is stale")
+	_controller._end_haste(_block(), _controller._haste_serial)
 	assert_almost_eq(_block().get_value(StatBlock.Stat.MOVE_SPEED), before, 0.001)
 
 

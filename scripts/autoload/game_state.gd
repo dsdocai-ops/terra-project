@@ -204,6 +204,7 @@ func _on_player_downed(player: Player) -> void:
 		return
 	slice.is_downed = true
 	_check_run_defeat()
+	_resolve_extract_vote()
 
 
 ## Host only. One player died (SPEC-player-controller's player_died). A dead
@@ -218,6 +219,7 @@ func _on_player_died(player: Player) -> void:
 		return
 	slice.is_dead = true
 	_check_run_defeat()
+	_resolve_extract_vote()
 
 
 ## Host only. A downed teammate stood back up (W3-B4b's revive). Clears the
@@ -347,12 +349,32 @@ func request_extract_vote(peer_id: int, yes: bool) -> void:
 		run.reset_vote_state()
 	run.record_yes_vote(peer_id)
 	var votes: Dictionary[int, bool] = run.vote_state()
-	var living: int = _living_voter_count()
 	Events.rope_vote_updated.emit(votes)
-	print("[run] rope vote: %d of %d living player(s) agreed" % [votes.size(), living])
-	if votes.size() >= living:
+	print("[run] rope vote: %d of %d living player(s) agreed" % [_standing_yes_count(), _living_voter_count()])
+	_resolve_extract_vote()
+
+
+## Host only. Extracts once every living player has a yes recorded. Run after
+## each yes and after each down or death, so a teammate going down after the
+## rest voted cannot leave the vote stuck.
+func _resolve_extract_vote() -> void:
+	if run == null or not run.has_open_vote():
+		return
+	var living: int = _living_voter_count()
+	if living > 0 and _standing_yes_count() >= living:
 		print("[run] every living player voted yes; extracting")
 		end_run(RunEndReason.Reason.EXTRACT)
+
+
+## Host only. Recorded yes votes from players who still stand: a yes from
+## someone since downed or dead must not stand in for a living player's consent.
+func _standing_yes_count() -> int:
+	var count: int = 0
+	for peer_id: int in run.vote_state():
+		var slice: RunPlayerState = run.get_player(peer_id)
+		if slice != null and slice.is_standing():
+			count += 1
+	return count
 
 
 ## Host only. How many players in the live run still stand (not downed, not

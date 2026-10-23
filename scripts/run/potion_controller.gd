@@ -35,6 +35,8 @@ var mastery_rank: int = 0
 ## Hits the shield potion will still absorb.
 var shield_hits: int = 0
 
+var _haste_serial: int = 0
+
 
 # --- pure rules -------------------------------------------------------------
 
@@ -161,12 +163,14 @@ func _haste(data: PotionData) -> void:
 		return
 	block.remove_source(HASTE_SOURCE)
 	block.add_modifier(StatBlock.Stat.MOVE_SPEED, 0.0, data.speed_bonus, HASTE_SOURCE)
+	_haste_serial += 1
 	if is_inside_tree():
-		get_tree().create_timer(data.duration).timeout.connect(_end_haste.bind(block))
+		get_tree().create_timer(data.duration).timeout.connect(_end_haste.bind(block, _haste_serial))
 
 
-func _end_haste(block: StatBlock) -> void:
-	if is_instance_valid(block):
+## Ends the haste only when no later potion has renewed it since this timer began.
+func _end_haste(block: StatBlock, serial: int) -> void:
+	if serial == _haste_serial and is_instance_valid(block):
 		block.remove_source(HASTE_SOURCE)
 
 

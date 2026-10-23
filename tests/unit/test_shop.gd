@@ -283,3 +283,9 @@ func test_the_populator_registration_is_a_guarded_noop_without_the_generator() -
 		return
 	assert_false(Shopkeeper.register_populator())
 	assert_eq(Shopkeeper.blocker_warnings(), 1)
+
+
+func test_a_shop_never_sells_the_shield_potion_yet() -> void:
+	for seed_value: int in range(1, 60):
+		for item: ShopStock.Item in ShopStock.build(_rng(seed_value), _pool(), [], 1):
+			assert_ne(item.id, &"shield", "shield waits on absorb_hit being called")

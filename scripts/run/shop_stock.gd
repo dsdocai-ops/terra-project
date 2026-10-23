@@ -28,6 +28,10 @@ const RELIC_PRICES: Dictionary[int, int] = {
 	RelicData.Rarity.LEGENDARY: 300,
 	RelicData.Rarity.CURSED: 90,
 }
+## Potions a shop may sell. Shield is left out until the damage path calls
+## PotionController.absorb_hit() (blocked on Dev A); selling it now would take
+## gold for a potion that does nothing.
+const SHOP_POTIONS: Array[StringName] = [&"heal", &"cleanse", &"haste"]
 const RUNE_PRICE: int = 100
 const ORE_PRICE: int = 45
 const ORE_AMOUNT: int = 3
@@ -143,7 +147,7 @@ static func _relic_of_rarity(
 
 static func _potion_item(rng: RandomNumberGenerator) -> Item:
 	var kinds: Array[PotionData] = []
-	for id: StringName in [&"heal", &"cleanse", &"haste", &"shield"]:
+	for id: StringName in SHOP_POTIONS:
 		var data: PotionData = PotionController.data_for(id)
 		if data != null:
 			kinds.append(data)

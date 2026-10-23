@@ -203,3 +203,27 @@ func test_every_change_is_broadcast() -> void:
 	GameState.request_extract_vote(2, false)
 	assert_eq(_vote_broadcasts.size(), 2, "the cancel is broadcast")
 	assert_true(_vote_broadcasts[1].is_empty(), "with an empty tally")
+
+
+func test_a_downed_voters_yes_does_not_count_for_the_living() -> void:
+	_start_run([1, 2, 3])
+	GameState.request_extract_vote(2, true)
+	_slice(2).is_downed = true
+	GameState.request_extract_vote(1, true)
+	assert_eq(_ended_results.size(), 0, "peer 3 has not agreed")
+	GameState.request_extract_vote(3, true)
+	assert_eq(_ended_results.size(), 1)
+	assert_eq(_ended_results[0].reason, RunEndReason.Reason.EXTRACT)
+
+
+func test_the_vote_resolves_when_the_last_holdout_goes_down() -> void:
+	_start_run([1, 2, 3])
+	GameState.request_extract_vote(1, true)
+	GameState.request_extract_vote(2, true)
+	assert_eq(_ended_results.size(), 0)
+	var holdout: Player = Player.new()
+	holdout.peer_id = 3
+	GameState._on_player_downed(holdout)
+	holdout.free()
+	assert_eq(_ended_results.size(), 1, "both living players had already agreed")
+	assert_eq(_ended_results[0].reason, RunEndReason.Reason.EXTRACT)

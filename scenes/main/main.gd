@@ -328,9 +328,11 @@ func _on_quit() -> void:
 	get_tree().quit()
 
 
-## Remembers the last finished run so Return to Town can bank it.
+## Banks this machine's kept row the moment the run ends, so quitting, leaving
+## co-op or closing the game from the death screen cannot lose it.
 func _on_run_ended(result: RefCounted) -> void:
 	_last_result = result as RunResult
+	bank_last_run()
 
 
 ## Banks what this machine kept (SPEC-run-economy "Banking") and saves, then goes
