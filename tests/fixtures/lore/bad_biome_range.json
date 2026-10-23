@@ -1,0 +1,1 @@
+{ "id": "lore.test_bad_biome_range", "title": "Bad Biome Range", "body": "There is no biome 7.", "biome": 7, "act": 1, "order": 1 }

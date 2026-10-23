@@ -1,0 +1,8 @@
+{
+	"id": "lore.test_alpha",
+	"title": "First Watch",
+	"body": "The alpha page: lowest order in biome 2, so the populator reads it first.",
+	"biome": 2,
+	"act": 1,
+	"order": 1
+}

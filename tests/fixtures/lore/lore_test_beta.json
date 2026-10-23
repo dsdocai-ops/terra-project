@@ -1,0 +1,8 @@
+{
+	"id": "lore.test_beta",
+	"title": "Second Watch",
+	"body": "The beta page: higher order in biome 2, so alpha wins until alpha is read.",
+	"biome": 2,
+	"act": 1,
+	"order": 2
+}
