@@ -9,9 +9,10 @@ it is given, at their repo-relative paths (assets/...). --check runs them into
 a temp folder and compares: PNGs by decoded RGBA pixels (so a different zlib
 or Pillow version does not fail the check), everything else by bytes.
 
-Registered generators (2026-10-21): the UI font, UI icons, relic icons and
-pickups, Collapsed Mines props, the miner sheet, the 27 base enemy sheets and
-the six pit-biome tile atlases. Tile generators are checked against their own
+Registered generators (2026-10-22): the UI font, UI icons, relic icons and
+pickups, Collapsed Mines props, the miner sheet, the 27 base enemy sheets, the
+six pit-biome tile atlases, the town ground and pit edge (town palette), the
+town buildings and props, and the portraits. Tile generators are checked against their own
 biome palette; everything else against palette.ALL.
 """
 
@@ -35,8 +36,10 @@ import gen_character  # noqa: E402
 import gen_enemies  # noqa: E402
 import gen_font  # noqa: E402
 import gen_icons  # noqa: E402
+import gen_portraits  # noqa: E402
 import gen_props  # noqa: E402
 import gen_tiles  # noqa: E402
+import gen_town  # noqa: E402
 import gen_ui  # noqa: E402
 import palette  # noqa: E402
 
@@ -73,6 +76,9 @@ GENERATORS: tuple[Generator, ...] = (
     Generator("character:miner", palette.all_rgb(), gen_character.build),
     Generator("enemies", palette.all_rgb(), gen_enemies.build),
     *(_tile_generator(b) for b in gen_tiles.BIOMES),
+    Generator("town_tiles", palette.biome("town").rgb(), gen_town.build_tiles),
+    Generator("town_buildings", palette.all_rgb(), gen_town.build_buildings),
+    Generator("portraits", palette.all_rgb(), gen_portraits.build),
 )
 
 

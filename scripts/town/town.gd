@@ -28,7 +28,9 @@ signal building_refused(building_id: StringName, reason: StringName)
 const GROUND_HALF_SIZE: int = 12
 ## Pit radius in tiles for each story stage; the pit shrinks back as the story
 ## advances (SPEC-town "Pit edge and visuals"). Stage 0 is the largest.
-const PIT_RADIUS_BY_STAGE: Array[int] = [4, 3, 2, 1]
+const PIT_RADIUS_BY_STAGE: Array[int] = [1, 1, 0, 0]
+## The pit edge drawings, one per story stage (tools/art/gen_town.py).
+const PIT_ART_PATH: String = "res://assets/tilesets/town/pit_edge_%d.png"
 
 var profile: PlayerProfile = null
 var pit_stage: int = 0
@@ -37,6 +39,7 @@ var menus: TownMenus = null
 
 @onready var floor_layer: TileMapLayer = $Floor
 @onready var pit_layer: TileMapLayer = $PitEdge
+@onready var pit_art: Sprite2D = $PitArt
 
 
 func _ready() -> void:
@@ -78,6 +81,9 @@ func load_profile(new_profile: PlayerProfile) -> void:
 func set_pit_stage(stage: int) -> void:
 	pit_stage = clampi(stage, 0, PIT_RADIUS_BY_STAGE.size() - 1)
 	pit_layer.clear()
+	pit_layer.visible = false
+	if ResourceLoader.exists(PIT_ART_PATH % pit_stage):
+		pit_art.texture = load(PIT_ART_PATH % pit_stage) as Texture2D
 	var radius: int = PIT_RADIUS_BY_STAGE[pit_stage]
 	for x: int in range(-radius, radius + 1):
 		for y: int in range(-radius, radius + 1):

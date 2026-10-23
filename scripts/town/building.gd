@@ -18,6 +18,12 @@ signal interaction_forwarded(peer_id: int, building_id: StringName)
 
 const HOLD_SECONDS: float = 0.0
 const INTERACTABLE_LAYER: int = 32
+## One drawing per level (tools/art/gen_town.py): sign, ruined, rebuilt, upgraded.
+const STATE_NAMES: Array[String] = ["sign", "ruined", "rebuilt", "upgraded"]
+const ART_PATH: String = "res://assets/sprites/town/%s_%s.png"
+## Where the label floats above the art: low over a sign, above the roof otherwise.
+const LABEL_TOP_SIGN: float = -70.0
+const LABEL_TOP_BUILT: float = -140.0
 
 @export var building_id: StringName = &""
 
@@ -26,6 +32,7 @@ var hold_seconds: float = HOLD_SECONDS
 var level: int = 0
 
 @onready var _sign: Label = get_node_or_null(^"Sign") as Label
+@onready var _art: Sprite2D = get_node_or_null(^"Art") as Sprite2D
 
 
 func _ready() -> void:
@@ -47,7 +54,20 @@ func is_functional() -> bool:
 	return building != null and building.functional_in_v1
 
 
+## The art path for a level, or "" when the file is missing.
+func art_path_for(shown_level: int) -> String:
+	var path: String = ART_PATH % [building_id, STATE_NAMES[clampi(shown_level, 0, STATE_NAMES.size() - 1)]]
+	return path if ResourceLoader.exists(path) else ""
+
+
 func refresh_view() -> void:
+	if _art != null:
+		var path: String = art_path_for(level)
+		_art.texture = load(path) as Texture2D if path != "" else null
+	if _sign != null:
+		_sign.offset_top = LABEL_TOP_SIGN if level == 0 else LABEL_TOP_BUILT
+		_sign.offset_bottom = _sign.offset_top + 34.0
+		_sign.visible = level == 0
 	var building: BuildingData = data()
 	var title: String = String(building_id) if building == null else building.display_name
 	if level == 0:
