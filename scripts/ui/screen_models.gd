@@ -181,28 +181,34 @@ static func format_stat(value: float) -> String:
 # --- town ---------------------------------------------------------------------
 
 
-## One row per weapon the Blacksmith sells, in stock order: its price, and
-## whether this player owns it or can afford it. `ids` is filled in the same
-## order, so a menu choice maps back to a weapon.
-static func blacksmith_sections(profile: PlayerProfile, ids: Array[StringName]) -> Array[ScreenPanel.Section]:
-	var section: ScreenPanel.Section = ScreenPanel.Section.new("Gold %d" % profile.gold_banked)
-	ids.clear()
+## The Blacksmith's weapons, cheapest first (ties by name). A menu choice maps
+## back to a weapon through this order.
+static func blacksmith_order() -> Array[StringName]:
 	var stock: Array[StringName] = Blacksmith.stock()
-	stock.sort_custom(func(a: StringName, b: StringName) -> bool: return int(Blacksmith.PRICES[a]) < int(Blacksmith.PRICES[b]) or (Blacksmith.PRICES[a] == Blacksmith.PRICES[b] and String(a) < String(b)))
-	for weapon_id: StringName in stock:
-		ids.append(weapon_id)
-		var owned: bool = profile.weapons_unlocked.has(String(weapon_id))
-		var price: int = int(Blacksmith.PRICES[weapon_id])
-		var note: String = "owned" if owned else ("%d" % price if profile.gold_banked >= price else "%d - too dear" % price)
-		var tint: Color = UiPalette.DOWNED_GREY if owned else (UiPalette.GOLD if profile.gold_banked >= price else UiPalette.HP_RED)
-		section.add(PackedStringArray([pretty(weapon_id), note]), PackedColorArray([UiPalette.DOWNED_GREY if owned else UiPalette.PARCHMENT, tint]))
-	return [section]
+	stock.sort_custom(func(a: StringName, b: StringName) -> bool:
+		if Blacksmith.PRICES[a] != Blacksmith.PRICES[b]:
+			return int(Blacksmith.PRICES[a]) < int(Blacksmith.PRICES[b])
+		return String(a) < String(b))
+	return stock
 
 
+static func blacksmith_subtitle(profile: PlayerProfile) -> String:
+	return "Gold %d" % profile.gold_banked
+
+
+## One carved line per weapon with its price: "Sledgehammer  150", or in
+## brackets when it cannot be bought now (owned, or too dear), then Close.
 static func blacksmith_buttons(ids: Array[StringName], profile: PlayerProfile) -> Array[String]:
 	var labels: Array[String] = []
 	for weapon_id: StringName in ids:
-		labels.append("Buy %s" % pretty(weapon_id) if Blacksmith.refusal_for(profile, weapon_id) == Blacksmith.REFUSAL_NONE else "(%s)" % pretty(weapon_id))
+		var name: String = pretty(weapon_id)
+		var price: int = int(Blacksmith.PRICES[weapon_id])
+		if profile.weapons_unlocked.has(String(weapon_id)):
+			labels.append("(%s  owned)" % name)
+		elif Blacksmith.refusal_for(profile, weapon_id) == Blacksmith.REFUSAL_NONE:
+			labels.append("%s  %d" % [name, price])
+		else:
+			labels.append("(%s  %d)" % [name, price])
 	labels.append("Close")
 	return labels
 

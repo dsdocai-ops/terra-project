@@ -5,7 +5,7 @@ extends Control
 ## player's RunPlayerState and StatBlock and never writes either.
 ## The synergy progress, floor map and ability ranks join as their owners land.
 
-const PANEL_WIDTH: float = 340.0
+const PANEL_WIDTH: float = 660.0
 
 var panel: ScreenPanel = null
 
@@ -22,6 +22,7 @@ func _init() -> void:
 	panel = ScreenPanel.new()
 	panel.name = "Panel"
 	panel.title = "Your dive"
+	panel.columns = 3
 	panel.chosen.connect(_on_chosen)
 	add_child(panel)
 

@@ -103,8 +103,9 @@ func _refresh() -> void:
 	match screen:
 		Screen.BLACKSMITH:
 			panel.title = "Blacksmith"
-			panel.subtitle = _message
-			panel.sections = ScreenModels.blacksmith_sections(town.profile, _weapon_ids)
+			_weapon_ids = ScreenModels.blacksmith_order()
+			panel.subtitle = ScreenModels.blacksmith_subtitle(town.profile) if _message == "" else "%s   -   %s" % [ScreenModels.blacksmith_subtitle(town.profile), _message]
+			panel.sections = []
 			panel.buttons = ScreenModels.blacksmith_buttons(_weapon_ids, town.profile)
 		Screen.BUILD:
 			panel.title = ScreenModels.build_title(_build_id)

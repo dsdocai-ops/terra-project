@@ -9,10 +9,12 @@ y_sort_enabled = true
 script = ExtResource("1_town")
 
 [node name="Floor" type="TileMapLayer" parent="."]
+z_index = -10
 tile_set = ExtResource("2_tiles")
 collision_enabled = false
 
 [node name="PitEdge" type="TileMapLayer" parent="."]
+z_index = -9
 tile_set = ExtResource("2_tiles")
 collision_enabled = false
 
@@ -65,3 +67,7 @@ building_id = &"wardrobe"
 
 [node name="Entities" type="Node2D" parent="."]
 y_sort_enabled = true
+
+[node name="Camera" type="Camera2D" parent="."]
+process_callback = 0
+zoom = Vector2(0.6, 0.6)

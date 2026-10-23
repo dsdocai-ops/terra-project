@@ -32,7 +32,7 @@ class Section extends RefCounted:
 
 	## Convenience for the common two-cell row.
 	func pair(label: String, value: String, tint: Color = UiPalette.PARCHMENT) -> Section:
-		return add(PackedStringArray([label, value]), PackedColorArray([UiPalette.ROPE, tint]))
+		return add(PackedStringArray([label, value]), PackedColorArray([UiPalette.PARCHMENT, tint]))
 
 
 var title: String = "":
@@ -52,6 +52,12 @@ var buttons: Array[String] = []:
 		buttons = value
 		_relayout()
 
+## Sections laid side by side: section i sits in column i % columns.
+var columns: int = 1:
+	set(value):
+		columns = maxi(value, 1)
+		_relayout()
+
 var menu: CarvedMenu = null
 
 
@@ -65,10 +71,16 @@ func _init() -> void:
 
 ## Height the sections need, so a screen can size its slab to its content.
 func content_height() -> float:
-	var total: float = TITLE_HEIGHT + (14.0 if subtitle != "" else 0.0)
-	for section: Section in sections:
-		total += (HEADING_HEIGHT if section.heading != "" else 0.0) + ROW_HEIGHT * float(section.rows.size()) + 6.0
-	return total
+	var heights: Array[float] = []
+	for column: int in columns:
+		heights.append(0.0)
+	for index: int in sections.size():
+		heights[index % columns] += _section_height(sections[index])
+	return TITLE_HEIGHT + (14.0 if subtitle != "" else 0.0) + (heights.max() if not heights.is_empty() else 0.0)
+
+
+func _section_height(section: Section) -> float:
+	return (HEADING_HEIGHT if section.heading != "" else 0.0) + ROW_HEIGHT * float(section.rows.size()) + 6.0
 
 
 func grab_menu_focus() -> void:
@@ -102,28 +114,38 @@ func _draw() -> void:
 	UiPalette.outline_polygon(self, slab, UiPalette.BRONZE, 2)
 	var font: Font = get_theme_default_font()
 	draw_string(font, Vector2(PADDING, 26), title, HORIZONTAL_ALIGNMENT_LEFT, w - PADDING * 2.0, 16, UiPalette.GOLD)
-	var y: float = TITLE_HEIGHT
+	var top: float = TITLE_HEIGHT
 	if subtitle != "":
-		draw_string(font, Vector2(PADDING, y + 4), subtitle, HORIZONTAL_ALIGNMENT_LEFT, w - PADDING * 2.0, FONT_SIZE, UiPalette.ROPE)
-		y += 14.0
-	for section: Section in sections:
+		draw_string(font, Vector2(PADDING, top + 4), subtitle, HORIZONTAL_ALIGNMENT_LEFT, w - PADDING * 2.0, FONT_SIZE, UiPalette.ROPE)
+		top += 14.0
+	var column_width: float = (w - PADDING * 2.0) / float(columns)
+	var cursors: Array[float] = []
+	for column: int in columns:
+		cursors.append(top)
+	for index: int in sections.size():
+		var column: int = index % columns
+		var x0: float = PADDING + column_width * float(column)
+		var section: Section = sections[index]
+		var y: float = cursors[column]
 		if section.heading != "":
-			draw_string(font, Vector2(PADDING, y + 12), section.heading, HORIZONTAL_ALIGNMENT_LEFT, -1, 8, UiPalette.GOLD)
+			draw_string(font, Vector2(x0, y + 12), section.heading, HORIZONTAL_ALIGNMENT_LEFT, -1, 8, UiPalette.GOLD)
 			y += HEADING_HEIGHT
 		for row_index: int in section.rows.size():
-			_draw_row(font, section, row_index, y + 10.0, w)
+			_draw_row(font, section, row_index, y + 10.0, x0, column_width - (PADDING if columns > 1 else 0.0))
 			y += ROW_HEIGHT
-		y += 6.0
+		cursors[column] = y + 6.0
 
 
-func _draw_row(font: Font, section: Section, row_index: int, baseline: float, width: float) -> void:
+func _draw_row(font: Font, section: Section, row_index: int, baseline: float, x0: float, width: float) -> void:
 	var cells: PackedStringArray = section.rows[row_index]
 	var tints: PackedColorArray = section.colors[row_index]
+	# A two-cell row gives its value the rest of the line; a table uses fixed columns.
+	var value_width: float = width * 0.55 if cells.size() == 2 else COLUMN_WIDTH
 	for cell_index: int in cells.size():
 		var tint: Color = tints[cell_index] if cell_index < tints.size() else UiPalette.PARCHMENT
 		if cell_index == 0:
-			draw_string(font, Vector2(PADDING, baseline), cells[0], HORIZONTAL_ALIGNMENT_LEFT, width * 0.5, FONT_SIZE, tint)
+			draw_string(font, Vector2(x0, baseline), cells[0], HORIZONTAL_ALIGNMENT_LEFT, -1, FONT_SIZE, tint)
 		else:
 			var from_right: int = cells.size() - cell_index
-			var right_edge: float = width - PADDING - COLUMN_WIDTH * float(from_right - 1)
-			draw_string(font, Vector2(right_edge - COLUMN_WIDTH, baseline), cells[cell_index], HORIZONTAL_ALIGNMENT_RIGHT, COLUMN_WIDTH, FONT_SIZE, tint)
+			var right_edge: float = x0 + width - value_width * float(from_right - 1)
+			draw_string(font, Vector2(right_edge - value_width, baseline), cells[cell_index], HORIZONTAL_ALIGNMENT_RIGHT, value_width, FONT_SIZE, tint)

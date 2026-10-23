@@ -228,13 +228,16 @@ func test_the_blacksmith_menu_lists_stock_by_price() -> void:
 	var profile: PlayerProfile = PlayerProfile.defaults()
 	profile.town["blacksmith"] = 1
 	profile.gold_banked = 160
-	var ids: Array[StringName] = []
-	var section: ScreenPanel.Section = ScreenModels.blacksmith_sections(profile, ids)[0]
-	assert_eq(section.heading, "Gold 160")
+	var ids: Array[StringName] = ScreenModels.blacksmith_order()
+	assert_eq(ScreenModels.blacksmith_subtitle(profile), "Gold 160")
 	assert_eq(ids.size(), Blacksmith.stock().size())
 	assert_eq(int(Blacksmith.PRICES[ids[0]]), 150, "cheapest first")
-	assert_eq(_cells(section, ids.find(&"greataxe"))[1], "250 - too dear")
-	assert_eq(_cells(section, ids.find(&"shortbow"))[1], "150")
+	var labels: Array[String] = ScreenModels.blacksmith_buttons(ids, profile)
+	assert_eq(labels[ids.find(&"greataxe")], "(Greataxe  250)", "too dear is bracketed")
+	assert_eq(labels[ids.find(&"shortbow")], "Shortbow  150")
+	assert_eq(labels[labels.size() - 1], "Close")
+	profile.weapons_unlocked.append("shortbow")
+	assert_eq(ScreenModels.blacksmith_buttons(ids, profile)[ids.find(&"shortbow")], "(Shortbow  owned)")
 
 
 func test_buying_a_weapon_through_the_menu_spends_gold() -> void:
@@ -248,7 +251,7 @@ func test_buying_a_weapon_through_the_menu_spends_gold() -> void:
 	_town.menus.panel.chosen.emit(index)
 	assert_eq(profile.gold_banked, 250)
 	assert_true(profile.weapons_unlocked.has("sledgehammer"))
-	assert_eq(_town.menus.panel.subtitle, "Bought Sledgehammer")
+	assert_true(_town.menus.panel.subtitle.ends_with("Bought Sledgehammer"))
 
 
 func test_a_poor_blacksmith_visit_says_so() -> void:
@@ -257,7 +260,7 @@ func test_a_poor_blacksmith_visit_says_so() -> void:
 	_town = _make_town(profile)
 	_town.menus.open_blacksmith()
 	_town.menus.panel.chosen.emit(0)
-	assert_eq(_town.menus.panel.subtitle, "Not enough gold")
+	assert_true(_town.menus.panel.subtitle.ends_with("Not enough gold"))
 
 
 func test_the_build_prompt_shows_cost_and_shortfall() -> void:
