@@ -104,8 +104,28 @@ def gold_nugget() -> Canvas:
     return c
 
 
+def lore_page() -> Canvas:
+    c = Canvas(24, 20)
+    # A parchment sheet lying flat: the top face is an isometric parallelogram,
+    # with the two visible thickness faces below it (chest.gd's box shading).
+    c.polygon([(3, 12), (12, 7), (21, 12), (12, 17)], M["bone"][0])
+    c.polygon([(3, 12), (12, 17), (12, 18), (3, 13)], M["bone"][1])
+    c.polygon([(21, 12), (12, 17), (12, 18), (21, 13)], M["bone"][2])
+    # Ink: three ruled lines across the top face, a darker signature line.
+    c.line(6, 11, 12, 8, M["bone"][3])
+    c.line(8, 13, 14, 10, M["bone"][3])
+    c.line(10, 15, 16, 12, M["bone"][3])
+    # A torn corner and the echo glint the page gives off on the floor.
+    c.put(19, 10, M["bone"][3])
+    c.put(12, 12, M["echo"][1])
+    c.put(11, 13, M["echo"][0])
+    c.outline()
+    return c
+
+
 PROPS = {
     "chest": chest,
+    "lore_page": lore_page,
     "shrine": shrine,
     "rope": rope_post,
     "breakable": barrel,
