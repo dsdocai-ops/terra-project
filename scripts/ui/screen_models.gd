@@ -34,10 +34,11 @@ static func pretty(id: StringName) -> String:
 
 ## The pause list. "Leave Co-op" only exists in a co-op session; "Quit to Town"
 ## only in a run, and asks to be pressed twice because it counts as a death.
-static func pause_items(in_run: bool, co_op: bool, confirming_quit: bool) -> Array[String]:
+static func pause_items(in_run: bool, co_op: bool, confirming_quit: bool, ends_party_run: bool = false) -> Array[String]:
 	var items: Array[String] = ["Resume", "Settings", "Codex"]
 	if in_run:
-		items.append("Press again: counts as a death" if confirming_quit else "Quit to Town")
+		var warning: String = "Press again: ends the run for everyone" if ends_party_run else "Press again: counts as a death"
+		items.append(warning if confirming_quit else "Quit to Town")
 	if co_op:
 		items.append("Leave Co-op")
 	return items

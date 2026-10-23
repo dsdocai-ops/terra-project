@@ -148,6 +148,11 @@ func _choose_blacksmith(index: int) -> void:
 	if index >= _weapon_ids.size():
 		close()
 		return
+	if not NetworkManager.is_host:
+		# Purchases are the host's until the request RPC exists.
+		_message = "Only the host can buy for now"
+		_refresh()
+		return
 	var reason: StringName = Blacksmith.buy_weapon(town.profile, _weapon_ids[index])
 	_message = "Bought %s" % ScreenModels.pretty(_weapon_ids[index]) if reason == Blacksmith.REFUSAL_NONE else reason_text(reason)
 	_refresh()

@@ -198,3 +198,11 @@ func test_removing_a_peer_drops_their_selection() -> void:
 	_setup.submit(_selection(2))
 	_setup.remove(2)
 	assert_false(_setup.selections.has(2))
+
+
+func test_starting_the_dive_clears_ready_for_the_next_visit() -> void:
+	_setup.submit(SelectionState.new(1), _profile)
+	_setup.set_ready(1, true)
+	var peers: Array[int] = [1]
+	assert_eq(_setup.start(peers), RunSetup.REFUSAL_NONE)
+	assert_false(_setup.selections[1].ready, "the next Tavern visit starts unready")

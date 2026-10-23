@@ -395,3 +395,9 @@ func test_gains_for_an_unknown_peer_are_empty() -> void:
 	var gains: Dictionary = RunEconomyRules.gains_for(_result(), 99)
 	assert_eq(gains["gold_banked"], 0)
 	assert_eq(gains["class_id"], "")
+
+
+func test_a_hosts_quit_warns_that_it_ends_the_run_for_everyone() -> void:
+	var items: Array[String] = ScreenModels.pause_items(true, true, true, true)
+	assert_true(items[3].contains("everyone"))
+	assert_eq(ScreenModels.pause_action(items, 3), &"quit_to_town")

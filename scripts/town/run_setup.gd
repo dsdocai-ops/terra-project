@@ -100,5 +100,8 @@ func start(peer_ids: Array[int], run_seed: int = 0) -> StringName:
 		last_refusal = REFUSAL_NOT_READY
 	else:
 		GameState.start_run(run_seed, start_floor, build_party(peer_ids))
+		# The next visit to the Tavern starts unready, not pre-confirmed.
+		for selection: SelectionState in selections.values():
+			selection.ready = false
 		last_refusal = REFUSAL_NONE
 	return last_refusal

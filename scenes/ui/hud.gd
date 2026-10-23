@@ -244,6 +244,12 @@ func _on_rope_vote_updated(votes: Dictionary) -> void:
 ## How many players still stand (not downed): the people the vote waits for.
 func living_player_count() -> int:
 	var count: int = 0
+	if GameState.run != null:
+		for peer_id: int in GameState.run.players:
+			var slice: RunPlayerState = GameState.run.get_player(peer_id)
+			if slice != null and slice.is_standing():
+				count += 1
+		return count
 	for player: Player in NetworkManager.players.values():
 		if not player.is_downed:
 			count += 1
@@ -271,7 +277,7 @@ func _on_rope_voted(yes: bool) -> void:
 
 
 func _fill_pause_items() -> void:
-	pause_items = ScreenModels.pause_items(GameState.run != null, NetworkManager.is_active and NetworkManager.peer_ids.size() > 1, _confirming_quit)
+	pause_items = ScreenModels.pause_items(GameState.run != null, NetworkManager.is_active and NetworkManager.peer_ids.size() > 1, _confirming_quit, NetworkManager.is_host and NetworkManager.peer_ids.size() > 1)
 	pause_menu.items = pause_items
 
 
