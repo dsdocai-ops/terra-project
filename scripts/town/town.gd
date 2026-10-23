@@ -19,6 +19,8 @@ signal run_setup_requested(peer_id: int)
 signal shrine_entered(peer_id: int)
 ## The Blacksmith opened its weapon list.
 signal blacksmith_opened(peer_id: int)
+## An unbuilt building was touched; the menu asks before any ore is spent.
+signal build_prompt_requested(peer_id: int, building_id: StringName, cost: BuildingLevel)
 signal building_bought(building_id: StringName, new_level: int)
 signal building_refused(building_id: StringName, reason: StringName)
 
@@ -31,6 +33,7 @@ const PIT_RADIUS_BY_STAGE: Array[int] = [4, 3, 2, 1]
 var profile: PlayerProfile = null
 var pit_stage: int = 0
 var run_setup: RunSetup = RunSetup.new()
+var menus: TownMenus = null
 
 @onready var floor_layer: TileMapLayer = $Floor
 @onready var pit_layer: TileMapLayer = $PitEdge
@@ -42,6 +45,10 @@ func _ready() -> void:
 		candidate.build_prompted.connect(_on_build_prompted)
 		candidate.service_opened.connect(_on_service_opened)
 	set_pit_stage(0)
+	menus = TownMenus.new()
+	menus.name = "TownMenus"
+	add_child(menus)
+	menus.attach(self)
 	load_profile(SaveManager.profile if SaveManager.profile != null else PlayerProfile.defaults())
 
 
@@ -103,9 +110,8 @@ func _paint_ground() -> void:
 			floor_layer.set_cell(Vector2i(x, y), Tiles.SOURCE, Tiles.FLOOR)
 
 
-func _on_build_prompted(_peer_id: int, building_id: StringName, _cost: BuildingLevel) -> void:
-	# The confirmation UI is ui-hud's (W5-B6); until it lands the touch itself buys.
-	buy(building_id)
+func _on_build_prompted(peer_id: int, building_id: StringName, cost: BuildingLevel) -> void:
+	build_prompt_requested.emit(peer_id, building_id, cost)
 
 
 func _on_service_opened(peer_id: int, building_id: StringName, _level: int) -> void:

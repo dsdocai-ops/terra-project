@@ -91,6 +91,7 @@ static func settle(
 
 		kept[&"echo_shards"] = slice.echo_shards_earned
 		kept[&"class_xp"] = slice.class_xp_earned
+		result.classes[peer_id] = slice.class_id
 		result.set_player_tables(peer_id, kept, lost)
 
 
@@ -104,3 +105,25 @@ static func _safe_line_pick(run_seed: int, peer_id: int, relic_count: int) -> in
 
 static func _rank(peer_ranks: Dictionary, node_id: StringName) -> int:
 	return int(peer_ranks.get(node_id, peer_ranks.get(String(node_id), 0)))
+
+
+## The gains one machine banks at the end of a run (SPEC-run-economy "Banking"):
+## the kept row of the player's table in `PlayerProfile.merge_run_gains()`'s own
+## key shape. Relics never bank, and story/codex gains are added by their own
+## modules. The class that receives the XP is the one `settle()` recorded.
+static func gains_for(result: RunResult, peer_id: int) -> Dictionary:
+	var kept: Dictionary = result.kept.get(peer_id, {})
+	var ore: Dictionary = {}
+	var raw_ore: Variant = kept.get(&"ore", {})
+	if raw_ore is Dictionary:
+		for ore_id: Variant in (raw_ore as Dictionary):
+			var amount: int = int((raw_ore as Dictionary)[ore_id])
+			if amount > 0:
+				ore[String(ore_id)] = amount
+	return {
+		"gold_banked": int(kept.get(&"gold", 0)),
+		"ore": ore,
+		"echo_shards": int(kept.get(&"echo_shards", 0)),
+		"class_id": String(result.classes.get(peer_id, &"")),
+		"class_xp": int(kept.get(&"class_xp", 0)),
+	}

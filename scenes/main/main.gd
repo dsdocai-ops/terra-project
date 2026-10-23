@@ -40,6 +40,7 @@ var _smoke3_full_hp_ticks: int = 0
 var _smoke_floor_poll: Timer
 var _smoke_floor_started: bool = false
 var _smoke_floor_waited: float = 0.0
+var _last_result: RunResult = null
 
 @onready var menu: PlaceholderMenu = $UI/PlaceholderMenu
 
@@ -53,6 +54,10 @@ func _ready() -> void:
 	menu.solo_pressed.connect(_on_solo)
 	menu.host_pressed.connect(_on_host)
 	menu.join_pressed.connect(_on_join)
+	menu.settings_pressed.connect(_on_menu_stub.bind("Settings arrive in a later update"))
+	menu.codex_pressed.connect(_on_menu_stub.bind("The Codex fills as you play"))
+	menu.quit_pressed.connect(_on_quit)
+	GameState.run_ended.connect(_on_run_ended)
 	NetworkManager.connection_failed.connect(_on_connection_failed)
 	NetworkManager.host_disconnected.connect(_on_host_disconnected)
 
@@ -268,6 +273,8 @@ func _maybe_add_hud() -> void:
 	var hud: CanvasLayer = hud_scene.instantiate() as CanvasLayer
 	hud.name = "HUD"
 	add_child(hud)
+	hud.connect(&"return_to_town_requested", _on_return_to_town)
+	hud.connect(&"leave_coop_requested", _on_leave_coop)
 
 
 func _start_from_options() -> void:
@@ -310,3 +317,42 @@ func _on_host_disconnected() -> void:
 func _show_menu_with_status(text: String) -> void:
 	menu.set_status(text)
 	menu.show()
+
+
+## Settings (week 12) and Codex (week 10) are not built yet; the menu says so.
+func _on_menu_stub(text: String) -> void:
+	menu.set_status(text)
+
+
+func _on_quit() -> void:
+	get_tree().quit()
+
+
+## Remembers the last finished run so Return to Town can bank it.
+func _on_run_ended(result: RefCounted) -> void:
+	_last_result = result as RunResult
+
+
+## Banks what this machine kept (SPEC-run-economy "Banking") and saves, then goes
+## back to town. blocked on Dev A (W5-A1): the walkable town needs the Player to
+## spawn there, so until it does this stops after banking.
+func _on_return_to_town() -> void:
+	bank_last_run()
+	print("[run] back in Hollowmere (town scene entry waits on the player spawn in town)")
+
+
+## Merges the local player's kept row into their profile and saves. Idempotent:
+## a run banks once.
+func bank_last_run() -> bool:
+	if _last_result == null or SaveManager.profile == null:
+		return false
+	var gains: Dictionary = RunEconomyRules.gains_for(_last_result, NetworkManager.local_peer_id)
+	SaveManager.profile.merge_run_gains(gains)
+	SaveManager.save()
+	_last_result = null
+	return true
+
+
+func _on_leave_coop() -> void:
+	NetworkManager.disconnect_all()
+	_show_menu_with_status("You left the co-op session")
