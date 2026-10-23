@@ -210,12 +210,14 @@ func test_co_op_death_applies_the_rule_then_splits() -> void:
 		assert_eq(result.lost[peer_id][&"ore"][&"copper"], 4)
 
 
-func test_co_op_split_drops_the_remainder() -> void:
+func test_co_op_split_gives_the_remainder_to_the_first_player() -> void:
 	var run: RunState = _run([1, 2])
 	run.shared_gold = 3
+	run.shared_ore = {&"copper": 5}
 	var result: RunResult = _settle(RunEndReason.Reason.EXTRACT, run)
-	assert_eq(result.kept[1][&"gold"], 1)
-	assert_eq(result.kept[2][&"gold"], 1, "3 gold between 2 players banks 1 + 1")
+	assert_eq(result.kept[1][&"gold"], 2)
+	assert_eq(result.kept[2][&"gold"], 1, "3 gold between 2 players is 2 + 1, none lost")
+	assert_eq(result.kept[1][&"ore"][&"copper"] + result.kept[2][&"ore"][&"copper"], 5)
 
 
 func test_co_op_ranks_apply_to_each_players_own_share() -> void:

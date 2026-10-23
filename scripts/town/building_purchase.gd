@@ -15,8 +15,10 @@ const DATA_DIR: String = "res://data/town/"
 static func building_ids() -> Array[StringName]:
 	var ids: Array[StringName] = []
 	for file: String in DirAccess.get_files_at(DATA_DIR):
-		if file.ends_with(".tres"):
-			ids.append(StringName(file.get_basename()))
+		# Exported builds list remapped resources as "<name>.tres.remap".
+		var resource_file: String = file.trim_suffix(".remap")
+		if resource_file.ends_with(".tres"):
+			ids.append(StringName(resource_file.get_basename()))
 	ids.sort()
 	return ids
 

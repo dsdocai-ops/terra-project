@@ -67,8 +67,14 @@ static func starting_potions(profile_potions: Dictionary) -> Array[StringName]:
 
 
 ## Heal amount for `max_hp`: 35% plus 15% per Potion Mastery rank.
-static func heal_amount(max_hp: float, heal_fraction: float, rank: int) -> int:
-	return roundi(max_hp * (heal_fraction + MASTERY_HEAL_PER_RANK * maxi(rank, 0)))
+static func heal_amount(max_hp: float, heal_fraction: float, rank: int, multiplier: float = 1.0) -> int:
+	return roundi(max_hp * total_heal_fraction(heal_fraction, rank, multiplier))
+
+
+## The share of max HP a heal restores: the base plus Potion Mastery, times any
+## healing multiplier from status effects.
+static func total_heal_fraction(heal_fraction: float, rank: int, multiplier: float = 1.0) -> float:
+	return (heal_fraction + MASTERY_HEAL_PER_RANK * maxi(rank, 0)) * multiplier
 
 
 static func has_room(belt: Array[StringName], slot_count: int) -> bool:
@@ -146,15 +152,15 @@ func _heal(fraction: float) -> void:
 	var block: StatBlock = player.get_node_or_null(StatusEffects.STAT_BLOCK_NODE) as StatBlock
 	if block == null:
 		return
-	var total_fraction: float = fraction + MASTERY_HEAL_PER_RANK * maxi(mastery_rank, 0)
+	var multiplier: float = 1.0
 	var status: StatusEffects = player.get_node_or_null(STATUS_NODE) as StatusEffects
 	if status != null:
-		total_fraction *= status.healing_multiplier()
+		multiplier = status.healing_multiplier()
 	var health: Node = player.get_node_or_null(StatusEffects.HEALTH_NODE)
 	if health != null and health.has_method(&"heal"):
-		health.call(&"heal", roundi(block.get_value(StatBlock.Stat.MAX_HP) * total_fraction))
+		health.call(&"heal", heal_amount(block.get_value(StatBlock.Stat.MAX_HP), fraction, mastery_rank, multiplier))
 	else:
-		block.current_hp_ratio = minf(1.0, block.current_hp_ratio + total_fraction)
+		block.current_hp_ratio = minf(1.0, block.current_hp_ratio + total_heal_fraction(fraction, mastery_rank, multiplier))
 
 
 func _haste(data: PotionData) -> void:

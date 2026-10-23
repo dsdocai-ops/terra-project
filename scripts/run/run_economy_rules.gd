@@ -14,7 +14,8 @@ extends RefCounted
 ## Shared pools (gold, ore) are split evenly among the party first; the keep
 ## rule then runs on each share with that player's own skill ranks. With equal
 ## ranks that is the spec's "death rule once, then split". Integer division
-## drops the remainder, so a 3-gold pool split between 2 players banks 1 + 1.
+## leaves a remainder, which goes to the first player in the party so no gold or
+## ore vanishes: a 3-gold pool split between 2 players is a 2 + 1 share.
 
 const DEEP_POCKETS: StringName = &"deep_pockets"
 const ORE_HEART: StringName = &"ore_heart"
@@ -59,21 +60,25 @@ static func settle(
 ) -> void:
 	var party_size: int = maxi(1, finished.players.size())
 	var gold_share: int = finished.shared_gold / party_size
+	var gold_remainder: int = finished.shared_gold % party_size
+	var first_peer: int = finished.players.keys()[0] if not finished.players.is_empty() else 0
 	for peer_id: int in finished.players:
 		var slice: RunPlayerState = finished.get_player(peer_id)
 		var peer_ranks: Dictionary = ranks.get(peer_id, {})
 		var kept: Dictionary = RunResult.empty_table()
 		var lost: Dictionary = RunResult.empty_table()
 
-		var kept_gold: int = gold_share * gold_percent(result.reason, _rank(peer_ranks, DEEP_POCKETS)) / 100
+		var my_gold: int = gold_share + (gold_remainder if peer_id == first_peer else 0)
+		var kept_gold: int = my_gold * gold_percent(result.reason, _rank(peer_ranks, DEEP_POCKETS)) / 100
 		kept[&"gold"] = kept_gold
-		lost[&"gold"] = gold_share - kept_gold
+		lost[&"gold"] = my_gold - kept_gold
 
 		var ore_rate: int = ore_percent(result.reason, _rank(peer_ranks, ORE_HEART))
 		var kept_ore: Dictionary = {}
 		var lost_ore: Dictionary = {}
 		for ore_id: StringName in finished.shared_ore:
-			var share: int = int(finished.shared_ore[ore_id]) / party_size
+			var pool: int = int(finished.shared_ore[ore_id])
+			var share: int = pool / party_size + (pool % party_size if peer_id == first_peer else 0)
 			var kept_amount: int = share * ore_rate / 100
 			kept_ore[ore_id] = kept_amount
 			lost_ore[ore_id] = share - kept_amount

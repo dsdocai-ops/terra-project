@@ -204,3 +204,7 @@ func test_a_client_forwards_instead_of_drinking() -> void:
 	NetworkManager.is_host = true
 	assert_eq(_forwarded, [PEER_ID] as Array[int])
 	assert_eq(_slice().potions.size(), 1)
+
+
+func test_total_heal_fraction_adds_mastery_then_multiplies() -> void:
+	assert_almost_eq(PotionController.total_heal_fraction(0.35, 2, 0.5), 0.325, 0.0001)
