@@ -1,0 +1,67 @@
+[gd_scene load_steps=5 format=3]
+
+[ext_resource type="Script" path="res://scripts/town/town.gd" id="1_town"]
+[ext_resource type="TileSet" uid="uid://b3p4wi6gx4vcy" path="res://assets/tilesets/placeholder_iso.tres" id="2_tiles"]
+[ext_resource type="PackedScene" path="res://scenes/town/building.tscn" id="3_building"]
+
+[node name="Town" type="Node2D"]
+y_sort_enabled = true
+script = ExtResource("1_town")
+
+[node name="Floor" type="TileMapLayer" parent="."]
+tile_set = ExtResource("2_tiles")
+collision_enabled = false
+
+[node name="PitEdge" type="TileMapLayer" parent="."]
+tile_set = ExtResource("2_tiles")
+collision_enabled = false
+
+[node name="Buildings" type="Node2D" parent="."]
+y_sort_enabled = true
+
+[node name="blacksmith" parent="Buildings" instance=ExtResource("3_building")]
+position = Vector2(520, 0)
+building_id = &"blacksmith"
+
+[node name="alchemist" parent="Buildings" instance=ExtResource("3_building")]
+position = Vector2(437, 162)
+building_id = &"alchemist"
+
+[node name="map_room" parent="Buildings" instance=ExtResource("3_building")]
+position = Vector2(216, 273)
+building_id = &"map_room"
+
+[node name="shrine_of_echoes" parent="Buildings" instance=ExtResource("3_building")]
+position = Vector2(-74, 297)
+building_id = &"shrine_of_echoes"
+
+[node name="tavern" parent="Buildings" instance=ExtResource("3_building")]
+position = Vector2(-341, 227)
+building_id = &"tavern"
+
+[node name="relic_vault" parent="Buildings" instance=ExtResource("3_building")]
+position = Vector2(-499, 85)
+building_id = &"relic_vault"
+
+[node name="rune_library" parent="Buildings" instance=ExtResource("3_building")]
+position = Vector2(-499, -85)
+building_id = &"rune_library"
+
+[node name="training_grounds" parent="Buildings" instance=ExtResource("3_building")]
+position = Vector2(-341, -227)
+building_id = &"training_grounds"
+
+[node name="rescue_camp" parent="Buildings" instance=ExtResource("3_building")]
+position = Vector2(-74, -297)
+building_id = &"rescue_camp"
+
+[node name="bounty_board" parent="Buildings" instance=ExtResource("3_building")]
+position = Vector2(216, -273)
+building_id = &"bounty_board"
+
+[node name="wardrobe" parent="Buildings" instance=ExtResource("3_building")]
+position = Vector2(437, -162)
+building_id = &"wardrobe"
+
+[node name="Entities" type="Node2D" parent="."]
+y_sort_enabled = true
