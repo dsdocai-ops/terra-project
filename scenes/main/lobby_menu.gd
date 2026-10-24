@@ -125,7 +125,7 @@ static func parse_address(text: String) -> Dictionary:
 
 func _build() -> void:
 	var backdrop := ColorRect.new()
-	backdrop.color = Color(0.03, 0.02, 0.015, 0.88)
+	backdrop.color = Color(0.03, 0.02, 0.015, 0.97)
 	backdrop.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	backdrop.mouse_filter = Control.MOUSE_FILTER_STOP
 	add_child(backdrop)
@@ -178,6 +178,19 @@ func _button(text: String, handler: Callable, primary: bool = false) -> Button:
 	button.add_theme_stylebox_override("pressed", normal)
 	button.add_theme_stylebox_override("focus", normal)
 	return button
+
+
+## Gives the checkbox a visible box on the dark panel (the theme's default is
+## near-black on near-black).
+func _style_checkbox(box: CheckBox) -> void:
+	var size: int = 14
+	var off := Image.create(size, size, false, Image.FORMAT_RGBA8)
+	off.fill(PANEL_BORDER)
+	off.fill_rect(Rect2i(2, 2, size - 4, size - 4), Color(0.08, 0.065, 0.045))
+	var on := off.duplicate() as Image
+	on.fill_rect(Rect2i(4, 4, size - 8, size - 8), GOLD)
+	box.add_theme_icon_override("unchecked", ImageTexture.create_from_image(off))
+	box.add_theme_icon_override("checked", ImageTexture.create_from_image(on))
 
 
 func _field(placeholder: String) -> LineEdit:
@@ -254,6 +267,7 @@ func _build_host_panel() -> Control:
 	_no_password_box.text = "No password"
 	_no_password_box.add_theme_color_override("font_color", PARCHMENT)
 	_no_password_box.add_theme_font_size_override("font_size", 12)
+	_style_checkbox(_no_password_box)
 	_no_password_box.toggled.connect(_on_no_password_toggled)
 	column.add_child(_no_password_box)
 	column.add_child(_label("Password", MUTED))

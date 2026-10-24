@@ -5,6 +5,7 @@ extends Node
 ## Owned by foundation. Sync: none; NetworkManager owns connection state.
 
 const WORLD_SCENE: PackedScene = preload("res://scenes/main/world.tscn")
+const VOID_COLOR: Color = Color(0.055, 0.043, 0.035, 1.0)
 ## How often the floor-sync smoke driver looks for the client before starting
 ## the run, and how long it waits for one before starting it alone.
 const SMOKE_FLOOR_POLL_SECONDS: float = 0.25
@@ -52,6 +53,8 @@ var _hud: CanvasLayer = null
 
 
 func _ready() -> void:
+	# Dark cave void around the floor instead of the engine's default grey.
+	RenderingServer.set_default_clear_color(VOID_COLOR)
 	world = WORLD_SCENE.instantiate() as World
 	add_child(world)
 	move_child(world, 0)

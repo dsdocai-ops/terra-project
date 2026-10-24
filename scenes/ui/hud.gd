@@ -99,6 +99,7 @@ func _wire_events() -> void:
 	Events.currency_gained.connect(_on_currency_gained)
 	Events.rope_vote_updated.connect(_on_rope_vote_updated)
 	GameState.floor_changed.connect(_on_floor_changed)
+	GameState.run_started.connect(_on_run_started)
 	GameState.run_ended.connect(_on_run_ended)
 	# A slow poll catches HP ticks, status changes and the host's own relic
 	# offer (a solo host has no broadcast to hear) between event batches; cheap
@@ -223,6 +224,12 @@ func _on_relic_picked(_player: Player, _relic: RelicData) -> void:
 
 func _on_currency_gained(_player: Player, _currency: StringName, _amount: int) -> void:
 	_on_players_changed()
+
+
+## The host's first floor: no floor_changed fires for it, so read it off the run.
+func _on_run_started(_run_seed: int) -> void:
+	if GameState.run != null:
+		_on_floor_changed(GameState.run.floor_index, GameState.biome_for_index(GameState.run.biome_index))
 
 
 func _on_floor_changed(floor_index: int, biome: Resource) -> void:
@@ -353,6 +360,8 @@ func _apply_layout() -> void:
 		for entry: Variant in raw as Array:
 			if entry is Rect2i:
 				rects.append(entry)
+			elif entry is RoomSpec:
+				rects.append((entry as RoomSpec).rect)
 		lamp_map.rooms = rects
 
 

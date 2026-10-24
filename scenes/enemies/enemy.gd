@@ -133,6 +133,17 @@ var current_hp: int:
 	get:
 		return health.current_hp if health != null else 0
 
+## A thin HP bar over a hurt enemy (placeholder; the real one arrives with the
+## HUD pass). Drawn locally from the replicated Health.
+func _draw() -> void:
+	if health == null or data == null or health.max_hp <= 0 or health.current_hp >= health.max_hp or health.is_dead:
+		return
+	var width: float = data.radius * 2.6
+	var top: float = -data.radius * 2.0 - 4.0
+	var fraction: float = clampf(float(health.current_hp) / float(health.max_hp), 0.0, 1.0)
+	draw_rect(Rect2(-width * 0.5 - 1.0, top - 1.0, width + 2.0, 5.0), Color(0.05, 0.03, 0.02, 0.9))
+	draw_rect(Rect2(-width * 0.5, top, width * fraction, 3.0), Color(0.85, 0.25, 0.2, 1.0) if not elite else Color(0.95, 0.7, 0.2, 1.0))
+
 # --- targeting and movement ----------------------------------------------------
 
 
@@ -230,6 +241,7 @@ func decay_knockback(delta: float) -> void:
 
 func _on_damaged(_hit: HitInfo) -> void:
 	_flash_left = FLASH_SECONDS
+	queue_redraw()
 
 
 func _on_died(hit: HitInfo) -> void:
