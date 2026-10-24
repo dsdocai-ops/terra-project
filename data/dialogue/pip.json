@@ -1,0 +1,102 @@
+{
+	"id": "pip",
+	"entries": [
+		{
+			"id": "intro",
+			"priority": 60,
+			"conditions": { "flag_not": "story.met_pip" },
+			"lines": [
+				{ "speaker": "Pip", "text": "Maps. Maps are the only true thing left in Hollowmere. Floors stop pretending when you draw them.", "emotion": "curious" },
+				{ "speaker": "Pip", "text": "Every wardens' map the town ever owned burned in the mine office. I am rebuilding them one descent at a time.", "emotion": "resolute" }
+			],
+			"choices": [
+				{ "text": "You want my maps?", "goto": "intro_maps" },
+				{ "text": "Keep at it, Pip.", "end": true }
+			]
+		},
+		{
+			"id": "intro_maps",
+			"priority": 5,
+			"lines": [
+				{ "speaker": "Pip", "text": "Want? I need them. Bring me back enough rope-ends and I will give you something better than directions — I will give you the shape of the dark.", "emotion": "curious" },
+				{ "speaker": "Pip", "text": "And I will make it worth your while. The old surveyors' kit is still in my cellar, and nobody else alive knows the lock pattern.", "emotion": "proud" }
+			],
+			"choices": [
+				{ "text": "Deal.", "end": true }
+			]
+		},
+		{
+			"id": "act_1",
+			"priority": 10,
+			"conditions": { "flag": "story.foreman_defeated" },
+			"lines": [
+				{ "speaker": "Pip", "text": "The Foreman is done? Then let me mark it properly — big red cross, the kind the old charts used.", "emotion": "curious" },
+				{ "speaker": "Pip", "text": "You know what the old charts never marked? Where the Foreman's crew actually went. Every map ends at the same gallery and then just... stops.", "emotion": "worried" }
+			],
+			"choices": [
+				{ "text": "You think something stopped them?", "goto": "act_1_stopped" },
+				{ "text": "Mark it however you like.", "end": true }
+			]
+		},
+		{
+			"id": "act_1_stopped",
+			"priority": 5,
+			"lines": [
+				{ "speaker": "Pip", "text": "I think the mine did. Eleven miners do not all forget how to walk home at once.", "emotion": "grim" },
+				{ "speaker": "Pip", "text": "Find the place where they stopped and draw it. That is all I ask. The truth keeps better in ink than in rumors.", "emotion": "resolute" }
+			],
+			"choices": [
+				{ "text": "I'll draw it.", "end": true }
+			]
+		},
+		{
+			"id": "act_1_possessed",
+			"priority": 15,
+			"conditions": { "flag": "story.miners_possessed" },
+			"lines": [
+				{ "speaker": "Pip", "text": "The miners are walking up and my maps are wrong. Not torn, not burned. Wrong. The shafts they climb were never on any chart I own.", "emotion": "worried" },
+				{ "speaker": "Pip", "text": "Count the lanterns. I will count them too. If we get the same number, I will believe my own eyes for once.", "emotion": "curious" }
+			],
+			"choices": [
+				{ "text": "I'll count them.", "end": true }
+			]
+		},
+		{
+			"id": "act_2_stub",
+			"priority": 20,
+			"conditions": { "act_min": 2 },
+			"lines": [
+				{ "speaker": "Pip", "text": "I have started drawing floors nobody has descended yet. I do not know where the habit came from.", "emotion": "distant" }
+			]
+		},
+		{
+			"id": "act_3_stub",
+			"priority": 30,
+			"conditions": { "act_min": 3 },
+			"lines": [
+				{ "speaker": "Pip", "text": "The ink keeps moving after I set it down. I have decided not to look at the wet ones.", "emotion": "worried" }
+			]
+		},
+		{
+			"id": "endings_stub",
+			"priority": 40,
+			"conditions": {
+				"any": [
+					{ "flag": "ending.seal" },
+					{ "flag": "ending.keeper" },
+					{ "flag": "ending.true" }
+				]
+			},
+			"lines": [
+				{ "speaker": "Pip", "text": "Every map has an edge. Even the deep ones. Even yours.", "emotion": "distant" }
+			]
+		},
+		{
+			"id": "default",
+			"priority": 0,
+			"lines": [
+				{ "speaker": "Pip", "text": "Back so soon? The ink is not even dry on your last route.", "emotion": "curious" }
+			]
+		}
+	]
+}

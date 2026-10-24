@@ -11,7 +11,14 @@
 			"pit_has_done_this_before": { "persist": true, "note": "Act 2 beat: the pit has done this before." },
 			"pit_feeds_on_loss": { "persist": true, "note": "Act 3 beat: the pit feeds on what people lose." },
 			"keeper_offer": { "persist": true, "note": "Act 3 beat: the pit wants a new keeper." },
-			"met_hilde": { "persist": false, "note": "First talk with Mayor Hilde done (SPEC dialogue example)." }
+			"met_hilde": { "persist": false, "note": "First talk with Mayor Hilde done (SPEC dialogue example)." },
+			"met_gruff": { "persist": false, "note": "First talk with Gruff the blacksmith done (Act 1 intro)." },
+			"met_moss": { "persist": false, "note": "First talk with Moss the alchemist done (Act 1 intro)." },
+			"met_pip": { "persist": false, "note": "First talk with Pip the map maker done (Act 1 intro)." },
+			"met_sister_ash": { "persist": false, "note": "First talk with Sister Ash done (Act 1 intro)." },
+			"met_old_tom": { "persist": false, "note": "First talk with Old Tom done (Act 1 intro)." },
+			"met_vesper": { "persist": false, "note": "First talk with Vesper done (Act 1 intro)." },
+			"met_rescued": { "persist": false, "note": "First talk with the rescued miner done (Act 1 intro)." }
 		},
 		"rescue": {
 			"sly_nettie": { "persist": true, "note": "Sly Nettie rescued; unlocks the Rogue (SPEC example flag, section 4.2)." },

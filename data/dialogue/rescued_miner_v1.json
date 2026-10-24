@@ -1,0 +1,114 @@
+{
+	"id": "rescued_miner_v1",
+	"entries": [
+		{
+			"id": "intro",
+			"priority": 60,
+			"conditions": { "flag_not": "story.met_rescued" },
+			"lines": [
+				{ "speaker": "Rescued Miner", "text": "Light. Real light. I'd forgot the color of it. I'd forgot there was a color.", "emotion": "weary" },
+				{ "speaker": "Rescued Miner", "text": "You pulled me out. I won't forget that. I'll try to forget everything else, but not that.", "emotion": "weary" }
+			],
+			"choices": [
+				{ "text": "What happened down there?", "goto": "intro_pit" },
+				{ "text": "You're safe now.", "end": true }
+			]
+		},
+		{
+			"id": "intro_pit",
+			"priority": 5,
+			"lines": [
+				{ "speaker": "Rescued Miner", "text": "I don't rightly know. One minute I was tallying ore for the Foreman, the next the tally was in my mouth instead of the slate.", "emotion": "fearful" },
+				{ "speaker": "Rescued Miner", "text": "And there was a sound under the rock. Not water. Not settling. It went like this — once for me, once for you, once for the man beside me. Like it was counting.", "emotion": "fearful" }
+			],
+			"choices": [
+				{ "text": "Rest now. I'll handle the counting.", "end": true }
+			]
+		},
+		{
+			"id": "act_1",
+			"priority": 10,
+			"conditions": { "flag": "story.foreman_defeated" },
+			"lines": [
+				{ "speaker": "Rescued Miner", "text": "You beat the Foreman. I heard his hammer going quiet from where they kept me — one blow, then none, then none.", "emotion": "grim" },
+				{ "speaker": "Rescued Miner", "text": "He was a fair man, before. Docked my wage once for a tally I hadn't earned, then paid it back double when he caught the real thief. That's the man I'd like to bury. Not the thing.", "emotion": "weary" }
+			],
+			"choices": [
+				{ "text": "We'll bury the man, then.", "goto": "act_1_bury" },
+				{ "text": "Get warm, miner.", "end": true }
+			]
+		},
+		{
+			"id": "act_1_bury",
+			"priority": 5,
+			"lines": [
+				{ "speaker": "Rescued Miner", "text": "Sister Ash keeps a candle for everyone the mine eats. Tell her I'm alive and she should light one less.", "emotion": "kind" },
+				{ "speaker": "Rescued Miner", "text": "And tell Old Tom the rungs are still counted right. I counted them every day in the dark. Going down, coming up — the numbers agreed.", "emotion": "resolute" }
+			],
+			"choices": [
+				{ "text": "I'll tell them both.", "end": true }
+			]
+		},
+		{
+			"id": "act_1_sighted",
+			"priority": 5,
+			"conditions": { "flag": "rescue.miner_sighted" },
+			"lines": [
+				{ "speaker": "Rescued Miner", "text": "You've seen one of mine own still trapped below. Listen to me, and listen properly.", "emotion": "resolute" },
+				{ "speaker": "Rescued Miner", "text": "If they answer you in my voice, ask them the tally. The Foreman docked a tally I never earned — the real one's nine measures, three slabs, and a lie. The pit doesn't know the lie.", "emotion": "grim" }
+			],
+			"choices": [
+				{ "text": "Nine, three, and a lie. Understood.", "end": true }
+			]
+		},
+		{
+			"id": "act_1_possessed",
+			"priority": 15,
+			"conditions": { "flag": "story.miners_possessed" },
+			"lines": [
+				{ "speaker": "Rescued Miner", "text": "They're walking up and they're smiling. That's what I can't get past. Not the walking. The smiling. It smiles the way it made me tally — with somebody else's hands.", "emotion": "fearful" },
+				{ "speaker": "Rescued Miner", "text": "Whatever's wearing them wanted me next. You got me first. Don't feel bad about what you have to do to keep it that way.", "emotion": "grim" }
+			],
+			"choices": [
+				{ "text": "I won't let it have you.", "end": true }
+			]
+		},
+		{
+			"id": "act_2_stub",
+			"priority": 20,
+			"conditions": { "act_min": 2 },
+			"lines": [
+				{ "speaker": "Rescued Miner", "text": "I keep a slate by my bed now. Every morning I tally the same nine measures, three slabs, and a lie. It keeps the counting from being done for me.", "emotion": "resolute" }
+			]
+		},
+		{
+			"id": "act_3_stub",
+			"priority": 30,
+			"conditions": { "act_min": 3 },
+			"lines": [
+				{ "speaker": "Rescued Miner", "text": "Last night the slate was full before I touched it. Nine, three, and a lie, all neat. I'm not going to say whose hand did it. You'd stop sleeping too.", "emotion": "fearful" }
+			]
+		},
+		{
+			"id": "endings_stub",
+			"priority": 40,
+			"conditions": {
+				"any": [
+					{ "flag": "ending.seal" },
+					{ "flag": "ending.keeper" },
+					{ "flag": "ending.true" }
+				]
+			},
+			"lines": [
+				{ "speaker": "Rescued Miner", "text": "The counting's stopped. Slate's clean this morning. First morning I haven't checked the tally in weeks.", "emotion": "kind" }
+			]
+		},
+		{
+			"id": "default",
+			"priority": 0,
+			"lines": [
+				{ "speaker": "Rescued Miner", "text": "I'm keeping the fire going, warden. Small work. Mine now.", "emotion": "resolute" }
+			]
+		}
+	]
+}

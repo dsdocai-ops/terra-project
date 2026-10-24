@@ -1,0 +1,131 @@
+{
+	"id": "vesper",
+	"entries": [
+		{
+			"id": "intro",
+			"priority": 60,
+			"conditions": { "flag_not": "story.met_vesper" },
+			"lines": [
+				{ "speaker": "Vesper", "text": "You're the warden. I watch the lamps go dark at the edge of town each night and count which come back.", "emotion": "distant" },
+				{ "speaker": "Vesper", "text": "I'm Vesper. I keep the night hours and the town's worse suspicions. Someone has to hold both.", "emotion": "grim" }
+			],
+			"choices": [
+				{ "text": "What suspicions?", "goto": "intro_suspicions" },
+				{ "text": "Keep your watch, Vesper.", "end": true }
+			]
+		},
+		{
+			"id": "intro_suspicions",
+			"priority": 5,
+			"lines": [
+				{ "speaker": "Vesper", "text": "That the well is deeper than the town is old. That the lamplight at the pit head stays lit when no one fills it. That Hollowmere keeps records it doesn't know it keeps.", "emotion": "distant" },
+				{ "speaker": "Vesper", "text": "None of which proves anything. Proofs come back from the mine with ore in their pockets. You, for instance.", "emotion": "grim" }
+			],
+			"choices": [
+				{ "text": "I'll bring back proof, then.", "end": true }
+			]
+		},
+		{
+			"id": "act_1",
+			"priority": 10,
+			"conditions": { "flag": "story.foreman_defeated" },
+			"lines": [
+				{ "speaker": "Vesper", "text": "The Foreman fell. The lamps burned steady all that night — the first calm night in a month. I don't trust calm nights.", "emotion": "distant" },
+				{ "speaker": "Vesper", "text": "You should know what I know, warden: the pit was quiet before this happened too. Quiet is what it does when it's done swallowing.", "emotion": "grim" }
+			],
+			"choices": [
+				{ "text": "Done swallowing what?", "goto": "act_1_swallow" },
+				{ "text": "I'll keep my lamp lit.", "end": true }
+			]
+		},
+		{
+			"id": "act_1_swallow",
+			"priority": 5,
+			"lines": [
+				{ "speaker": "Vesper", "text": "Lanterns. Lanterns, lamps, candles, and every fourth night, the watch-light on the north road. Twelve flames went into that mine with the Foreman's crew. I count them going out from up here, one by one.", "emotion": "grim" },
+				{ "speaker": "Vesper", "text": "Last night, one came back on. The twelfth. It burned facing upward, at the bottom of the shaft.", "emotion": "fearful" }
+			],
+			"choices": [
+				{ "text": "I'll find whose it was.", "end": true }
+			]
+		},
+		{
+			"id": "act_1_well",
+			"priority": 5,
+			"conditions": { "flag": "secret.watcher" },
+			"lines": [
+				{ "speaker": "Vesper", "text": "You looked into the well. So did I, once. That's why I count lamps instead of sleeping.", "emotion": "fearful" },
+				{ "speaker": "Vesper", "text": "Whatever blinked at you, it blinked at me first. Old Tom calls it glowworm. Old Tom is a kind man.", "emotion": "grim" }
+			],
+			"choices": [
+				{ "text": "So we've both seen it.", "end": true }
+			]
+		},
+		{
+			"id": "act_1_wren",
+			"priority": 5,
+			"conditions": {
+				"all": [
+					{ "flag": "char.wren_father" },
+					{ "character": "wren" }
+				]
+			},
+			"lines": [
+				{ "speaker": "Vesper", "text": "Your father held a lamp on the north road, years back. I still keep that post clear of snow. Habit is the only prayer I know.", "emotion": "distant" },
+				{ "speaker": "Vesper", "text": "He talked about you the way other men talk about weather they're waiting for. If you find him down there, wren, I'd light the lamp myself.", "emotion": "kind" }
+			],
+			"choices": [
+				{ "text": "Thank you, Vesper.", "end": true }
+			]
+		},
+		{
+			"id": "act_1_possessed",
+			"priority": 15,
+			"conditions": { "flag": "story.miners_possessed" },
+			"lines": [
+				{ "speaker": "Vesper", "text": "The miners are climbing. Twelve lamps, walking in step, no wind to move the flames. My count was right and I have never wanted to be wrong so badly.", "emotion": "fearful" },
+				{ "speaker": "Vesper", "text": "I'll keep the town lamps burning while you go down. If any go dark behind you, don't turn around. There's no record worth that.", "emotion": "grim" }
+			],
+			"choices": [
+				{ "text": "Keep them burning, Vesper.", "end": true }
+			]
+		},
+		{
+			"id": "act_2_stub",
+			"priority": 20,
+			"conditions": { "act_min": 2 },
+			"lines": [
+				{ "speaker": "Vesper", "text": "I've begun recording the lamps I can't see. The list is longer than the one I can. Draw your own conclusions, warden — I refuse to draw mine.", "emotion": "distant" }
+			]
+		},
+		{
+			"id": "act_3_stub",
+			"priority": 30,
+			"conditions": { "act_min": 3 },
+			"lines": [
+				{ "speaker": "Vesper", "text": "Last night every lamp in Hollowmere burned at once, and I woke standing in the square with no memory of walking there. I've decided to stop sleeping near the well.", "emotion": "fearful" }
+			]
+		},
+		{
+			"id": "endings_stub",
+			"priority": 40,
+			"conditions": {
+				"any": [
+					{ "flag": "ending.seal" },
+					{ "flag": "ending.keeper" },
+					{ "flag": "ending.true" }
+				]
+			},
+			"lines": [
+				{ "speaker": "Vesper", "text": "The count is finished. Every lamp that went in has come back out, one way or another. I can sleep now. I don't intend to.", "emotion": "distant" }
+			]
+		},
+		{
+			"id": "default",
+			"priority": 0,
+			"lines": [
+				{ "speaker": "Vesper", "text": "Lamps steady. Watch's kept. Walk carefully, warden.", "emotion": "grim" }
+			]
+		}
+	]
+}

@@ -326,6 +326,18 @@ static func _validate_entries(
 		_validate_entry(raw_entry as Dictionary, i, file_name, errors, data, seen, declared_flags)
 
 
+## True when the Variant holds an integer value: a true int, or a float with
+## no fractional part (1.0). Godot's JSON parser hands floats back for whole
+## numbers authored in JSON, so integrality checks must accept both forms;
+## anything else (1.5, strings, null) is not an integer.
+static func is_integer_value(value: Variant) -> bool:
+	if value is int:
+		return true
+	if value is float:
+		return (value as float) == roundf(value as float)
+	return false
+
+
 static func _validate_entry(
 	raw_entry: Dictionary,
 	index: int,
@@ -356,7 +368,7 @@ static func _validate_entry(
 	# scan, so a missing one is a content mistake, not a default.
 	if not raw_entry.has("priority"):
 		_fail(errors, file_name, "entries[%d] missing \"priority\"" % index)
-	elif not (raw_entry["priority"] is int):
+	elif not is_integer_value(raw_entry["priority"]):
 		_fail(errors, file_name, "entries[%d] \"priority\" must be an integer" % index)
 	else:
 		entry.priority = raw_entry["priority"] as int
@@ -482,7 +494,7 @@ static func _validate_on_end(
 			for currency: String in (give as Dictionary).keys():
 				if not GIVE_KEYS.has(currency):
 					_fail(errors, file_name, "%s \"give\" has unknown currency \"%s\"" % [where, currency])
-				elif not ((give as Dictionary)[currency] is int):
+				elif not is_integer_value((give as Dictionary)[currency]):
 					_fail(errors, file_name, "%s \"give.%s\" must be an integer amount" % [where, currency])
 
 
@@ -563,7 +575,7 @@ static func _validate_leaf(
 				var spec := value as Dictionary
 				if not spec.has("building") or not (spec["building"] is String):
 					_fail(errors, file_name, "%s \"town_level\" missing \"building\"" % where)
-				if not spec.has("min") or not (spec["min"] is int):
+				if not spec.has("min") or not is_integer_value(spec["min"]):
 					_fail(errors, file_name, "%s \"town_level\" missing \"min\"" % where)
 		"ore_min":
 			if not (value is Dictionary):
@@ -572,10 +584,10 @@ static func _validate_leaf(
 				var spec := value as Dictionary
 				if not spec.has("ore") or not (spec["ore"] is String):
 					_fail(errors, file_name, "%s \"ore_min\" missing \"ore\"" % where)
-				if not spec.has("min") or not (spec["min"] is int):
+				if not spec.has("min") or not is_integer_value(spec["min"]):
 					_fail(errors, file_name, "%s \"ore_min\" missing \"min\"" % where)
 		"deepest_floor_min":
-			if not (value is int):
+			if not is_integer_value(value):
 				_fail(errors, file_name, "%s \"deepest_floor_min\" must be an integer floor" % where)
 			elif (value as int) < RunState.MIN_FLOOR or (value as int) > RunState.MAX_FLOOR:
 				_fail(errors, file_name, "%s \"deepest_floor_min\" %d outside %d..%d" % [
@@ -585,7 +597,7 @@ static func _validate_leaf(
 			if not (value is String):
 				_fail(errors, file_name, "%s \"rescued\" must be a miner id" % where)
 		"act_min":
-			if not (value is int):
+			if not is_integer_value(value):
 				_fail(errors, file_name, "%s \"act_min\" must be an integer" % where)
 			elif (value as int) < ACT_MIN or (value as int) > ACT_MAX:
 				_fail(errors, file_name, "%s \"act_min\" %d outside %d..%d" % [
