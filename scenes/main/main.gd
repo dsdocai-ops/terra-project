@@ -45,6 +45,8 @@ var _last_result: RunResult = null
 var lobby: LobbyMenu = null
 var _announcer: LobbyDiscovery = null
 var _last_join: Dictionary = {}
+## The in-game HUD; hidden whenever a menu is up or no session is running.
+var _hud: CanvasLayer = null
 
 @onready var menu: PlaceholderMenu = $UI/PlaceholderMenu
 
@@ -287,6 +289,7 @@ func _maybe_add_hud() -> void:
 	var hud: CanvasLayer = hud_scene.instantiate() as CanvasLayer
 	hud.name = "HUD"
 	add_child(hud)
+	_hud = hud
 	hud.connect(&"return_to_town_requested", _on_return_to_town)
 	hud.connect(&"leave_coop_requested", _on_leave_coop)
 
@@ -454,3 +457,12 @@ func _stop_announcing() -> void:
 		_announcer.stop()
 		_announcer.queue_free()
 		_announcer = null
+
+
+## The HUD belongs to the game: it shows only in a live session, never over the
+## main menu or the co-op lobby.
+func _process(_delta: float) -> void:
+	if _hud == null:
+		return
+	var menus_up: bool = (menu != null and menu.visible) or (lobby != null and lobby.visible)
+	_hud.visible = NetworkManager.is_active and not menus_up
