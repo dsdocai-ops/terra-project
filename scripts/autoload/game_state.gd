@@ -147,10 +147,9 @@ func apply_remote_floor(floor_index: int, biome_id: int, modifiers: Array[int]) 
 
 
 ## The biome resource a floor's biome id names. This is the single swap point
-## for Dev A's BiomeData (blocked on Dev A W3-A1/A6): when it lands this returns
-## BiomeData and BiomePlaceholder is deleted.
+## for BiomeData (floor-generation takes the biome from here).
 func biome_for_index(biome_id: int) -> Resource:
-	return BiomePlaceholder.from_index(biome_id)
+	return BiomeData.for_index(biome_id)
 
 
 ## Client side. Records that this peer generated a different floor from the

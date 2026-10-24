@@ -58,8 +58,7 @@ func _record_run_started(run_seed: int) -> void:
 
 
 func _record_floor_changed(floor_index: int, biome: Resource) -> void:
-	var placeholder: BiomePlaceholder = biome as BiomePlaceholder
-	var biome_id: int = placeholder.id if placeholder != null else 0
+	var biome_id: int = FloorGeneratorStub.biome_id_of(biome)
 	_floor_events.append(Vector2i(floor_index, biome_id))
 
 

@@ -22,6 +22,9 @@ signal debug_command_requested(command_line: String, peer_id: int)
 ## Emitted on the client that asked, before the request travels, so the request
 ## is observable where a single process cannot reach a real host.
 signal floor_layout_requested(floor_index: int)
+## A floor layout is ready to paint: this peer generated it, or applied the
+## host's fallback copy. World builds the live Floor from it.
+signal floor_layout_ready(layout: RefCounted)
 ## A client asked the host to revive a downed teammate (W3-B4b). Emitted on the
 ## asking peer before the request travels, the same way floor_layout_requested
 ## is, so the client half of the revive is observable where a single process
@@ -587,6 +590,7 @@ func apply_host_layout(floor_index: int, layout_hash: int, layout: Dictionary) -
 	last_floor_index = floor_index
 	print("[floor] applied the host's layout for floor %d — layout_hash %d on peer %d" % [
 		floor_index, layout_hash, local_peer_id])
+	floor_layout_ready.emit(applied)
 	return applied
 
 
@@ -638,6 +642,7 @@ func apply_floor_ready(seed: int, floor_index: int, biome_id: int, modifiers: Ar
 		FloorGeneratorSeam.source_of(layout), local_peer_id])
 	if not is_host:
 		GameState.apply_remote_floor(floor_index, biome_id, modifiers)
+	floor_layout_ready.emit(layout)
 	return layout
 
 

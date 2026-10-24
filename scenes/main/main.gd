@@ -291,6 +291,7 @@ func _start_from_options() -> void:
 func _on_solo() -> void:
 	menu.hide()
 	NetworkManager.start_solo()
+	_begin_dive()
 
 
 func _on_host() -> void:
@@ -298,6 +299,19 @@ func _on_host() -> void:
 	var err := NetworkManager.host(options.port if options != null else NetworkManager.DEFAULT_PORT)
 	if err != OK:
 		_show_menu_with_status("Could not host: %s" % error_string(err))
+	else:
+		_begin_dive()
+
+
+## Host and solo: starts a run straight into floor 1 (the town flow replaces this
+## once the walkable town spawns players). Skipped when a run already exists.
+func _begin_dive() -> void:
+	if GameState.run != null or not NetworkManager.is_host:
+		return
+	var party: Array = []
+	for peer_id: int in NetworkManager.peer_ids:
+		party.append(PlayerSpawnInfo.new(peer_id))
+	GameState.start_run(0, 1, party)
 
 
 func _on_join(ip: String) -> void:
