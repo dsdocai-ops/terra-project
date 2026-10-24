@@ -1,0 +1,17 @@
+[gd_resource type="Resource" script_class="AttackPattern" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/data/attack_pattern.gd" id="1_pat"]
+
+[resource]
+script = ExtResource("1_pat")
+id = &"wisp_fireball"
+kind = 2
+windup_seconds = 0.6
+active_seconds = 0.05
+recovery_seconds = 1.0
+telegraph_shape = 2
+telegraph_size = Vector2(220, 20)
+damage = 10
+knockback = 80
+speed = 190
+trigger_range = 220

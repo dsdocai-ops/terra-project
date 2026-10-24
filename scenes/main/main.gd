@@ -68,6 +68,7 @@ func _ready() -> void:
 	# registers its room populators at startup). Guarded in each module itself:
 	# a no-op that records its blocker once until the registry exists.
 	Rope.register_populator()
+	SpawnDirector.register_populators()
 	Shrine.register_populator()
 	Chest.register_populator()
 	Shopkeeper.register_populator()

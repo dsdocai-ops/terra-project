@@ -105,11 +105,32 @@ var is_local: bool:
 ## simulates nowhere: it cannot move, so no peer runs its states.
 var simulates: bool:
 	get:
-		return is_inside_tree() and not is_downed and (multiplayer.is_server() or is_local)
+		return is_inside_tree() and not is_downed and not is_dead and (multiplayer.is_server() or is_local)
 
 var dodge_charges: int = 1
 var dodge_distance_mult: float = 1.0
 var revive_speed_mult: float = 1.0
+
+## Combat state (combat-core, player-controller). `pending_attack` and
+## `pending_dodge_dir` are the hand-off from AttackController to the Attack and
+## Dodge states. Host-owned like the rest of the hit resolution.
+const BLEED_OUT_SECONDS: float = 30.0
+const PERFECT_DODGE_SECONDS: float = 0.5
+const MIN_DODGE_COOLDOWN: float = 0.1
+const REVIVE_IFRAME_SECONDS: float = 1.5
+var pending_attack: Dictionary = {}
+var pending_dodge_dir: Vector2 = Vector2.DOWN
+## Dead for the floor: no longer simulating, replicated so every copy greys out.
+var is_dead: bool = false:
+	set(value):
+		if value == is_dead:
+			return
+		is_dead = value
+		velocity = Vector2.ZERO
+		refresh_authority()
+		_apply_downed_tint()
+var bleed_out_left: float = 0.0
+var _perfect_window_left: float = 0.0
 
 ## Host-written pose, replicated by StateSync. Clients reconcile or
 ## interpolate toward it; nobody replicates `position` directly.
@@ -189,6 +210,11 @@ func _ready() -> void:
 	_apply_slot_color()
 	if health.has_signal(&"damaged"):
 		health.connect(&"damaged", _on_damaged)
+	if health.has_signal(&"died"):
+		health.connect(&"died", _on_died)
+	if hurtbox != null:
+		hurtbox.blocked_during_dodge.connect(_on_dodge_blocked)
+	revived.connect(_on_revived)
 
 
 ## Any damage grants the post-hit i-frames.
@@ -264,6 +290,8 @@ func refresh_authority() -> void:
 ## did the reviving, so it is emitted by the revive path (W3-B4b) instead.
 func _apply_downed_state() -> void:
 	refresh_authority()
+	velocity = Vector2.ZERO
+	_apply_downed_tint()
 	if is_downed:
 		downed.emit()
 
@@ -282,6 +310,7 @@ static func interpolation_mode_for(role: SyncRole) -> Node.PhysicsInterpolationM
 ## input and an already reconciled position.
 func _physics_process(delta: float) -> void:
 	advance_hit_iframes(delta)
+	_tick_combat_timers(delta)
 	if sync_role() == SyncRole.LOCAL_PREDICTS:
 		# `position` is the result of last tick's input. Correct it on the
 		# tick, before this tick's movement builds on it.
@@ -429,6 +458,108 @@ func _sibling_player_positions() -> Array[Vector2]:
 		if p != null:
 			positions.append(p.global_position)
 	return positions
+
+
+## Greys the sprite while downed or dead.
+func _apply_downed_tint() -> void:
+	if sprite == null:
+		return
+	if is_dead:
+		sprite.modulate = Color(0.3, 0.3, 0.3, 0.6)
+	elif is_downed:
+		sprite.modulate = Color(0.6, 0.6, 0.8, 0.8)
+	else:
+		sprite.modulate = Color.WHITE
+
+
+## Dodge, perfect-dodge and bleed-out timers, counted on the host and the
+## predicting owner alike (the dodge cooldown gates the owner's input).
+func _tick_combat_timers(delta: float) -> void:
+	_dodge_cooldown_left = maxf(_dodge_cooldown_left - delta, 0.0)
+	if _perfect_window_left > 0.0:
+		_perfect_window_left -= delta
+		if _perfect_window_left <= 0.0:
+			_perfect_dodge_window_open = false
+	if multiplayer.is_server() and is_downed and not is_dead:
+		bleed_out_left -= delta
+		if bleed_out_left <= 0.0:
+			_die()
+
+
+func can_dodge() -> bool:
+	return _dodge_cooldown_left <= 0.0 and not is_downed and not is_dead
+
+
+## Dodge state entry: starts the cooldown and the i-frames.
+func begin_dodge() -> void:
+	var cooldown: float = MIN_DODGE_COOLDOWN
+	var stats := stat_block as StatBlock
+	if stats != null:
+		cooldown = maxf(stats.get_value(StatBlock.Stat.DODGE_COOLDOWN), MIN_DODGE_COOLDOWN)
+	_dodge_cooldown_left = cooldown
+	if hurtbox != null:
+		hurtbox.invulnerable = true
+		hurtbox.dodge_invulnerable = true
+	dodge_started.emit(_perfect_dodge_window_open)
+
+
+## Dodge state exit.
+func end_dodge() -> void:
+	if hurtbox != null:
+		hurtbox.dodge_invulnerable = false
+		if hit_iframes_left <= 0.0:
+			hurtbox.invulnerable = false
+	dodge_finished.emit()
+
+
+## A hit landed on the dodge's i-frames and was avoided: the perfect-dodge
+## window opens (SPEC-player-controller). Host only; Hurtbox emits it there.
+func _on_dodge_blocked(_hit: HitInfo) -> void:
+	_perfect_dodge_window_open = true
+	_perfect_window_left = PERFECT_DODGE_SECONDS
+	Events.player_dodged.emit(self, true)
+
+
+## Host. Health hit zero: a teammate still standing means this player is downed
+## (revivable for 30 s); otherwise they die at once.
+func _on_died(_hit: HitInfo) -> void:
+	if not multiplayer.is_server():
+		return
+	if _teammate_standing():
+		bleed_out_left = BLEED_OUT_SECONDS
+		is_downed = true
+		Events.player_downed.emit(self)
+	else:
+		_die()
+
+
+func _teammate_standing() -> bool:
+	for other: Player in NetworkManager.players.values():
+		if other != self and is_instance_valid(other) and not other.is_downed and not other.is_dead:
+			return true
+	return false
+
+
+## Host. Dead for the floor.
+func _die() -> void:
+	is_downed = false
+	is_dead = true
+	Events.player_died.emit(self)
+
+
+## Back on their feet with 40% HP and a moment of grace (host; every peer
+## resets the state machine).
+func _on_revived(_by: Player) -> void:
+	bleed_out_left = 0.0
+	if state_machine != null:
+		state_machine.change_to(&"Idle")
+	if multiplayer.is_server():
+		var healthy := health as Health
+		if healthy != null:
+			healthy.revive(NetworkManager.revive_hp_for(healthy.max_hp))
+		hit_iframes_left = REVIVE_IFRAME_SECONDS
+		if hurtbox != null:
+			hurtbox.invulnerable = true
 
 
 func is_perfect_dodge_window() -> bool:

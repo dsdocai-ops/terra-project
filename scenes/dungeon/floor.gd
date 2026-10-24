@@ -117,6 +117,8 @@ func start_position() -> Vector2:
 
 ## Host. Closes or opens a room's doors here and on every client.
 func set_room_locked(room: Room, locked: bool) -> void:
+	if not is_inside_tree():
+		return
 	_apply_room_locked(room.spec.index, locked)
 	if multiplayer.is_server() and NetworkManager.is_active and multiplayer.get_peers().size() > 0:
 		_apply_room_locked.rpc(room.spec.index, locked)

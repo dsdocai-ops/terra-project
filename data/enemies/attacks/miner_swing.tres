@@ -1,0 +1,17 @@
+[gd_resource type="Resource" script_class="AttackPattern" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/data/attack_pattern.gd" id="1_pat"]
+
+[resource]
+script = ExtResource("1_pat")
+id = &"miner_swing"
+kind = 0
+windup_seconds = 0.55
+active_seconds = 0.15
+recovery_seconds = 0.7
+telegraph_shape = 1
+telegraph_size = Vector2(64, 90)
+damage = 12
+knockback = 140
+speed = 0
+trigger_range = 52

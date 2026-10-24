@@ -28,6 +28,7 @@ var enemies_alive: int = 0
 var floor_node: Floor = null
 
 var _tracked: Dictionary[int, bool] = {}
+var _label: Label = null
 
 
 func setup(p_spec: RoomSpec, p_floor: Floor) -> void:
@@ -38,12 +39,21 @@ func setup(p_spec: RoomSpec, p_floor: Floor) -> void:
 	position = Iso.to_screen(p_spec.anchor)
 	# A room that never locks has nothing to clear.
 	cleared = not p_spec.locks()
+	_label = Label.new()
+	_label.position = Vector2(-48.0, -56.0)
+	_label.add_theme_font_size_override(&"font_size", 10)
+	_label.z_index = 10
+	add_child(_label)
+	_refresh_label()
 
 
 func _physics_process(_delta: float) -> void:
+	_refresh_label()
 	if not multiplayer.is_server():
 		return
 	_scan_players()
+	if type == FloorGenerator.RoomType.EXIT:
+		_check_exit()
 
 
 ## True when the tile is inside the room, one tile in from the wall.
@@ -89,6 +99,8 @@ func track_enemy(enemy: Node) -> void:
 
 
 func _on_enemy_gone(id: int) -> void:
+	if not is_inside_tree():
+		return
 	if not _tracked.has(id):
 		return
 	_tracked.erase(id)
@@ -104,3 +116,31 @@ func _clear_if_empty() -> void:
 	floor_node.set_room_locked(self, false)
 	became_clear.emit(self)
 	Events.room_cleared.emit(self)
+
+
+## Tiles from the anchor within which a player takes the stairs down.
+const EXIT_RADIUS_TILES: float = 1.5
+
+
+## Host. Standing on the Exit room's anchor with the exit open goes down.
+func _check_exit() -> void:
+	if GameState.run == null or not GameState.can_advance_floor():
+		return
+	for player: Player in NetworkManager.players.values():
+		if not is_instance_valid(player) or player.is_downed or player.is_dead:
+			continue
+		var offset: Vector2i = Iso.to_tile(player.position) - spec.anchor
+		if Vector2(offset).length() <= EXIT_RADIUS_TILES:
+			GameState.next_floor()
+			return
+
+
+## Placeholder marker: the room type's name, with the exit's state.
+func _refresh_label() -> void:
+	if _label == null:
+		return
+	var text: String = FloorGenerator.RoomType.keys()[type].capitalize()
+	if type == FloorGenerator.RoomType.EXIT:
+		text += " (open)" if GameState.can_advance_floor() else " (sealed)"
+	if _label.text != text:
+		_label.text = text
