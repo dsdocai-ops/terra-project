@@ -53,6 +53,10 @@ func _ready() -> void:
 	add_child(menus)
 	menus.attach(self)
 	load_profile(SaveManager.profile if SaveManager.profile != null else PlayerProfile.defaults())
+	# The return-to-town beat (W6-B3, PLAN G7): the town announces every load to
+	# the story; after the Foreman fell this is where the miners turn possessed.
+	# Idempotent on StoryManager's side, so a re-loaded town cannot re-set them.
+	StoryManager.on_town_entered()
 
 
 func buildings() -> Array[Building]:

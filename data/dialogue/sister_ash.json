@@ -75,7 +75,7 @@
 		},
 		{
 			"id": "act_2_stub",
-			"priority": 20,
+			"priority": 8,
 			"conditions": { "act_min": 2 },
 			"lines": [
 				{ "speaker": "Sister Ash", "text": "The echoes in this shrine have started to arrive before the words that cause them. Sit with that a while.", "emotion": "distant" }

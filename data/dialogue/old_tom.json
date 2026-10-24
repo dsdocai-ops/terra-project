@@ -75,7 +75,7 @@
 		},
 		{
 			"id": "act_2_stub",
-			"priority": 20,
+			"priority": 8,
 			"conditions": { "act_min": 2 },
 			"lines": [
 				{ "speaker": "Old Tom", "text": "I caught myself talking in my sleep in the old surveyors' code. Haven't used that since the fifth level closed.", "emotion": "worried" }

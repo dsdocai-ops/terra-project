@@ -71,6 +71,11 @@ func _ready() -> void:
 	# The profile may finish loading after we do, depending on autoload order;
 	# whichever way it goes, the persistent flags are restored exactly once.
 	SaveManager.loaded.connect(_restore_persistent_flags)
+	# SPEC-story-dialogue: "Act transitions set flags on biome boss kills
+	# (`boss_defeated` listener)". The listener lives here, on the story side of
+	# the bosses dependency, so a boss death moves the story without bosses
+	# knowing StoryManager exists.
+	Events.boss_defeated.connect(_on_boss_defeated)
 
 
 func has_flag(flag: StringName) -> bool:
@@ -142,6 +147,44 @@ func act() -> int:
 	if not _flags.has(ACT_2_GATE):
 		return 2
 	return 3
+
+
+# --- Act 1 progression hooks (W6-B3, PLAN G7) --------------------------------
+
+## The boss id the Biome 1 boss, The Foreman, carries (SPEC-bosses: bosses live
+## at `data/bosses/<id>.tres`, and the week-6 Biome 1 pair is Boomer Jack and
+## The Foreman). The bosses module is Dev A's and lands later; the listener
+## below matches on this id so the story side is done before the fight is.
+const FOREMAN_BOSS_ID: StringName = &"foreman"
+
+
+## The `boss_defeated` listener. The Foreman's fall is the act 1 gate: it sets
+## `story.foreman_defeated` (persists — the town's dialogue, Brann and the pit
+## all follow) and `boss.foreman`, the per-run reaction twin flags.json declares
+## for in-run dialogue about the fight just fought. Every other boss id is
+## another week's story and sets nothing here.
+##
+## Sync: host only — `boss_defeated` is a gameplay signal emitted where the
+## fight runs (SPEC-bosses), and `set_flag` is the host-authoritative store.
+func _on_boss_defeated(boss_id: StringName) -> void:
+	if boss_id != FOREMAN_BOSS_ID:
+		return
+	set_flag(&"boss.foreman")
+	set_flag(ACT_1_GATE)
+
+
+## The return-to-town beat (PLAN G7): when town loads after the Foreman fell,
+## the miners walk back up possessed and the pit starts calling. Idempotent, so
+## the town can announce every load — the flags land exactly once.
+##
+## Sync: called from the host's town (`town.gd`), the same per-instance store
+## `set_flag` writes; flags are per player, and on a co-op client this is the
+## local player's own progression.
+func on_town_entered() -> void:
+	if not has_flag(ACT_1_GATE):
+		return
+	set_flag(&"story.miners_possessed")
+	set_flag(&"story.pit_calls")
 
 
 func unlock_lore(page_id: StringName) -> void:

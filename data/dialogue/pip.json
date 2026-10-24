@@ -63,7 +63,7 @@
 		},
 		{
 			"id": "act_2_stub",
-			"priority": 20,
+			"priority": 8,
 			"conditions": { "act_min": 2 },
 			"lines": [
 				{ "speaker": "Pip", "text": "I have started drawing floors nobody has descended yet. I do not know where the habit came from.", "emotion": "distant" }

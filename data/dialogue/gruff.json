@@ -84,7 +84,7 @@
 		},
 		{
 			"id": "act_2_stub",
-			"priority": 20,
+			"priority": 8,
 			"conditions": { "act_min": 2 },
 			"lines": [
 				{ "speaker": "Gruff", "text": "The ore that comes up now sings when I quench it. Don't ask what that means. I don't know yet.", "emotion": "grim" }

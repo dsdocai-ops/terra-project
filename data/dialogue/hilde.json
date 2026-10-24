@@ -64,7 +64,7 @@
 		},
 		{
 			"id": "act_2_stub",
-			"priority": 20,
+			"priority": 8,
 			"conditions": { "act_min": 2 },
 			"lines": [
 				{ "speaker": "Mayor Hilde", "text": "The deep shafts have opened wider since your last descent.", "emotion": "worried" }

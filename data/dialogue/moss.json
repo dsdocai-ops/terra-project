@@ -63,7 +63,7 @@
 		},
 		{
 			"id": "act_2_stub",
-			"priority": 20,
+			"priority": 8,
 			"conditions": { "act_min": 2 },
 			"lines": [
 				{ "speaker": "Moss", "text": "My reagents are curdling on the shelf, and no, that is not a figure of speech.", "emotion": "worried" }

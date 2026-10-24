@@ -92,7 +92,7 @@
 		},
 		{
 			"id": "act_2_stub",
-			"priority": 20,
+			"priority": 8,
 			"conditions": { "act_min": 2 },
 			"lines": [
 				{ "speaker": "Vesper", "text": "I've begun recording the lamps I can't see. The list is longer than the one I can. Draw your own conclusions, warden — I refuse to draw mine.", "emotion": "distant" }

@@ -75,7 +75,7 @@
 		},
 		{
 			"id": "act_2_stub",
-			"priority": 20,
+			"priority": 8,
 			"conditions": { "act_min": 2 },
 			"lines": [
 				{ "speaker": "Rescued Miner", "text": "I keep a slate by my bed now. Every morning I tally the same nine measures, three slabs, and a lie. It keeps the counting from being done for me.", "emotion": "resolute" }
