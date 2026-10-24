@@ -137,8 +137,11 @@ func break_it(attacker: Player = null) -> int:
 			"rarity": LootTable.RARITY_NONE,
 			"amount": rng.randi_range(amount_range.x, amount_range.y),
 		}
-		paid = int(drop.get("amount", 0))
 		LootDrops.credit(run, attacker, drop)
+		# Read after the credit: `credit` scales the drop by the live biome
+		# (W6-B5, goal G8), and `paid` is what the crate announces and returns —
+		# the scaled number, not the roll's.
+		paid = int(drop.get("amount", 0))
 		LootDrops.spawn_drop(drop, global_position, attacker, spawner)
 	broke.emit(peer_id_of(attacker), paid)
 	return paid

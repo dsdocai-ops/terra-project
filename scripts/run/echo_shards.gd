@@ -1,8 +1,8 @@
 class_name EchoShards
 extends RefCounted
-## The Echo Shard payout table and its three multipliers — the whole of "Echo
+## The Echo Shard payout table and its four multipliers — the whole of "Echo
 ## Shards" in SPEC-run-economy's currency table. Owned by run-economy (W4-B8,
-## goal G14).
+## goal G14; the depth factor is W6-B5, goal G8).
 ##
 ## SPEC-run-economy, "Currencies": "Echo Shards | 1 per floor cleared (2 in
 ## biomes 4 to 6), 1 to 2 per elite, 10 per mini-boss, 20 per biome boss,
@@ -15,15 +15,18 @@ extends RefCounted
 ## player's own `RunPlayerState.echo_shards_earned` — never `RunState.shared_gold`
 ## or `shared_ore`.
 ##
-## **The three multipliers multiply.** The spec lists them with commas and says
+## **The multipliers multiply.** The spec lists them with commas and says
 ## "multipliers", and the alternative reading (a sum of bonuses) would make a
 ## build's income fall as it stacked more of them; so
-## `amount = base x (1 + Collector) x (1 + Resonance) x Heat`, rounded once at
-## the end, in the spec's own order. The order does not change a product — it is
-## stated so the reading is pinned rather than incidental, and a case asserts the
-## product against the additive alternative.
+## `amount = base x (1 + Collector) x (1 + Resonance) x Heat x Depth`, rounded
+## once at the end, in the spec's own order plus the depth curve's. The order
+## does not change a product — it is stated so the reading is pinned rather than
+## incidental, and a case asserts the product against the additive alternative.
+## Depth is the fourth factor (W6-B5, goal G8): `CurrencyScaler`'s echo curve on
+## the live run's biome, applied in `award()` where the run is at hand, never
+## folded into the per-player factors above it.
 ##
-## **Two of the three multipliers are other modules' and arrive as arguments.**
+## **Three of the four multipliers are other modules' and arrive as arguments.**
 ## Echo Collector is a relic (`ECHO_COLLECTOR_ID`, read off the holder's
 ## `EffectHost` the way every cross-module relic read in this lane is — an id,
 ## never a class and never a player flag). Echo Resonance is a rank in the Abyss
@@ -66,6 +69,9 @@ const ECHO_RESONANCE_PER_RANK: float = 0.10
 ## The Heat multiplier a run without a Heat level carries (SPEC-endgame's ten
 ## stackable modifiers are week 11's).
 const NO_HEAT_MULTIPLIER: float = 1.0
+## The biome depth multiplier a call without a run's biome carries: the flat
+## spec tables, unscaled. `award()` always passes the live run's curve.
+const NO_DEPTH_MULTIPLIER: float = 1.0
 
 ## The currency id every echo payout is announced under,
 ## `Events.currency_gained(player, currency, amount)`.
@@ -133,21 +139,25 @@ static func resonance_bonus(resonance_ranks: int) -> float:
 	return ECHO_RESONANCE_PER_RANK * float(maxi(resonance_ranks, 0))
 
 
-## The whole multiplier for `player`: the three factors multiplied, in the
-## spec's own order (Echo Collector, Echo Resonance, Heat). `heat_multiplier` is
-## clamped at zero so a caller cannot hand back a negative payout.
+## The whole multiplier for `player`: the four factors multiplied, in the
+## spec's own order (Echo Collector, Echo Resonance, Heat) and then the biome
+## depth curve's (W6-B5, goal G8). `heat_multiplier` is clamped at zero so a
+## caller cannot hand back a negative payout; `depth_multiplier` is clamped the
+## same way, though `CurrencyScaler`'s own curve never dips below 1.0.
 static func multiplier_for(
 	player: Player,
 	resonance_ranks: int = 0,
 	heat_multiplier: float = NO_HEAT_MULTIPLIER,
+	depth_multiplier: float = NO_DEPTH_MULTIPLIER,
 ) -> float:
 	var collector: float = 1.0 + collector_bonus(player)
 	var resonance: float = 1.0 + resonance_bonus(resonance_ranks)
 	var heat: float = maxf(heat_multiplier, 0.0)
-	return collector * resonance * heat
+	var depth: float = maxf(depth_multiplier, 0.0)
+	return collector * resonance * heat * depth
 
 
-## `base` shards for `player`, with all three multipliers applied and the result
+## `base` shards for `player`, with all four multipliers applied and the result
 ## rounded once. The one place a payout amount is computed, so every caller
 ## pays the same number.
 static func amount_for(
@@ -155,8 +165,9 @@ static func amount_for(
 	player: Player,
 	resonance_ranks: int = 0,
 	heat_multiplier: float = NO_HEAT_MULTIPLIER,
+	depth_multiplier: float = NO_DEPTH_MULTIPLIER,
 ) -> int:
-	return maxi(roundi(float(base) * multiplier_for(player, resonance_ranks, heat_multiplier)), 0)
+	return maxi(roundi(float(base) * multiplier_for(player, resonance_ranks, heat_multiplier, depth_multiplier)), 0)
 
 
 # --- the award --------------------------------------------------------------
@@ -170,7 +181,10 @@ static func amount_for(
 ##
 ## The announcement is what the HUD's currency row and the effect overlay listen
 ## to; the write is the run's own record and what `RunResult` reads at the end of
-## the run.
+## the run. The base pays through the live run's biome depth curve
+## (`CurrencyScaler`, W6-B5, goal G8), so the same elite pays more the deeper
+## the run stands — and a floor-clear payout would pay through this one seam
+## too, when its caller lands.
 static func award(
 	run: RunState,
 	player: Player,
@@ -187,7 +201,10 @@ static func award(
 	if slice == null:
 		push_warning("[echo] peer %d is not in this run; its payout is dropped" % player.peer_id)
 		return 0
-	var paid: int = amount_for(base, player, resonance_ranks, heat_multiplier)
+	var paid: int = amount_for(
+		base, player, resonance_ranks, heat_multiplier,
+		CurrencyScaler.multiplier_for(CurrencyScaler.ECHO_ID, run.biome_index),
+	)
 	if paid <= 0:
 		return 0
 	slice.echo_shards_earned += paid

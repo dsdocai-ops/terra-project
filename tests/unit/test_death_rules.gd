@@ -259,3 +259,38 @@ func test_end_run_populates_the_tables_through_game_state() -> void:
 	assert_eq(_end_results[0].kept[1][&"gold"], 20, "25% of 80")
 	assert_eq(_end_results[0].lost[1][&"gold"], 60)
 	assert_eq(_end_results[0].kept[1][&"echo_shards"], 4)
+
+
+# --- depth-scaled pools (W6-B5, goal G8) ------------------------------------
+
+
+## A pool a deep biome scaled up settles by the same table: the split runs on
+## the scaled totals, the keep rules on each share, and the remainder rule
+## still guards every coin. The pool is built the way the run builds it — a
+## drop table's base amount through `CurrencyScaler` on the live biome.
+func test_a_depth_scaled_pool_settles_by_the_same_table() -> void:
+	var run: RunState = _run([1, 2])
+	run.floor_index = 26  # biome 6
+	var ore_id: StringName = OrePayout.id_for_biome(run.biome_index)
+	run.shared_gold = CurrencyScaler.amount_for(CurrencyScaler.GOLD_ID, 100, run.biome_index)  # 150
+	run.shared_ore[ore_id] = CurrencyScaler.amount_for(CurrencyScaler.ORE_ID, 10, run.biome_index)  # 13
+	var result: RunResult = _settle(RunEndReason.Reason.DEFEAT, run)
+	assert_eq(run.shared_gold, 150, "100 gold through x1.5")
+	# 150 splits 75/75; the death table keeps 25% of each share: 18 each.
+	assert_eq(result.kept[1][&"gold"], 18)
+	assert_eq(result.kept[2][&"gold"], 18)
+	assert_eq(result.kept[1][&"gold"] + result.kept[2][&"gold"]
+		+ result.lost[1][&"gold"] + result.lost[2][&"gold"], 150,
+		"the scaled total survives the death rule, coin for coin")
+	# 13 ore splits 7 + 6 (remainder to the first peer); no Ore Heart, so all lost.
+	assert_eq(int(result.lost[1][&"ore"][ore_id]), 7)
+	assert_eq(int(result.lost[2][&"ore"][ore_id]), 6)
+
+
+func test_a_depth_scaled_pool_still_splits_evenly_on_extract() -> void:
+	var run: RunState = _run([1, 2, 3])
+	run.floor_index = 16  # biome 4
+	run.shared_gold = CurrencyScaler.amount_for(CurrencyScaler.GOLD_ID, 100, run.biome_index)  # 120
+	var result: RunResult = _settle(RunEndReason.Reason.EXTRACT, run)
+	for peer_id: int in [1, 2, 3]:
+		assert_eq(result.kept[peer_id][&"gold"], 40, "120 between 3 players is 40 each")
