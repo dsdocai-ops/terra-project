@@ -45,6 +45,15 @@ func _slice() -> RunPlayerState:
 	return GameState.run.get_player(PEER_ID)
 
 
+## Sets the fill through Health (the HP authority once the player has one) and
+## the mirrored StatBlock ratio.
+func _set_hp_ratio(ratio: float) -> void:
+	var health: Health = _player.get_node(^"Health") as Health
+	_block().set_base(StatBlock.Stat.MAX_HP, 100.0)
+	health.current_hp = roundi(ratio * float(health.max_hp))
+	_block().current_hp_ratio = float(health.current_hp) / float(health.max_hp)
+
+
 func _block() -> StatBlock:
 	return _player.get_node(^"StatBlock") as StatBlock
 
@@ -119,7 +128,7 @@ func test_use_with_an_empty_belt_does_nothing() -> void:
 
 
 func test_heal_restores_thirty_five_percent_and_consumes_the_potion() -> void:
-	_block().current_hp_ratio = 0.5
+	_set_hp_ratio(0.5)
 	_slice().potions = [&"heal"]
 	assert_eq(_controller.use(), &"heal")
 	assert_almost_eq(_block().current_hp_ratio, 0.85, 0.0001)
@@ -128,14 +137,14 @@ func test_heal_restores_thirty_five_percent_and_consumes_the_potion() -> void:
 
 
 func test_heal_never_overfills() -> void:
-	_block().current_hp_ratio = 0.9
+	_set_hp_ratio(0.9)
 	_slice().potions = [&"heal"]
 	_controller.use()
 	assert_almost_eq(_block().current_hp_ratio, 1.0, 0.0001)
 
 
 func test_mastery_raises_the_heal() -> void:
-	_block().current_hp_ratio = 0.0
+	_set_hp_ratio(0.0)
 	_controller.mastery_rank = 1
 	_slice().potions = [&"heal"]
 	_controller.use()
