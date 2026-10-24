@@ -4,8 +4,12 @@
 [ext_resource type="SpriteFrames" uid="uid://bxb0swmmkrfpo" path="res://assets/sprites/player/placeholder_frames.tres" id="2_frames"]
 [ext_resource type="Script" uid="uid://bjea7scc16d1c" path="res://scripts/components/state_machine.gd" id="3_machine"]
 [ext_resource type="Script" uid="uid://dqr7re3q06tjd" path="res://scenes/player/states/idle.gd" id="4_idle"]
+[ext_resource type="Script" path="res://scenes/player/states/hit_stun.gd" id="10_hitstun"]
 [ext_resource type="Script" uid="uid://t750fwxr173v" path="res://scenes/player/states/move.gd" id="5_move"]
 [ext_resource type="Script" uid="uid://bx8myavf68dko" path="res://scenes/player/slot_ring.gd" id="6_ring"]
+[ext_resource type="Script" uid="uid://cqgxkxygbnd77" path="res://scripts/components/stat_block.gd" id="9_stats"]
+[ext_resource type="Script" path="res://scripts/components/health.gd" id="7_health"]
+[ext_resource type="Script" path="res://scripts/components/hurtbox.gd" id="8_hurtbox"]
 
 [sub_resource type="SceneReplicationConfig" id="SceneReplicationConfig_input"]
 properties/0/path = NodePath(".:move_input")
@@ -41,6 +45,9 @@ properties/5/replication_mode = 2
 [sub_resource type="CircleShape2D" id="CircleShape2D_body"]
 radius = 8.0
 
+[sub_resource type="CircleShape2D" id="CircleShape2D_hurt"]
+radius = 8.0
+
 [sub_resource type="CircleShape2D" id="CircleShape2D_interact"]
 radius = 40.0
 
@@ -54,10 +61,16 @@ script = ExtResource("1_player")
 shape = SubResource("CircleShape2D_body")
 
 [node name="StatBlock" type="Node" parent="."]
+script = ExtResource("9_stats")
 
 [node name="Health" type="Node" parent="."]
+script = ExtResource("7_health")
 
 [node name="Hurtbox" type="Area2D" parent="."]
+script = ExtResource("8_hurtbox")
+
+[node name="HurtShape" type="CollisionShape2D" parent="Hurtbox"]
+shape = SubResource("CircleShape2D_hurt")
 
 [node name="StatusEffects" type="Node" parent="."]
 
@@ -70,6 +83,9 @@ script = ExtResource("4_idle")
 
 [node name="Move" type="Node" parent="StateMachine"]
 script = ExtResource("5_move")
+
+[node name="HitStun" type="Node" parent="StateMachine"]
+script = ExtResource("10_hitstun")
 
 [node name="SlotRing" type="Node2D" parent="."]
 script = ExtResource("6_ring")

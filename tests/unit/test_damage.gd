@@ -183,8 +183,8 @@ func _statuses_of(block: StatBlock) -> StatusEffects:
 	return entity.get_node_or_null(STATUS_NODE) as StatusEffects
 
 
-func _hit(hit: Dictionary = {}) -> HitData:
-	var out := HitData.new()
+func _hit(hit: Dictionary = {}) -> HitInfo:
+	var out := HitInfo.new()
 	if hit.has("base_damage"):
 		out.base_damage = float(hit["base_damage"])
 	if hit.has("multiplier"):
@@ -219,7 +219,7 @@ func _json_target(row: Dictionary) -> StatBlock:
 	return _status_target(base, statuses)
 
 
-func _json_hit(data: Variant) -> HitData:
+func _json_hit(data: Variant) -> HitInfo:
 	var hit := _hit(data)
 	hit.base_damage = float((data as Dictionary).get("base_damage", 0.0))
 	hit.multiplier = float((data as Dictionary).get("multiplier", 1.0))

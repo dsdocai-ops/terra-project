@@ -20,7 +20,7 @@ extends EffectSpawnerSpy
 ##
 ## Sync: none — a test double. The sealed cracks it stands in for are host-only.
 
-## Every hit delivered to a `SpyHurtbox`, in order: `{target: Node, hit: HitData}`.
+## Every hit delivered to a `SpyHurtbox`, in order: `{target: Node, hit: HitInfo}`.
 ## Recorded in delivery order, so a case can assert the *nth* hit as well as the
 ## total.
 var damage_calls: Array[Dictionary] = []
@@ -32,7 +32,7 @@ var announce_hits: bool = false
 
 
 ## Records one landed hit. Called by `SpyHurtbox.receive()`; nothing else.
-func note_damage(target: Node, hit: HitData) -> void:
+func note_damage(target: Node, hit: HitInfo) -> void:
 	damage_calls.append({"target": target, "hit": hit})
 
 
@@ -66,11 +66,11 @@ func damage_count(target: Node = null) -> int:
 
 
 ## Every hit that landed on `target`, in delivery order.
-func damage_hits(target: Node) -> Array[HitData]:
-	var found: Array[HitData] = []
+func damage_hits(target: Node) -> Array[HitInfo]:
+	var found: Array[HitInfo] = []
 	for entry: Dictionary in damage_calls:
 		if entry["target"] == target:
-			found.append(entry["hit"] as HitData)
+			found.append(entry["hit"] as HitInfo)
 	return found
 
 
@@ -80,6 +80,6 @@ func damage_hits(target: Node) -> Array[HitData]:
 ## without needing Dev A's formula.
 func damage_total(target: Node) -> float:
 	var total: float = 0.0
-	for hit: HitData in damage_hits(target):
+	for hit: HitInfo in damage_hits(target):
 		total += hit.base_damage
 	return total

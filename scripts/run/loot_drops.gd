@@ -98,7 +98,7 @@ func _can_roll() -> bool:
 ## enemy's, not the killer's, so the shared pools move and only the announcement
 ## — which names a player — is skipped. A per-player drop with no killer pays
 ## nobody, because there is nobody to pay.
-func on_enemy_killed(enemy: Node, hit: HitData) -> bool:
+func on_enemy_killed(enemy: Node, hit: HitInfo) -> bool:
 	if not _can_roll():
 		return false
 	var run: RunState = GameState.run
@@ -124,7 +124,7 @@ func on_enemy_killed(enemy: Node, hit: HitData) -> bool:
 ## The table's own drops are deliberately **not** rolled here: the game announces
 ## an elite's death on `enemy_killed` too, and rolling in both places would pay
 ## the table twice.
-func on_elite_killed(enemy: Node, hit: HitData) -> bool:
+func on_elite_killed(enemy: Node, hit: HitInfo) -> bool:
 	if not _can_roll():
 		return false
 	var run: RunState = GameState.run
@@ -155,7 +155,7 @@ func loot_table_of(enemy: Node) -> LootTable:
 
 ## The player a kill is attributed to, or null for a hazard kill. `hit` may be
 ## null on a payload that never reached a player (SPEC-effect-system).
-func killer_of(hit: HitData) -> Player:
+func killer_of(hit: HitInfo) -> Player:
 	if hit == null:
 		return null
 	return hit.owner_player

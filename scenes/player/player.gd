@@ -152,13 +152,26 @@ var _last_reconciled_tick: int = -1
 
 var _perfect_dodge_window_open: bool = false
 var _dodge_cooldown_left: float = 0.0
+
+## Hit reactions (SPEC-combat-core, "Hit reactions"). `hit_stun_left` runs the
+## HitStun state; the knockback velocity decays to zero over
+## KNOCKBACK_DECAY_SECONDS; `hit_iframes_left` is the post-hit i-frame timer.
+## Host-owned, like the rest of the hit resolution. Sync: StateSync carries
+## the resulting position.
+const KNOCKBACK_DECAY_SECONDS: float = 0.2
+const HIT_IFRAMES_SECONDS: float = 0.4
+var hit_stun_left: float = 0.0
+var knockback_velocity: Vector2 = Vector2.ZERO
+var hit_iframes_left: float = 0.0
+var _knockback_decel: float = 0.0
 ## Animation names already reported missing, so a bad name warns once.
 var _missing_anims: Dictionary[StringName, bool] = {}
 
 ## Components. Typed to their real classes as each module lands.
 ## TODO(stats-status): stat_block -> StatBlock, status_effects -> StatusEffects
-## TODO(combat-core): health -> Health, hurtbox -> Hurtbox
 @onready var stat_block: Node = $StatBlock
+## Health and Hurtbox stay duck-typed: the effect and status tests build
+## players around recording doubles with the same method names.
 @onready var health: Node = $Health
 @onready var hurtbox: Area2D = $Hurtbox
 @onready var status_effects: Node = $StatusEffects
@@ -174,6 +187,49 @@ var _missing_anims: Dictionary[StringName, bool] = {}
 func _ready() -> void:
 	refresh_authority()
 	_apply_slot_color()
+	if health.has_signal(&"damaged"):
+		health.connect(&"damaged", _on_damaged)
+
+
+## Any damage grants the post-hit i-frames.
+func _on_damaged(_hit: HitInfo) -> void:
+	start_hit_iframes()
+
+
+## Hurtbox calls this on the host when a hit connects: HitStun for
+## `stun_seconds`, with `impulse` as the starting knockback velocity. Ignored
+## while downed. A hit during HitStun restarts the stun instead of re-entering.
+func apply_knockback(impulse: Vector2, stun_seconds: float) -> void:
+	if is_downed or state_machine == null:
+		return
+	hit_stun_left = stun_seconds
+	knockback_velocity = impulse
+	_knockback_decel = impulse.length() / KNOCKBACK_DECAY_SECONDS
+	state_machine.change_to(&"HitStun")
+
+
+## Shrinks the knockback velocity toward zero at a constant rate. Called by
+## the HitStun state each physics tick.
+func decay_knockback(delta: float) -> void:
+	knockback_velocity = knockback_velocity.move_toward(Vector2.ZERO, _knockback_decel * delta)
+
+
+## Starts the 0.4 s post-hit i-frames. The hurtbox ignores hits until they end.
+func start_hit_iframes() -> void:
+	hit_iframes_left = HIT_IFRAMES_SECONDS
+	if hurtbox != null:
+		hurtbox.invulnerable = true
+
+
+## Counts the i-frame timer down and drops invulnerability when it ends.
+func advance_hit_iframes(delta: float) -> void:
+	if hit_iframes_left <= 0.0:
+		return
+	hit_iframes_left -= delta
+	if hit_iframes_left <= 0.0:
+		hit_iframes_left = 0.0
+		if hurtbox != null:
+			hurtbox.invulnerable = false
 
 
 static func slot_color(for_slot: int) -> Color:
@@ -225,6 +281,7 @@ static func interpolation_mode_for(role: SyncRole) -> Node.PhysicsInterpolationM
 ## Runs before the StateMachine child steps, so states see this tick's
 ## input and an already reconciled position.
 func _physics_process(delta: float) -> void:
+	advance_hit_iframes(delta)
 	if sync_role() == SyncRole.LOCAL_PREDICTS:
 		# `position` is the result of last tick's input. Correct it on the
 		# tick, before this tick's movement builds on it.

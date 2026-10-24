@@ -60,10 +60,10 @@ const DISPATCH_METHODS: Array[StringName] = [
 ## already been dealt by whoever emitted it, so damage still lands.
 const MAX_PROC_DEPTH: int = 3
 ## The class an event's argument must be to count as "the hit this event is
-## about". `HitData` is this repo's payload (stats-status); `HitInfo` is the
+## about". `HitInfo` is this repo's payload (stats-status); `HitInfo` is the
 ## combat-core name SPEC-effect-system's table uses, accepted here already so
 ## the swap-in is a type rename and not a second list to keep in step.
-const HIT_CLASSES: Array[String] = ["HitData", "HitInfo"]
+const HIT_CLASSES: Array[String] = ["HitInfo", "HitInfo"]
 
 ## The player this effect belongs to. Set by `attach()`.
 var player: Player = null
@@ -403,7 +403,7 @@ func apply_status(target: Node, status: StatusEffects.Status, stacks: int = 1) -
 ## An effect that would otherwise re-trigger on its own damage appends
 ## `source_id()` there as well, which is what the wrapper's rule-2 check
 ## (`_is_own_hit()`) matches on.
-func deal_damage(target: Node, hit: HitData) -> void:
+func deal_damage(target: Node, hit: HitInfo) -> void:
 	if target == null or hit == null:
 		push_warning("[effect] %s: deal_damage() needs a target and a hit" % source_id())
 		return
@@ -727,7 +727,7 @@ func _is_own_hit(values: Array) -> bool:
 	var id: StringName = source_id()
 	if id == &"":
 		return false
-	for hit: HitData in _event_hits(values):
+	for hit: HitInfo in _event_hits(values):
 		if hit.tags.has(id):
 			return true
 	return false
@@ -739,7 +739,7 @@ func _is_own_hit(values: Array) -> bool:
 ## which is what keeps a dodge or a room entry out of the depth rules.
 func _event_proc_depth(values: Array) -> int:
 	var depth: int = 0
-	for hit: HitData in _event_hits(values):
+	for hit: HitInfo in _event_hits(values):
 		depth = maxi(depth, hit.proc_depth)
 	return depth
 
@@ -747,11 +747,11 @@ func _event_proc_depth(values: Array) -> int:
 ## Every hit payload among `values`, in argument order. Both rules that read an
 ## event's hit — the self-retrigger check and the depth gate — go through here,
 ## so "what counts as a hit" is one decision rather than two that can drift.
-func _event_hits(values: Array) -> Array[HitData]:
-	var hits: Array[HitData] = []
+func _event_hits(values: Array) -> Array[HitInfo]:
+	var hits: Array[HitInfo] = []
 	for value: Variant in values:
-		if value is HitData:
-			hits.append(value as HitData)
+		if value is HitInfo:
+			hits.append(value as HitInfo)
 	return hits
 
 

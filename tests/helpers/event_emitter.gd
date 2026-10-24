@@ -388,8 +388,8 @@ func _relic() -> RelicData:
 	return relic
 
 
-func _hit() -> HitData:
-	var hit: HitData = HitData.new()
+func _hit() -> HitInfo:
+	var hit: HitInfo = HitInfo.new()
 	hit.base_damage = FAKE_HIT_BASE_DAMAGE
 	hit.tags = [&"emitter"] as Array[StringName]
 	return hit

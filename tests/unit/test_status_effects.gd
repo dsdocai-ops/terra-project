@@ -412,7 +412,7 @@ func test_burn_ticks_damage_through_health_in_proportion_to_stacks() -> void:
 	var dealt := float(_health.total_damage())
 	assert_between(dealt, BURN_5_STACK_DPS * (1.0 - DPS_TOLERANCE), BURN_5_STACK_DPS * (1.0 + DPS_TOLERANCE),
 		"5 stacks of BURN on 100 HP deal 20 damage a second")
-	assert_eq(_health.last_element(), HitData.Element.FIRE, "the tick is tagged with the status's element")
+	assert_eq(_health.last_element(), HitInfo.Element.FIRE, "the tick is tagged with the status's element")
 	assert_true(_health.hits[_health.hit_count() - 1].tags.has(StatusEffects.STATUS_TAG),
 		"and marked as a status tick rather than a connecting hit")
 
@@ -703,7 +703,7 @@ func test_shock_chains_thirty_percent_of_the_trigger_damage_to_the_nearest_two_i
 	assert_eq(third.health.total_damage(), 0, "a third enemy inside the radius is past the two-target cap")
 	assert_eq(far.health.total_damage(), 0, "300 px away is outside the 96 px radius")
 	assert_eq(_health.total_damage(), 0, "the entity that carries the shock never chains to itself")
-	assert_eq(nearest.health.last_element(), HitData.Element.STORM, "the chain carries the Storm element")
+	assert_eq(nearest.health.last_element(), HitInfo.Element.STORM, "the chain carries the Storm element")
 	assert_true(nearest.health.hits[0].tags.has(StatusEffects.STATUS_TAG),
 		"and is marked as a status result rather than a connecting hit")
 
@@ -842,12 +842,12 @@ func test_damage_compute_reads_the_targets_unravel_multiplier() -> void:
 	# fixture in this file is. (The suite used to report it as its one orphan.)
 	var attacker: StatBlock = autofree(StatBlock.new())
 	attacker.base = {StatBlock.Stat.ATTACK: 100.0}
-	var plain := HitData.new()
+	var plain := HitInfo.new()
 	plain.base_damage = 100.0
 	assert_eq(Damage.compute(attacker, _block, plain, null, null), 100,
 		"a target with no UNRAVEL takes the raw damage")
 	_status.apply_status(StatusEffects.Status.UNRAVEL, 3)
-	var unravelled := HitData.new()
+	var unravelled := HitInfo.new()
 	unravelled.base_damage = 100.0
 	assert_eq(Damage.compute(attacker, _block, unravelled, null, _status), 130,
 		"three stacks take 30 % more, folded into status_mult")

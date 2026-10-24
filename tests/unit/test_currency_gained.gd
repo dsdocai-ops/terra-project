@@ -94,18 +94,18 @@ func _table(kind: StringName, amount: int, id: StringName = &"") -> LootTable:
 ## A hit whose killer is this test's player, as `hit_landed` / `enemy_killed`
 ## carry one (SPEC-effect-system's `enemy_killed(enemy, hit)`, with
 ## `hit.owner_player` "the killer, may be null (hazard)").
-func _hit() -> HitData:
+func _hit() -> HitInfo:
 	return _hit_by(_player)
 
 
 ## The same payload with no killer at all: a hazard death, which
 ## `hit.owner_player` describes as "may be null".
-func _hazard_hit() -> HitData:
+func _hazard_hit() -> HitInfo:
 	return _hit_by(null)
 
 
-func _hit_by(killer: Player) -> HitData:
-	var hit := HitData.new()
+func _hit_by(killer: Player) -> HitInfo:
+	var hit := HitInfo.new()
 	hit.base_damage = 10.0
 	hit.owner_player = killer
 	return hit

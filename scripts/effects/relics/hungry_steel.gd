@@ -75,7 +75,7 @@ func damage_multiplier_for(enemy: Node) -> float:
 
 ## One of this player's own hits: deepen that enemy's count and deal the extra
 ## the new count has earned.
-func _on_hit_landed(hit: HitData) -> void:
+func _on_hit_landed(hit: HitInfo) -> void:
 	if not _is_my_hit(hit):
 		return
 	var enemy: Node = hit.target
@@ -90,8 +90,8 @@ func _on_hit_landed(hit: HitData) -> void:
 ## the fraction that enemy's count has earned. A fresh payload rather than the
 ## triggering hit — that one has already been computed, applied and announced,
 ## and this is a second, smaller blow.
-func _rider_for(hit: HitData, count: int) -> HitData:
-	var rider := HitData.new()
+func _rider_for(hit: HitInfo, count: int) -> HitInfo:
+	var rider := HitInfo.new()
 	rider.base_damage = hit.base_damage * float(count) * float(stacks) * PER_HIT_STACK_BONUS
 	rider.element = hit.element
 	rider.owner_player = player
@@ -103,7 +103,7 @@ func _rider_for(hit: HitData, count: int) -> HitData:
 
 ## True when `hit` is a hit this effect's own player landed, and not one of the
 ## procs this player's own effects produced.
-func _is_my_hit(hit: HitData) -> bool:
+func _is_my_hit(hit: HitInfo) -> bool:
 	if player == null or hit == null or hit.owner_player != player:
 		return false
 	return hit.proc_depth == 0
