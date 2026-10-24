@@ -356,7 +356,11 @@ func _on_run_ended(result: RefCounted) -> void:
 ## spawn there, so until it does this stops after banking.
 func _on_return_to_town() -> void:
 	bank_last_run()
-	print("[run] back in Hollowmere (town scene entry waits on the player spawn in town)")
+	print("[run] back in Hollowmere (the walkable town is not wired yet, so a new dive starts)")
+	if NetworkManager.is_host:
+		for player: Player in NetworkManager.players.values():
+			player.reset_for_run()
+		_begin_dive()
 
 
 ## Merges the local player's kept row into their profile and saves. Idempotent:

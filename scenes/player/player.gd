@@ -212,14 +212,17 @@ func _ready() -> void:
 		health.connect(&"damaged", _on_damaged)
 	if health.has_signal(&"died"):
 		health.connect(&"died", _on_died)
-	if hurtbox != null:
-		hurtbox.blocked_during_dodge.connect(_on_dodge_blocked)
+	if hurtbox != null and hurtbox.has_signal(&"blocked_during_dodge"):
+		hurtbox.connect(&"blocked_during_dodge", _on_dodge_blocked)
 	revived.connect(_on_revived)
 
 
 ## Any damage grants the post-hit i-frames.
 func _on_damaged(_hit: HitInfo) -> void:
 	start_hit_iframes()
+	if sprite != null:
+		sprite.modulate = Color(1.0, 0.5, 0.5, 1.0)
+		create_tween().tween_property(sprite, "modulate", Color.WHITE, 0.2)
 
 
 ## Hurtbox calls this on the host when a hit connects: HitStun for
@@ -459,6 +462,21 @@ func _sibling_player_positions() -> Array[Vector2]:
 			positions.append(p.global_position)
 	return positions
 
+
+## Host. Back to full health, standing and alive, for a fresh run.
+func reset_for_run() -> void:
+	bleed_out_left = 0.0
+	is_dead = false
+	is_downed = false
+	hit_iframes_left = 0.0
+	var healthy := health as Health
+	if healthy != null:
+		healthy.revive(healthy.max_hp)
+	if hurtbox != null:
+		hurtbox.invulnerable = false
+		hurtbox.dodge_invulnerable = false
+	if state_machine != null:
+		state_machine.change_to(&"Idle")
 
 ## Greys the sprite while downed or dead.
 func _apply_downed_tint() -> void:

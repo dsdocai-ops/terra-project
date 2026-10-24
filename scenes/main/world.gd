@@ -36,6 +36,7 @@ func _ready() -> void:
 		paint_test_floor(debug_test_floor_size)
 	NetworkManager.floor_layout_ready.connect(_on_floor_layout_ready)
 	NetworkManager.player_joined.connect(_on_player_joined)
+	Events.hit_landed.connect(_on_hit_landed)
 	var existing: FloorLayout = NetworkManager.last_floor_layout as FloorLayout
 	if existing != null:
 		build_floor(existing)
@@ -139,3 +140,27 @@ func _physics_process(_delta: float) -> void:
 		else:
 			still_waiting.append(peer_id)
 	_pending_teleports = still_waiting
+
+
+# --- hit feedback ----------------------------------------------------------------
+
+## Camera shake strength and length for a hit on a player / a heavy hit.
+const SHAKE_PLAYER_HURT: float = 3.0
+const SHAKE_HEAVY: float = 2.0
+const SHAKE_SECONDS: float = 0.12
+const NUMBER_LIFT_PX: float = 26.0
+
+
+## Damage numbers and camera shake for every landed hit. Hits resolve on the
+## host, so this runs there; replicating the event to clients is networking's
+## follow-up.
+func _on_hit_landed(hit: HitInfo) -> void:
+	var target: Node2D = hit.target as Node2D
+	if target == null or not is_instance_valid(target):
+		return
+	var on_player: bool = target is Player
+	DamageNumber.spawn(fx, target.global_position - Vector2(0.0, NUMBER_LIFT_PX), hit.final_damage, hit.is_crit, on_player)
+	if on_player:
+		camera.shake(SHAKE_PLAYER_HURT, SHAKE_SECONDS)
+	elif hit.is_heavy or hit.is_crit:
+		camera.shake(SHAKE_HEAVY, SHAKE_SECONDS)

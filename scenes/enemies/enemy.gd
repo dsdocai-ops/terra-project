@@ -16,6 +16,8 @@ const PATH_REFRESH_SECONDS: float = 0.5
 const DEATH_FADE_SECONDS: float = 0.05
 const FLASH_SECONDS: float = 0.08
 const GROUP: StringName = &"enemies"
+## Stand-in for an unknown kind (debug `spawn grub`).
+const FALLBACK_KIND: StringName = &"hollow_miner"
 
 var data: EnemyData = null
 var kind: StringName = &""
@@ -57,7 +59,9 @@ func setup(p_kind: StringName, p_elite: bool = false) -> bool:
 	elite = p_elite
 	data = EnemyData.find(kind)
 	if data == null:
-		push_warning("[enemy] no EnemyData for '%s'" % kind)
+		push_warning("[enemy] no EnemyData for '%s'; using %s" % [kind, FALLBACK_KIND])
+		data = EnemyData.find(FALLBACK_KIND)
+	if data == null:
 		return false
 	var stats: StatBlock = get_node("StatBlock") as StatBlock
 	stats.base = data.base_stats.duplicate()
