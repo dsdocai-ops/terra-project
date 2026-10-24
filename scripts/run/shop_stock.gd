@@ -77,8 +77,33 @@ static func relic_price(rarity: int) -> int:
 	return int(RELIC_PRICES.get(rarity, RELIC_PRICES[RelicData.Rarity.COMMON]))
 
 
+## The base price a shop on `biome_index` charges for a relic of `rarity`: the
+## flat rarity price through CurrencyScaler's gold curve, rounded once (W6-B5,
+## goal G9). Deeper biomes pay more gold for the same drop (G8), so the same
+## relic costs more there too — a shelf's prices ride the run's spending money,
+## or a deep party's income outruns the stock. Only relic prices scale: potions
+## have their own .tres prices, ore's depth reward is already paid in kind (its
+## kind changes with the biome), and the rune price is flat until abilities
+## land. Clamped by the scaler at both ends of the biome range.
+static func item_price(rarity: int, biome_index: int) -> int:
+	return CurrencyScaler.amount_for(CurrencyScaler.GOLD_ID, relic_price(rarity), biome_index)
+
+
+## The pool entries a rarity cap admits: every relic at or below the cap, in
+## pool order. A shelf rolls from the filtered pool, so a capped shop can
+## neither roll nor price what the cap excludes.
+static func filtered_items(pool: Array[RelicData], rarity_cap: int) -> Array[RelicData]:
+	var allowed: Array[RelicData] = []
+	for data: RelicData in pool:
+		if data.rarity <= rarity_cap:
+			allowed.append(data)
+	return allowed
+
+
 ## The standing shelf: relic, rune, potion, random, plus one more with the Badge.
-## Slots the content cannot fill yet are skipped.
+## Slots the content cannot fill yet are skipped. The relic rolls from the pool
+## a LEGENDARY cap admits — the standing shelf never sells a cursed relic — and
+## every relic is priced for its biome.
 static func build(
 	rng: RandomNumberGenerator,
 	relic_pool: Array[RelicData],
@@ -87,7 +112,7 @@ static func build(
 	has_badge: bool = false,
 ) -> Array[Item]:
 	var shelf: Array[Item] = []
-	_append(shelf, _relic_item(rng, relic_pool, false))
+	_append(shelf, _relic_item(rng, filtered_items(relic_pool, RelicData.Rarity.LEGENDARY), false, biome_index))
 	if not rune_ids.is_empty():
 		shelf.append(Item.new(KIND_RUNE, rune_ids[rng.randi_range(0, rune_ids.size() - 1)], RUNE_PRICE))
 	_append(shelf, _potion_item(rng))
@@ -102,14 +127,20 @@ static func roll_vesper(rng: RandomNumberGenerator) -> bool:
 	return rng.randf() < VESPER_CHANCE
 
 
-## Vesper's shelf: 2 cursed relics and 1 legendary.
-static func build_vesper(rng: RandomNumberGenerator, relic_pool: Array[RelicData]) -> Array[Item]:
+## Vesper's shelf: 2 cursed relics and 1 legendary, priced for `biome_index`
+## like any other shelf (W6-B5, goal G9). Defaults to biome 1 — the flat
+## tables — for callers that predate the depth pricing.
+static func build_vesper(
+	rng: RandomNumberGenerator,
+	relic_pool: Array[RelicData],
+	biome_index: int = 1,
+) -> Array[Item]:
 	var shelf: Array[Item] = []
 	var taken: Array[StringName] = []
 	for pick: int in range(VESPER_CURSED_COUNT):
-		var cursed: Item = _relic_of_rarity(rng, relic_pool, RelicData.Rarity.CURSED, taken)
+		var cursed: Item = _relic_of_rarity(rng, relic_pool, RelicData.Rarity.CURSED, taken, biome_index)
 		_append(shelf, cursed)
-	_append(shelf, _relic_of_rarity(rng, relic_pool, RelicData.Rarity.LEGENDARY, taken))
+	_append(shelf, _relic_of_rarity(rng, relic_pool, RelicData.Rarity.LEGENDARY, taken, biome_index))
 	return shelf
 
 
@@ -118,13 +149,18 @@ static func _append(shelf: Array[Item], item: Item) -> void:
 		shelf.append(item)
 
 
-static func _relic_item(rng: RandomNumberGenerator, pool: Array[RelicData], allow_cursed: bool) -> Item:
+static func _relic_item(
+	rng: RandomNumberGenerator,
+	pool: Array[RelicData],
+	allow_cursed: bool,
+	biome_index: int = 1,
+) -> Item:
 	var ids: Array[StringName] = RelicRoller.roll_from_pool(pool, {}, 0.0, 1, allow_cursed, rng)
 	if ids.is_empty():
 		return null
 	for data: RelicData in pool:
 		if data.id == ids[0]:
-			return Item.new(KIND_RELIC, data.id, relic_price(data.rarity))
+			return Item.new(KIND_RELIC, data.id, item_price(data.rarity, biome_index))
 	return null
 
 
@@ -133,6 +169,7 @@ static func _relic_of_rarity(
 	pool: Array[RelicData],
 	rarity: int,
 	taken: Array[StringName],
+	biome_index: int = 1,
 ) -> Item:
 	var candidates: Array[RelicData] = []
 	for data: RelicData in pool:
@@ -142,7 +179,7 @@ static func _relic_of_rarity(
 		return null
 	var chosen: RelicData = candidates[rng.randi_range(0, candidates.size() - 1)]
 	taken.append(chosen.id)
-	return Item.new(KIND_RELIC, chosen.id, relic_price(rarity))
+	return Item.new(KIND_RELIC, chosen.id, item_price(rarity, biome_index))
 
 
 static func _potion_item(rng: RandomNumberGenerator) -> Item:

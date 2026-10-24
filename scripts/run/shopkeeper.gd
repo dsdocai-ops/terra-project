@@ -11,16 +11,26 @@ extends Area2D
 ##
 ## blocked on Dev A (W3-A3): the SHOP populator registration is a guarded no-op
 ## until `scripts/generation/floor_generator.gd` exists with `RoomType.SHOP`.
+##
+## Feedback (G9 polish): a sale flashes the body green and plays the UI confirm
+## blip; a refusal flashes red and plays the UI error blip, so the player sees
+## and hears why the till kept their gold instead of a silent dead shelf.
 
 signal opened(peer_id: int, stock: Array[ShopStock.Item])
 signal purchased(peer_id: int, item_index: int, price: int)
 signal purchase_forwarded(peer_id: int, item_index: int)
 signal interaction_forwarded(peer_id: int)
 
-const PROMPT_TEXT: String = "Shop"
+const PROMPT_TEXT: String = "Browse Shop"
 const HOLD_SECONDS: float = 0.0
 const SCENE_PATH: String = "res://scenes/dungeon/interactables/shopkeeper.tscn"
 const ROOM_TYPE: StringName = &"SHOP"
+
+const SFX_PURCHASE: StringName = &"ui_confirm"
+const SFX_REFUSAL: StringName = &"ui_error"
+const FLASH_BOUGHT: Color = Color(0.7, 1.0, 0.7)
+const FLASH_REFUSED: Color = Color(1.0, 0.6, 0.6)
+const FLASH_SECONDS: float = 0.25
 
 const MERCHANTS_BADGE: StringName = &"merchants_badge"
 const GREED_CHAIN: StringName = &"greed_chain"
@@ -45,6 +55,8 @@ var hold_seconds: float = HOLD_SECONDS
 var is_vesper: bool = false
 ## Why the last buy() refused; REFUSAL_NONE after a sale.
 var last_refusal: StringName = REFUSAL_NONE
+## The blip the last feedback played; presentation and tests read it.
+var last_sfx: StringName = &""
 
 var _stock: Array[ShopStock.Item] = []
 var _stocked: bool = false
@@ -78,7 +90,7 @@ func stock() -> Array[ShopStock.Item]:
 		rng.seed = hash([run.seed, run.floor_index, ROOM_TYPE])
 		var pool: Array[RelicData] = RelicRoller.load_pool()
 		if is_vesper:
-			_stock = ShopStock.build_vesper(rng, pool)
+			_stock = ShopStock.build_vesper(rng, pool, run.biome_index)
 		else:
 			_stock = ShopStock.build(rng, pool, rune_ids(), run.biome_index, _any_badge(run))
 	return _stock
@@ -128,16 +140,19 @@ func buy(player: Player, item_index: int) -> bool:
 			purchase_forwarded.emit(peer_id_of(player), item_index)
 		return false
 	if last_refusal != REFUSAL_NONE:
+		_refuse_feedback()
 		return false
 	var run: RunState = GameState.run
 	var item: ShopStock.Item = stock()[item_index]
 	var price: int = price_of(player, item_index)
 	if not _deliver(player, run, item):
+		_refuse_feedback()
 		return false
 	run.shared_gold -= price
 	item.sold = true
 	last_refusal = REFUSAL_NONE
 	purchased.emit(peer_id_of(player), item_index, price)
+	_purchase_feedback()
 	return true
 
 
@@ -207,6 +222,38 @@ func _any_badge(run: RunState) -> bool:
 		if party_player != null and _holds(party_player, MERCHANTS_BADGE):
 			return true
 	return false
+
+
+# --- the feedback --------------------------------------------------------------
+
+
+## A sale: the confirm blip and a green body flash the whole room sees (G9).
+func _purchase_feedback() -> void:
+	_flash(FLASH_BOUGHT)
+	_play_feedback(SFX_PURCHASE)
+
+
+## A refusal: the error blip and a red body flash, so a dead shelf explains
+## itself instead of silently doing nothing (G9).
+func _refuse_feedback() -> void:
+	_flash(FLASH_REFUSED)
+	_play_feedback(SFX_REFUSAL)
+
+
+func _play_feedback(id: StringName) -> void:
+	last_sfx = id
+	AudioManager.play_sfx(id)
+
+
+## One-shot body flash that fades back to white. The Body sprite is the scene's
+## placeholder visual; a keeper without one still gets its blip.
+func _flash(color: Color) -> void:
+	var body: Sprite2D = get_node_or_null(^"Body") as Sprite2D
+	if body == null:
+		return
+	body.modulate = color
+	var tween: Tween = create_tween()
+	tween.tween_property(body, "modulate", Color.WHITE, FLASH_SECONDS)
 
 
 # --- the SHOP populator and its registration seam -----------------------------
