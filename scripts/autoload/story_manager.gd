@@ -395,8 +395,111 @@ func _roll_chance(context: EvalContext) -> float:
 	return _condition_rng.randf()
 
 
-func start_dialogue(_dialogue_id: StringName, _npc: Node = null) -> void:
-	pass
+## The scene start_dialogue opens (W6-B2, PLAN G5: the mock-up the flow shows).
+const DIALOGUE_BOX_SCENE: String = "res://scenes/dialogue/dialogue_box.tscn"
+
+## The loader start_dialogue reads dialogue files through. Defaults unset, which
+## means `DialogueData.load_file` on `data/dialogue/<id>.json`; a test swaps it
+## to feed constructed data so the wiring is provable before any Act 1 JSON
+## exists (W6-B3).
+var dialogue_loader: Callable = Callable()
+
+## The local dialogue box, created on the first dialogue and kept for the
+## session. One per view (SPEC: "town dialogue is per player"); this is the
+## local player's.
+var dialogue_box: DialogueBox = null
+## The dialogue currently showing in the box; null while closed.
+var current_dialogue: DialogueData = null
+
+
+## Opens `dialogue_id` in the local DialogueBox (W6-B2, PLAN G5 mock-up
+## wiring). Loads `data/dialogue/<id>.json`, selects the entry with the local
+## player's own flag state — "town NPC dialogue is local to each player's
+## view ... using the local player's flags for conditions" (SPEC) — and shows
+## it. `_npc` is the anchor node; the mock-up ignores it (the box is fixed to
+## the screen; the NPC-relative framing lands with the town NPCs, W6-B4 /
+## PLAN G10). A missing or invalid file warns and does nothing: the data
+## tests reject it long before a player ever talks.
+##
+## Sync: local. Flags the shown entries set go through `set_flag`, which is
+## the host-authoritative store; the box itself is never replicated.
+func start_dialogue(dialogue_id: StringName, _npc: Node = null) -> void:
+	var result: DialogueData.LoadResult = _load_dialogue(dialogue_id)
+	if result == null or result.data == null or not result.errors.is_empty():
+		push_warning("StoryManager: dialogue \"%s\" did not load: %s" % [
+			dialogue_id, ", ".join(result.errors) if result != null else "no loader",
+		])
+		return
+	var context := EvalContext.from_profile(SaveManager.profile)
+	var entry := select_entry(result.data, context)
+	current_dialogue = result.data
+	_box().show_dialogue(result.data, entry)
+
+
+func _load_dialogue(dialogue_id: StringName) -> DialogueData.LoadResult:
+	if dialogue_loader.is_valid():
+		return dialogue_loader.call(String(dialogue_id)) as DialogueData.LoadResult
+	return DialogueData.load_file(String(dialogue_id) + ".json", _declared_flags)
+
+
+## The local box, created on first use under this autoload so it outlives
+## scenes (a dialogue opened in town survives into nothing — town is where it
+## is opened — but a test scene may come and go around it).
+func _box() -> DialogueBox:
+	if dialogue_box == null:
+		var packed := load(DIALOGUE_BOX_SCENE) as PackedScene
+		dialogue_box = packed.instantiate() as DialogueBox
+		dialogue_box.name = "DialogueBox"
+		add_child(dialogue_box)
+		dialogue_box.choice_selected.connect(_on_dialogue_choice)
+		dialogue_box.dialogue_finished.connect(_on_dialogue_finished)
+	return dialogue_box
+
+
+## A choice was pressed: its `set_flags` land first (the SPEC's example sets
+## the flag on the choice itself), then a `goto` shows the target entry (same
+## file, resolved by the loader at load time) or an `end` closes the box —
+## which is what fires the entry's on_end.
+func _on_dialogue_choice(_choice_index: int, choice: Dictionary) -> void:
+	if current_dialogue == null or dialogue_box == null:
+		return
+	_apply_flag_set(choice.get("set_flags"))
+	var goto: Variant = choice.get("goto")
+	if goto is String and not (goto as String).is_empty():
+		var next := current_dialogue.entry(StringName(goto as String))
+		if next == null:
+			push_warning("StoryManager: choice goto \"%s\" resolved to no entry" % goto)
+			dialogue_box.close()
+			return
+		dialogue_box.show_dialogue(current_dialogue, next)
+		return
+	dialogue_box.close()
+
+
+## The entry ended (advanced past its last line, or the box closed): apply its
+## `on_end.set_flags` — the progression hook the SPEC's intro example shows
+## (`"on_end": {"set_flags": ["story.met_hilde"]}`). Flags are idempotent, so
+## the mock-up rule "on_end applies to the entry that ended the conversation"
+## is safe even where a `goto` skipped an earlier entry's on_end. `on_end.give`
+## is run-economy's payout path and is not wired here (mock-up scope).
+func _on_dialogue_finished(entry_id: StringName) -> void:
+	var entry: DialogueData.Entry = current_dialogue.entry(entry_id) \
+			if current_dialogue != null else null
+	current_dialogue = null
+	if entry == null:
+		return
+	_apply_flag_set((entry.on_end as Dictionary).get("set_flags"))
+
+
+## Applies an optional `set_flags` array (choices and on_end): every name goes
+## through the idempotent store; a non-array is a loader rejection, not a
+## runtime case, and is ignored.
+func _apply_flag_set(flag_names: Variant) -> void:
+	if not (flag_names is Array):
+		return
+	for flag_name: Variant in flag_names:
+		if flag_name is String:
+			set_flag(StringName(flag_name as String))
 
 
 ## Reads the reserved flag names out of flags.json, flattened to full
