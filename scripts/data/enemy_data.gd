@@ -19,6 +19,8 @@ const DATA_DIR: String = "res://data/enemies"
 @export var stagger_resist: float = 0.0
 @export var knockback_resist: float = 0.0
 @export var can_be_elite: bool = true
+## False for fixed-HP test enemies (the debug grub): skips biome and co-op HP scaling.
+@export var scales_hp: bool = true
 @export var loot_table: LootTable = null
 @export var echo_shards_on_death: int = 0
 @export var biome: StringName = &"collapsed_mines"

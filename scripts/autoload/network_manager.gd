@@ -25,6 +25,9 @@ signal floor_layout_requested(floor_index: int)
 ## A floor layout is ready to paint: this peer generated it, or applied the
 ## host's fallback copy. World builds the live Floor from it.
 signal floor_layout_ready(layout: RefCounted)
+## A server turned this client away at the door (LobbyAuth); `reason` is one of
+## the REFUSED_* ids. The session is closed before this fires.
+signal join_refused(reason: StringName)
 ## A client asked the host to revive a downed teammate (W3-B4b). Emitted on the
 ## asking peer before the request travels, the same way floor_layout_requested
 ## is, so the client half of the revive is observable where a single process
@@ -52,6 +55,9 @@ signal relic_activated_received(peer_id: int, slot: int, relic_id: StringName)
 
 const DEFAULT_PORT: int = 7777
 const MAX_PLAYERS: int = 4
+const REFUSED_WRONG_PASSWORD: StringName = &"wrong_password"
+## How long the password handshake may take before the peer is dropped.
+const AUTH_TIMEOUT_SECONDS: float = 4.0
 const ENEMY_HP_PER_EXTRA_PLAYER: float = 0.5
 const HOST_PEER_ID: int = 1
 
@@ -94,6 +100,11 @@ var peer_ids: Array[int] = []
 ## peer_id -> Player node, filled by PlayerSpawner as spawns complete.
 var players: Dictionary[int, Player] = {}
 ## The seed every peer generated the current floor from: the last floor_ready.
+## The name this host advertises in the lobby list ("" when not hosting).
+var server_name: String = ""
+## Host: the hash a joiner must present. Client: the hash it presents. Empty
+## means no password.
+var password_hash: PackedByteArray = PackedByteArray()
 var floor_seed: int = 0
 ## The layout this peer generated locally for that floor, or null before the
 ## first floor_ready. RefCounted so Dev A's FloorLayout drops in unchanged.
@@ -124,6 +135,7 @@ var net_lag_loss: float = 0.0
 
 
 func _ready() -> void:
+	_setup_lobby_auth()
 	multiplayer.peer_connected.connect(_on_peer_connected)
 	multiplayer.peer_disconnected.connect(_on_peer_disconnected)
 	multiplayer.connected_to_server.connect(_on_connected_to_server)
@@ -143,7 +155,7 @@ func _ready() -> void:
 
 ## Opens an ENet server. Refused while a session is active (call
 ## disconnect_all first); returns the ENet error if the port is taken.
-func host(port: int = DEFAULT_PORT) -> Error:
+func host(port: int = DEFAULT_PORT, p_server_name: String = "", password: String = "") -> Error:
 	if is_active:
 		push_warning("[net] already in a session; disconnect_all() first")
 		return ERR_ALREADY_IN_USE
@@ -153,6 +165,8 @@ func host(port: int = DEFAULT_PORT) -> Error:
 		push_warning("[net] could not host on port %d: %s" % [port, error_string(err)])
 		return err
 	_activate(peer, true)
+	server_name = p_server_name
+	password_hash = LobbyAuth.hash_password(password)
 	print("[net] hosting on port %d as peer %d" % [port, local_peer_id])
 	_add_peer(local_peer_id)
 	return OK
@@ -161,7 +175,7 @@ func host(port: int = DEFAULT_PORT) -> Error:
 ## Starts connecting. Success or failure arrives later through
 ## connected_to_server / connection_failed; the return value only covers
 ## address parsing.
-func join(ip: String, port: int = DEFAULT_PORT) -> Error:
+func join(ip: String, port: int = DEFAULT_PORT, password: String = "") -> Error:
 	if is_active:
 		push_warning("[net] already in a session; disconnect_all() first")
 		return ERR_ALREADY_IN_USE
@@ -174,6 +188,7 @@ func join(ip: String, port: int = DEFAULT_PORT) -> Error:
 		push_warning("[net] could not start joining %s:%d: %s" % [ip, port, error_string(err)])
 		return err
 	_activate(peer, false)
+	password_hash = LobbyAuth.hash_password(password)
 	print("[net] joining %s:%d" % [ip, port])
 	return OK
 
@@ -194,6 +209,8 @@ func disconnect_all() -> void:
 	is_active = false
 	is_host = false
 	local_peer_id = 0
+	server_name = ""
+	password_hash = PackedByteArray()
 	peer_ids.clear()
 	players.clear()
 	floor_seed = 0
@@ -1059,3 +1076,53 @@ func _on_server_disconnected() -> void:
 	push_warning("[net] host disconnected")
 	disconnect_all()
 	host_disconnected.emit()
+
+
+# --- lobby password handshake (LobbyAuth) ---------------------------------------
+
+
+func _setup_lobby_auth() -> void:
+	var scene_mp := multiplayer as SceneMultiplayer
+	if scene_mp == null:
+		return
+	scene_mp.auth_callback = _on_auth_data
+	scene_mp.auth_timeout = AUTH_TIMEOUT_SECONDS
+	scene_mp.peer_authenticating.connect(_on_peer_authenticating)
+
+
+## A peer is mid-handshake. The joining client speaks first with its password
+## hash; the host only answers.
+func _on_peer_authenticating(peer_id: int) -> void:
+	if is_host:
+		return
+	(multiplayer as SceneMultiplayer).send_auth(peer_id, password_hash)
+
+
+## Handshake data from `peer_id`. Host: check the presented hash, answer ok or
+## no. Client: the host's answer.
+func _on_auth_data(peer_id: int, data: PackedByteArray) -> void:
+	var scene_mp := multiplayer as SceneMultiplayer
+	if is_host:
+		if LobbyAuth.accepts(password_hash, data):
+			print("[net] peer %d passed the password check" % peer_id)
+			scene_mp.send_auth(peer_id, LobbyAuth.OK)
+			scene_mp.complete_auth(peer_id)
+		else:
+			print("[net] peer %d refused: wrong password" % peer_id)
+			scene_mp.send_auth(peer_id, LobbyAuth.DENY)
+		return
+	if data == LobbyAuth.OK:
+		scene_mp.complete_auth(peer_id)
+	else:
+		join_refused_pending(REFUSED_WRONG_PASSWORD)
+
+
+## Client: the door was shut. Closes the session next frame (this runs inside
+## the engine's auth callback) and tells the lobby why.
+func join_refused_pending(reason: StringName) -> void:
+	call_deferred(&"_finish_refusal", reason)
+
+
+func _finish_refusal(reason: StringName) -> void:
+	disconnect_all()
+	join_refused.emit(reason)

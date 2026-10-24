@@ -41,6 +41,10 @@ var _smoke_floor_poll: Timer
 var _smoke_floor_started: bool = false
 var _smoke_floor_waited: float = 0.0
 var _last_result: RunResult = null
+## The co-op lobby screen and the LAN announcer a hosting session runs.
+var lobby: LobbyMenu = null
+var _announcer: LobbyDiscovery = null
+var _last_join: Dictionary = {}
 
 @onready var menu: PlaceholderMenu = $UI/PlaceholderMenu
 
@@ -52,8 +56,16 @@ func _ready() -> void:
 	GameState.world = world
 
 	menu.solo_pressed.connect(_on_solo)
-	menu.host_pressed.connect(_on_host)
-	menu.join_pressed.connect(_on_join)
+	menu.host_pressed.connect(_open_lobby)
+	menu.join_pressed.connect(_open_lobby)
+	lobby = LobbyMenu.new()
+	lobby.name = "LobbyMenu"
+	$UI.add_child(lobby)
+	lobby.host_requested.connect(_on_lobby_host)
+	lobby.join_requested.connect(_on_lobby_join)
+	lobby.back_pressed.connect(menu.show)
+	NetworkManager.join_refused.connect(_on_join_refused)
+	multiplayer.connected_to_server.connect(lobby.close)
 	menu.settings_pressed.connect(_on_menu_stub.bind("Settings arrive in a later update"))
 	menu.codex_pressed.connect(_on_menu_stub.bind("The Codex fills as you play"))
 	menu.quit_pressed.connect(_on_quit)
@@ -297,10 +309,14 @@ func _on_solo() -> void:
 
 func _on_host() -> void:
 	menu.hide()
-	var err := NetworkManager.host(options.port if options != null else NetworkManager.DEFAULT_PORT)
+	var port: int = options.port if options != null else NetworkManager.DEFAULT_PORT
+	var host_name: String = options.server_name if options != null and not options.server_name.is_empty() else "Sinkhole host"
+	var password: String = options.password if options != null else ""
+	var err := NetworkManager.host(port, host_name, password)
 	if err != OK:
 		_show_menu_with_status("Could not host: %s" % error_string(err))
 	else:
+		_start_announcing(host_name, not password.is_empty(), port)
 		_begin_dive()
 
 
@@ -308,6 +324,8 @@ func _on_host() -> void:
 ## once the walkable town spawns players). Skipped when a run already exists.
 func _begin_dive() -> void:
 	if GameState.run != null or not NetworkManager.is_host:
+		return
+	if options != null and (options.smoke_seconds > 0.0 or options.smoke3_seconds > 0.0 or options.smoke_floor_seconds > 0.0):
 		return
 	var party: Array = []
 	for peer_id: int in NetworkManager.peer_ids:
@@ -317,16 +335,20 @@ func _begin_dive() -> void:
 
 func _on_join(ip: String) -> void:
 	menu.hide()
-	var err := NetworkManager.join(ip, options.port if options != null else NetworkManager.DEFAULT_PORT)
+	var err := NetworkManager.join(ip, options.port if options != null else NetworkManager.DEFAULT_PORT, options.password if options != null else "")
 	if err != OK:
 		_show_menu_with_status("Could not join %s: %s" % [ip, error_string(err)])
 
 
 func _on_connection_failed(reason: String) -> void:
+	if lobby != null and lobby.visible:
+		lobby.show_error("Connection failed: %s" % reason)
+		return
 	_show_menu_with_status("Connection failed: %s" % reason)
 
 
 func _on_host_disconnected() -> void:
+	_stop_announcing()
 	_show_menu_with_status("Host left the game")
 
 
@@ -376,5 +398,59 @@ func bank_last_run() -> bool:
 
 
 func _on_leave_coop() -> void:
+	_stop_announcing()
 	NetworkManager.disconnect_all()
 	_show_menu_with_status("You left the co-op session")
+
+
+# --- co-op lobby ----------------------------------------------------------------
+
+
+## Menu Host / Join: the lobby handles both (the IP field pre-fills its address).
+func _open_lobby(address: Variant = "") -> void:
+	menu.hide()
+	lobby.open(str(address) if address is String else "")
+
+
+func _on_lobby_host(server_name: String, password: String) -> void:
+	var port: int = options.port if options != null else NetworkManager.DEFAULT_PORT
+	var err: Error = NetworkManager.host(port, server_name, password)
+	if err != OK:
+		lobby.show_error("Could not host: %s" % error_string(err))
+		return
+	lobby.close()
+	_start_announcing(server_name, not password.is_empty(), port)
+	_begin_dive()
+
+
+func _on_lobby_join(address: String, port: int, password: String) -> void:
+	_last_join = {"address": address, "port": port, "had_password": not password.is_empty()}
+	var err: Error = NetworkManager.join(address, port, password)
+	if err != OK:
+		lobby.show_error("Could not join %s: %s" % [address, error_string(err)])
+		return
+	lobby.show_error("Joining %s…" % address)
+
+
+## A server turned the player away: ask for the password again.
+func _on_join_refused(_reason: StringName) -> void:
+	if _last_join.is_empty():
+		return
+	var message: String = "Wrong password. Try again." if bool(_last_join["had_password"]) else "That server needs a password."
+	lobby.show()
+	lobby.ask_password(String(_last_join["address"]), int(_last_join["port"]), message)
+
+
+func _start_announcing(server_name: String, locked: bool, port: int) -> void:
+	_stop_announcing()
+	_announcer = LobbyDiscovery.new()
+	_announcer.name = "LobbyAnnouncer"
+	add_child(_announcer)
+	_announcer.start_announcing(server_name, locked, port)
+
+
+func _stop_announcing() -> void:
+	if _announcer != null:
+		_announcer.stop()
+		_announcer.queue_free()
+		_announcer = null

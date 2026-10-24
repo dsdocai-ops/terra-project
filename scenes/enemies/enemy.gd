@@ -13,7 +13,7 @@ signal died(hit: HitInfo)
 const SEPARATION_RADIUS: float = 22.0
 const SEPARATION_PUSH: float = 40.0
 const PATH_REFRESH_SECONDS: float = 0.5
-const DEATH_FADE_SECONDS: float = 0.05
+const DEATH_FADE_SECONDS: float = 0.6
 const FLASH_SECONDS: float = 0.08
 const GROUP: StringName = &"enemies"
 ## Stand-in for an unknown kind (debug `spawn grub`).
@@ -66,7 +66,9 @@ func setup(p_kind: StringName, p_elite: bool = false) -> bool:
 	var stats: StatBlock = get_node("StatBlock") as StatBlock
 	stats.base = data.base_stats.duplicate()
 	var biome: int = GameState.run.biome_index if GameState.run != null else maxi(GameState.remote_floor_index - 1, 0) / BiomeData.FLOORS_PER_BIOME + 1
-	var max_hp: float = Scaling.enemy_max_hp(float(stats.base.get(StatBlock.Stat.MAX_HP, 20.0)), biome)
+	var max_hp: float = float(stats.base.get(StatBlock.Stat.MAX_HP, 20.0))
+	if data.scales_hp:
+		max_hp = Scaling.enemy_max_hp(max_hp, biome)
 	if elite:
 		max_hp = Scaling.elite_hp(max_hp)
 	stats.base[StatBlock.Stat.MAX_HP] = max_hp
@@ -116,6 +118,20 @@ func _process(delta: float) -> void:
 	else:
 		global_position = global_position.lerp(synced_position, clampf(delta * 15.0, 0.0, 1.0))
 
+
+## Debug and smoke hook: a flat hit that bypasses damage maths. Host only.
+func apply_hit(amount: int) -> bool:
+	if not multiplayer.is_server() or health.is_dead:
+		return false
+	var flat := HitInfo.new()
+	flat.final_damage = amount
+	return health.apply_damage(flat)
+
+
+## Current HP, under the name the debug console and smoke driver read.
+var current_hp: int:
+	get:
+		return health.current_hp if health != null else 0
 
 # --- targeting and movement ----------------------------------------------------
 
@@ -225,6 +241,8 @@ func _on_died(hit: HitInfo) -> void:
 	hitbox.active = false
 	set_physics_process(false)
 	machine.set_physics_process(false)
+	create_tween().tween_property(body, "modulate:a", 0.0, DEATH_FADE_SECONDS)
+	hurtbox.set_deferred(&"monitorable", false)
 	await get_tree().create_timer(DEATH_FADE_SECONDS).timeout
 	if is_inside_tree():
 		queue_free()

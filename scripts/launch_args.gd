@@ -18,6 +18,8 @@ extends RefCounted
 ##                     host to spawn and kill a stub enemy through
 ##                     request_debug, the host resolves one hit, and
 ##                     enemy_killed registers exactly once. See smoke_two.sh
+##   --password=<text>  password a hosted session requires / a joined one presents
+##   --server-name=<text>  the name a hosted session shows in the co-op lobby
 ##   --smoke-floor[=<sec>]
 ##                     headless two-instance floor-sync smoke: the host starts a
 ##                     run (which broadcasts floor_ready for floor 1) once a
@@ -41,6 +43,11 @@ var port_arg: int = 0
 ## True once --join=ip:port has carried its own port; --port then defers to it.
 var _join_port_given: bool = false
 var run_seed: int = 0
+## --password=<text>: the password a --host session requires, or the one a --join
+## presents. Empty means none.
+var password: String = ""
+## --server-name=<text>: the name a --host session advertises in the lobby.
+var server_name: String = ""
 ## True when --debug-tools was passed: force the debug console on.
 var debug_tools: bool = false
 ## 0 means not a smoke run.
@@ -86,6 +93,10 @@ static func parse(args: PackedStringArray) -> LaunchArgs:
 			opts._parse_join(arg.trim_prefix("--join="))
 		elif arg.begins_with("--port="):
 			opts._parse_port(arg.trim_prefix("--port="))
+		elif arg.begins_with("--password="):
+			opts.password = arg.trim_prefix("--password=")
+		elif arg.begins_with("--server-name="):
+			opts.server_name = arg.trim_prefix("--server-name=")
 		elif arg.begins_with("--seed="):
 			opts._parse_seed(arg.trim_prefix("--seed="))
 		elif arg == "--debug-tools":

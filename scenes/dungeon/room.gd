@@ -96,6 +96,12 @@ func track_enemy(enemy: Node) -> void:
 	_tracked[id] = true
 	enemies_alive += 1
 	enemy.tree_exiting.connect(_on_enemy_gone.bind(id))
+	if enemy.has_signal(&"died"):
+		enemy.connect(&"died", _on_enemy_died.bind(id))
+
+
+func _on_enemy_died(_hit: HitInfo, id: int) -> void:
+	_on_enemy_gone(id)
 
 
 func _on_enemy_gone(id: int) -> void:
