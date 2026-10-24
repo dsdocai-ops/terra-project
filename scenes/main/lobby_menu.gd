@@ -75,12 +75,24 @@ func show_error(text: String) -> void:
 ## Asks for a password for a server that turned the player away (or is known
 ## to be locked), then re-emits `join_requested` with it.
 func ask_password(address: String, port: int, message: String = "") -> void:
+	_status.text = ""
 	_prompt_target = {"address": address, "port": port}
 	_prompt_title.text = "Join %s" % address
 	_prompt_field.text = ""
 	_prompt_error.text = message
 	_prompt.show()
 	_prompt_field.grab_focus()
+
+
+## Esc closes the password prompt, then the lobby.
+func _unhandled_input(event: InputEvent) -> void:
+	if not visible or not event.is_action_pressed(&"ui_cancel"):
+		return
+	get_viewport().set_input_as_handled()
+	if _prompt.visible:
+		_prompt.hide()
+	else:
+		_on_back()
 
 
 # --- validation (pure, so it is testable) -------------------------------------

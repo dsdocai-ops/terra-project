@@ -65,7 +65,7 @@ func _ready() -> void:
 	$UI.add_child(lobby)
 	lobby.host_requested.connect(_on_lobby_host)
 	lobby.join_requested.connect(_on_lobby_join)
-	lobby.back_pressed.connect(menu.show)
+	lobby.back_pressed.connect(_on_lobby_back)
 	NetworkManager.join_refused.connect(_on_join_refused)
 	multiplayer.connected_to_server.connect(lobby.close)
 	menu.settings_pressed.connect(_on_menu_stub.bind("Settings arrive in a later update"))
@@ -352,6 +352,7 @@ func _on_connection_failed(reason: String) -> void:
 
 func _on_host_disconnected() -> void:
 	_stop_announcing()
+	GameState.abandon_run()
 	_show_menu_with_status("Host left the game")
 
 
@@ -403,6 +404,7 @@ func bank_last_run() -> bool:
 func _on_leave_coop() -> void:
 	_stop_announcing()
 	NetworkManager.disconnect_all()
+	GameState.abandon_run()
 	_show_menu_with_status("You left the co-op session")
 
 
@@ -416,6 +418,8 @@ func _open_lobby(address: Variant = "") -> void:
 
 
 func _on_lobby_host(server_name: String, password: String) -> void:
+	if NetworkManager.is_active:
+		return
 	var port: int = options.port if options != null else NetworkManager.DEFAULT_PORT
 	var err: Error = NetworkManager.host(port, server_name, password)
 	if err != OK:
@@ -427,6 +431,8 @@ func _on_lobby_host(server_name: String, password: String) -> void:
 
 
 func _on_lobby_join(address: String, port: int, password: String) -> void:
+	if NetworkManager.is_active:
+		return
 	_last_join = {"address": address, "port": port, "had_password": not password.is_empty()}
 	var err: Error = NetworkManager.join(address, port, password)
 	if err != OK:
@@ -466,3 +472,11 @@ func _process(_delta: float) -> void:
 		return
 	var menus_up: bool = (menu != null and menu.visible) or (lobby != null and lobby.visible)
 	_hud.visible = NetworkManager.is_active and not menus_up
+
+
+## Back from the lobby cancels a join that is still connecting, then shows the
+## main menu again.
+func _on_lobby_back() -> void:
+	if NetworkManager.is_active:
+		NetworkManager.disconnect_all()
+	menu.show()

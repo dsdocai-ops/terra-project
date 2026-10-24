@@ -431,6 +431,16 @@ func _skill_ranks_for(finished: RunState) -> Dictionary[int, Dictionary]:
 	return ranks
 
 
+## Drops the live run without settling it: leaving a session mid-run, so the
+## next Solo or Host starts clean instead of finding a stale run.
+func abandon_run() -> void:
+	if run == null:
+		return
+	run = null
+	_unsubscribe_room_cleared()
+	_unsubscribe_player_events()
+
+
 ## Host only. Starts counting cleared rooms for the live run. Idempotent, so a
 ## second start_run replacing a live run never double-counts a room.
 func _subscribe_room_cleared() -> void:

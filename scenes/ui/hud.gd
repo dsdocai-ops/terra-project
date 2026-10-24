@@ -63,6 +63,8 @@ func _ready() -> void:
 
 
 func _unhandled_input(event: InputEvent) -> void:
+	if not visible:
+		return
 	if event.is_action_pressed(&"inventory") and not choice_popup.visible and not pause_layer.visible and not death_screen.visible:
 		inventory_screen.toggle(NetworkManager.local_peer_id)
 		get_viewport().set_input_as_handled()
