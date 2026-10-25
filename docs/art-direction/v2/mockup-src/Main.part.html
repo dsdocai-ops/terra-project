@@ -1,0 +1,78 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Sinkhole UI atlas</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+body{margin:0;background:#07080D}
+a{color:#F7D27A}a:hover{color:#FFF3C4}
+</style>
+</helmet>
+<div style="width: 1280px; height: 2160px; background: #07080D">
+  <canvas ref="{{scene}}" role="img" aria-label="Sinkhole UI atlas: references, palette ramps, bitmap font, frames, sockets, bars, icons and sprites" style="display: block; width: 1280px; height: 2160px; image-rendering: pixelated"></canvas>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1280,"height":2160}}'>
+//@@LIB@@
+function sec(g,y,l){const w=tw(l)+10;R(g,6,y-3,w,11,O);R(g,7,y-2,w-2,9,'#C8501E');R(g,7,y-2,w-2,1,'#FF8A4A');tx(g,l,11,y,'#FFF3C4','#5A1408');R(g,6+w,y+2,312-w-6,1,'#3A3A46');}
+function draw(c){
+  const g=mk(c,320,540);
+  R(g,0,0,320,540,"#5A5A66");for(let y=0;y<540;y+=8)for(let x=((y/8)&1)*8;x<320;x+=16)R(g,x,y,8,8,'#4E4E5A');
+  for(const[y,h]of[[18,17],[46,52],[108,60],[178,34],[222,50],[282,36],[328,38],[376,22],[408,48]]){g.globalAlpha=0.55;R(g,4,y,312,h,O);g.globalAlpha=1;}
+  plank(g,4,2,312,16);tx(g,'SINKHOLE UI ATLAS',10,5,'#FFF3C4','#2A1810',2);txr(g,'V3',310,5,'#E8C9A0','#2A1810',2);
+  wrap('EVERYTHING HERE IS DRAWN ON THE 320X180 GAME GRID. ONE PIXEL IS FOUR SCREEN PIXELS. NO VECTOR PANELS, NO SMOOTH GRADIENTS, ONE BITMAP FONT.',304).forEach((l,k)=>tx(g,l,8,20+k*7,'#9A93A6',O));
+
+  sec(g,40,'REFERENCES');
+  const refs=[['ENTER THE GUNGEON','WEAPON CARD BOTTOM RIGHT, OUTLINED NUMBERS'],['HADES','RELIC CHOICE AS ROWS, RARITY-RIMMED SOCKETS'],['DARKEST DUNGEON','IRON AND WOOD FRAMES, LIGHT AS A THREAT'],['CHILDREN OF MORTA','CO-OP PORTRAIT STACK, TOP LEFT'],['STARDEW VALLEY','WOOD SIGNS, PORTRAIT BREAKS THE BOX'],['MOONLIGHTER','DIEGETIC MAP AND SHOP UI']];
+  refs.forEach((r,k)=>{tx(g,r[0],8,50+k*8,'#EDE4D3',O);tx(g,r[1],92,50+k*8,'#9A93A6',O);});
+
+  sec(g,102,'PALETTE RAMPS');
+  const ramps=[['VOID',['#07080D','#0C0E16','#12141F','#1E2233','#2E3449','#474F68','#6B7590','#8A93AE']],['LAMP',['#3A1E0C','#6A3A12','#A8661E','#E0A040','#F7D27A','#FFF3C4']],['BONE',['#5A4630','#9A8F7E','#C9BBA0','#E8C9A0','#EDE4D3']],['WOOD',['#1E1009','#2A1810','#4A2C1A','#6E4428','#94643A']],['PARCHMENT',['#5A4630','#7A6444','#A88E64','#D8C49A','#EFE2BC']],['BLOOD',['#3A0E14','#7A1A22','#C8323A','#F0605A','#FFB0A0']],['ECHO',['#1E1240','#4A2E9A','#8E6CF0','#C9B6FF','#E6DCFF']],['P2 TEAL',['#0E2E30','#1E6A66','#3FC1B8','#A8F0E4']],['P3 ROSE',['#4A1430','#A83A72','#E879A6','#FFC0DA']],['P4 LIME',['#1E3014','#4A7A28','#A6D65A','#E0FFA0']]];
+  ramps.forEach((r,k)=>{const col=k<5?0:1,row=k%5,x=8+col*156,y=112+row*11;tx(g,r[0],x,y+2,'#C9BBA0',O);r[1].forEach((h,n)=>{R(g,x+50+n*11,y,10,9,O);R(g,x+51+n*11,y+1,8,7,h);});});
+
+  sec(g,172,'BITMAP FONT 3X5');
+  tx(g,'ABCDEFGHIJKLMNOPQRSTUVWXYZ',8,182,'#EDE4D3',O);tx(g,"0123456789 .,!?':-+/%()<>×$",8,190,'#EDE4D3',O);
+  tx(g,'FLOOR 3  BOSS',8,200,'#F7D27A',O,2);txo(g,'61!',150,200,'#F7D27A','#5A1408',2);txo(g,'24',180,203,'#EDE4D3',O);txo(g,'+12',196,203,'#A6D65A',O);txo(g,'FROZEN',216,203,'#9FE6FF',O);
+
+  sec(g,216,'FRAMES');
+  frame(g,8,226,60,34,ST.iron);frame(g,76,226,60,34,ST.brass);plank(g,144,226,60,20);parch(g,212,226,50,34);frame(g,270,226,42,34,ST.violet);
+  tx(g,'IRON PANEL',8,264,'#9A93A6');tx(g,'SELECTED',76,264,'#9A93A6');tx(g,'SIGN PLANK',144,264,'#9A93A6');tx(g,"PIP'S MAP",212,264,'#9A93A6');tx(g,'CURSED',270,264,'#9A93A6');
+  chain(g,160,248,256);R(g,152,256,16,7,O);R(g,153,257,14,5,'#1E1240');
+
+  sec(g,276,'SOCKETS AND KEYS');
+  sock(g,8,286,18);spr(g,SP.bolt.r,SP.bolt.p,17,299,1);
+  sock(g,30,286,18);spr(g,SP.fire.r,SP.fire.p,39,298,1);g.globalAlpha=0.75;R(g,34,290,10,6,O);g.globalAlpha=1;txo(g,'3',38,291,'#FFFFFF',O);
+  sock(g,52,286,18,['#3FC1B8','#A8F0E4','#1E6A66']);spr(g,SP.frost.r,SP.frost.p,61,299,1);
+  sock(g,74,283,24,['#E0A040','#FFF3C4','#A8661E']);R(g,79,292,14,10,'#6A3A12');R(g,79,292,14,1,'#E0A040');spr(g,SP.echo.r,SP.echo.p,86,300,1);
+  tx(g,'READY',8,309,'#6B7590');tx(g,'CD',35,309,'#6B7590');tx(g,'PROC',53,309,'#6B7590');tx(g,'ULT',80,309,'#6B7590');
+  [['#B9B2A5','COMMON'],['#4FA3FF','RARE'],['#A77BFF','EPIC'],['#F2B65A','LEGEND'],['#D9385E','CURSED']].forEach((r,n)=>{const x=110+n*20;R(g,x,288,16,16,O);R(g,x+1,289,14,14,r[0]);R(g,x+2,290,12,12,'#0C0E16');});
+  spr(g,SP.boots.r,SP.boots.p,138,301,1);spr(g,SP.hydra.r,SP.hydra.p,178,301,1);
+  let kx=214;for(const k of['Q','R','V','E','F','SPACE','ESC'])kx+=key(g,kx,290,k)+3;
+  tx(g,'COMMON  RARE  EPIC  LEGEND  CURSED',110,309,'#6B7590');
+
+  sec(g,322,'BARS');
+  bar(g,8,332,62,7,0.74,['#3A0E14','#C8323A','#F0605A','#FFB0A0'],0.08);for(let k=1;k<10;k++)R(g,8+k*6.1,334,1,4,'#7A1A22');
+  bar(g,76,334,40,4,0.46,['#2A1A0C','#E0A040','#F7D27A']);bar(g,122,334,40,4,0.88,['#0E2E30','#3FC1B8','#A8F0E4']);bar(g,168,334,40,4,0.41,['#4A1430','#E879A6','#FFC0DA']);
+  txc(g,'THE FOREMAN',160,346,'#F0605A',O);spr(g,SP.skull.r,SP.skull.p,13,360,1);spr(g,SP.skull.r,SP.skull.p,307,360,1);bar(g,18,354,284,8,0.62,['#3A0E14','#C8323A','#F0605A','#FFB0A0'],0.05);R(g,112,354,1,8,'#EDE4D3');R(g,207,354,1,8,'#EDE4D3');
+
+  sec(g,370,'ICONS');
+  const ic=[SP.gold,SP.ore,SP.echo,SP.potion,SP.bolt,SP.fire,SP.frost,SP.pick,SP.xbow,SP.shield,SP.boots,SP.hydra,SP.clock,SP.lantern,SP.skull,SP.eye];
+  ic.forEach((s,n)=>spr(g,s.r,s.p,15+n*19,393,1));
+
+  sec(g,400,'CHARACTERS AND ENEMIES');
+const ch=[[{r:BODY,p:PW},'WREN'],[{r:BODY,p:PK},'KESTREL'],[{r:BODY,p:PI},'IVY'],[{r:BODY,p:PB},'BRANN'],[{r:BODY,p:PHOL},'HOLLOW'],[BAT2,'BAT'],[GOB,'GOBLIN'],[{r:BODY,p:PH},'HILDE']];  ch.forEach((s,n)=>{const x=22+n*38;g.globalAlpha=0.35;ell(g,x+2,452,8,'#000');g.globalAlpha=1;spr(g,s[0].r,s[0].p,x,452,2);txc(g,s[1],x,455,'#C9BBA0',O);});  sec(g,470,'PROPS');  tree(g,22,522,0.75);house2(g,70,500,2,2,12,9,HP,{winL:[0.3],doorR:0.4,chim:0.5});lamp(g,104,522);barrel(g,122,522);crate(g,142,519);sign(g,166,522,'MINE');bush(g,190,522,'#E04A3A');mush2(g,208,522,3,'#D46BE0','#FFF3E0');crystal2(g,226,522,16,'#3E5AB0','#8FE3FF','#E0F8FF');cart(g,250,518);well(g,290,522);  plank(g,8,526,304,12);txc(g,'ALL PIECES ARE 9-SLICE OR SINGLE SPRITES, READY TO CUT INTO GODOT THEMES',160,529,'#FFF3C4','#2A1810');
+}
+class Component extends DCLogic {
+  renderVals() {
+    this._f = this._f || ((el) => { if (el && !el._d) { el._d = 1; draw(el); } });
+    return { scene: this._f };
+  }
+}
+</script>
+</body>
+</html>

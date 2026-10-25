@@ -5,8 +5,9 @@ extends CharacterBody2D
 ## StateMachine (Idle, Chase, Attack, HitStun). Owned by enemies-ai.
 ## Sync: the host runs AI, attacks, HP and death; StateSync replicates
 ## position, animation tag, current HP, the telegraph progress and aim, and the
-## spawn-time `kind`/`elite`. Clients only present that state. Placeholder art:
-## a coloured body polygon.
+## spawn-time `kind`/`elite`. Clients only present that state. Art: the
+## `EnemyData.sprite_frames` sheet, facing picked locally from movement (or the
+## replicated aim while standing); a coloured body polygon when there is none.
 
 signal died(hit: HitInfo)
 
@@ -40,6 +41,10 @@ var _path: PackedVector2Array = PackedVector2Array()
 var _path_timer: float = 0.0
 var _flash_left: float = 0.0
 var _knockback_decel: float = 0.0
+var _facing: int = 0
+var _last_position: Vector2 = Vector2.ZERO
+## Height of one sprite frame, 0 while the placeholder polygon is shown.
+var _sprite_height: float = 0.0
 
 @onready var stat_block: StatBlock = $StatBlock
 @onready var health: Health = $Health
@@ -47,6 +52,7 @@ var _knockback_decel: float = 0.0
 @onready var machine: StateMachine = $StateMachine
 @onready var telegraph: Telegraph = $Telegraph
 @onready var body: Polygon2D = $Body
+@onready var sprite: AnimatedSprite2D = $Sprite
 @onready var hitbox: Hitbox = $Hitbox
 @onready var hitbox_shape: CollisionShape2D = $Hitbox/Shape
 
@@ -76,9 +82,44 @@ func setup(p_kind: StringName, p_elite: bool = false) -> bool:
 	var r: float = data.radius * (1.3 if elite else 1.0)
 	poly.polygon = PackedVector2Array([Vector2(-r, -r * 1.6), Vector2(r, -r * 1.6), Vector2(r, r * 0.5), Vector2(-r, r * 0.5)])
 	poly.color = data.color.lightened(0.25) if elite else data.color
+	_apply_sprite(poly)
 	(get_node("BodyShape") as CollisionShape2D).shape = _circle(r)
 	(get_node("Hurtbox/HurtShape") as CollisionShape2D).shape = _circle(r + 2.0)
 	return true
+
+
+## Swaps the placeholder polygon for the data's sprite sheet when it has one.
+## Feet sit 4 px above the frame's bottom edge (gen_sprites_v2.py), so the
+## sprite is raised by half a frame less those 4 px.
+func _apply_sprite(poly: Polygon2D) -> void:
+	var spr: AnimatedSprite2D = get_node("Sprite") as AnimatedSprite2D
+	if data.sprite_frames == null or not data.sprite_frames.has_animation(&"idle_s"):
+		spr.visible = false
+		poly.visible = true
+		_sprite_height = 0.0
+		return
+	spr.sprite_frames = data.sprite_frames
+	var first: Texture2D = data.sprite_frames.get_frame_texture(&"idle_s", 0)
+	_sprite_height = float(first.get_height()) if first != null else 0.0
+	spr.position = Vector2(0.0, -(_sprite_height * 0.5 - 4.0))
+	spr.modulate = Color(1.2, 1.1, 0.85, 1.0) if elite else Color.WHITE
+	spr.visible = true
+	poly.visible = false
+	spr.play(&"idle_s")
+
+
+## Picks the facing from this frame's movement (the replicated aim while
+## standing still) and plays walk or idle for it. Presentation only: every
+## peer runs it on its own copy of the position.
+func _animate_sprite() -> void:
+	var motion: Vector2 = global_position - _last_position
+	_last_position = global_position
+	var moving: bool = motion.length() > 0.2 or current_anim == &"walk"
+	var dir: Vector2 = motion if motion.length() > 0.2 else aim_dir
+	_facing = Facing.index_for(dir, _facing, 15.0)
+	var anim := StringName("%s_%s" % ["walk" if moving else "idle", Facing.suffix(_facing)])
+	if sprite.animation != anim and sprite.sprite_frames.has_animation(anim):
+		sprite.play(anim)
 
 
 func _circle(radius: float) -> CircleShape2D:
@@ -90,6 +131,7 @@ func _circle(radius: float) -> CircleShape2D:
 func _ready() -> void:
 	add_to_group(GROUP)
 	synced_position = global_position
+	_last_position = global_position
 	hurtbox.team = Team.Kind.ENEMY
 	hitbox.team = Team.Kind.ENEMY
 	machine.set_physics_process(multiplayer.is_server())
@@ -111,6 +153,9 @@ func _process(delta: float) -> void:
 	if _flash_left > 0.0:
 		_flash_left -= delta
 		body.modulate = Color(2.0, 2.0, 2.0, 1.0) if _flash_left > 0.0 else Color.WHITE
+		sprite.self_modulate = body.modulate
+	if sprite.visible:
+		_animate_sprite()
 	telegraph.progress = telegraph_progress
 	telegraph.direction = aim_dir
 	if multiplayer.is_server():
@@ -140,6 +185,8 @@ func _draw() -> void:
 		return
 	var width: float = data.radius * 2.6
 	var top: float = -data.radius * 2.0 - 4.0
+	if _sprite_height > 0.0:
+		top = -(_sprite_height - 4.0) - 6.0
 	var fraction: float = clampf(float(health.current_hp) / float(health.max_hp), 0.0, 1.0)
 	draw_rect(Rect2(-width * 0.5 - 1.0, top - 1.0, width + 2.0, 5.0), Color(0.05, 0.03, 0.02, 0.9))
 	draw_rect(Rect2(-width * 0.5, top, width * fraction, 3.0), Color(0.85, 0.25, 0.2, 1.0) if not elite else Color(0.95, 0.7, 0.2, 1.0))

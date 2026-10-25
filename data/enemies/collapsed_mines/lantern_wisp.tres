@@ -1,6 +1,7 @@
 [gd_resource type="Resource" script_class="EnemyData" load_steps=5 format=3]
 
 [ext_resource type="Script" path="res://scripts/data/enemy_data.gd" id="1_enemy"]
+[ext_resource type="SpriteFrames" uid="uid://bj284bayan0se" path="res://assets/sprites/enemies/lantern_wisp_frames.tres" id="9_frames"]
 [ext_resource type="Resource" path="res://data/enemies/attacks/wisp_fireball.tres" id="2_attack"]
 [ext_resource type="Script" path="res://scripts/data/attack_pattern.gd" id="4_pat"]
 [ext_resource type="Resource" path="res://data/loot/enemy_common.tres" id="3_loot"]
@@ -8,6 +9,7 @@
 [resource]
 script = ExtResource("1_enemy")
 id = &"lantern_wisp"
+sprite_frames = ExtResource("9_frames")
 display_name = "Lantern Wisp"
 base_stats = {
 0: 22.0,

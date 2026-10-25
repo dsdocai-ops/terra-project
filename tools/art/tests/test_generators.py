@@ -9,7 +9,9 @@ from PIL import Image
 import build_all
 import gen_character
 import gen_enemies
+import gen_sprites_v2
 import gen_tiles
+import gen_tiles_v2
 import gen_ui
 import gen_icons
 import gen_props
@@ -36,6 +38,7 @@ def test_registry_covers_every_generator_module() -> None:
     names = {g.name for g in build_all.GENERATORS}
     assert {"font", "ui_icons", "relic_icons_pickups", "props", "character:miner", "enemies"} <= names
     assert {f"tiles:{b}" for b in gen_tiles.BIOMES} <= names
+    assert {f"tiles_v2:{b}" for b in gen_tiles_v2.BIOMES} | {"sprites_v2"} <= names
     assert len(names) == len(build_all.GENERATORS), "generator names are unique"
 
 
@@ -59,7 +62,8 @@ def test_build_writes_the_expected_files(built: Path) -> None:
 
 def test_twenty_seven_enemies_and_six_biomes() -> None:
     assert len(gen_enemies.ENEMIES) == 27
-    assert len(gen_tiles.BIOMES) == 6 and "town" not in gen_tiles.BIOMES
+    assert len(gen_tiles.BIOMES) + len(gen_tiles_v2.BIOMES) == 6 and "town" not in gen_tiles.BIOMES
+    assert not set(gen_tiles.BIOMES) & set(gen_tiles_v2.BIOMES)
 
 
 @pytest.mark.parametrize("generator", build_all.GENERATORS, ids=lambda g: g.name)
@@ -93,7 +97,7 @@ def test_check_is_clean_right_after_build(built: Path) -> None:
 
 
 def test_character_and_enemy_sheets_draw_all_eight_directions(built: Path) -> None:
-    sheets = [built / gen_character.OUT_REL] + [built / gen_enemies.OUT_DIR / f"{e}_sheet.png" for e in gen_enemies.ENEMIES]
+    sheets = [built / gen_character.OUT_REL] + [built / gen_enemies.OUT_DIR / f"{e}_sheet.png" for e in gen_enemies.ENEMIES if e not in gen_sprites_v2.V2_ENEMIES]
     for sheet_path in sheets:
         with Image.open(sheet_path) as img:
             assert img.size == (FRAME * COLUMNS, FRAME * DIRECTIONS), sheet_path.name

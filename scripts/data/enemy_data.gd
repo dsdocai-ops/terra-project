@@ -24,9 +24,12 @@ const DATA_DIR: String = "res://data/enemies"
 @export var loot_table: LootTable = null
 @export var echo_shards_on_death: int = 0
 @export var biome: StringName = &"collapsed_mines"
-## Placeholder look.
+## Placeholder look, used while `sprite_frames` is null.
 @export var color: Color = Color(0.8, 0.3, 0.25, 1.0)
 @export var radius: float = 10.0
+## Art (art-audio): 8-facing `idle_<dir>` / `walk_<dir>` frames built by
+## tools/make_sprite_frames.gd. Null keeps the placeholder body polygon.
+@export var sprite_frames: SpriteFrames = null
 
 
 ## The enemy `.tres` for `kind`, searched across the biome folders. Null when

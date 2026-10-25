@@ -1,6 +1,7 @@
 [gd_resource type="Resource" script_class="EnemyData" load_steps=5 format=3]
 
 [ext_resource type="Script" path="res://scripts/data/enemy_data.gd" id="1_enemy"]
+[ext_resource type="SpriteFrames" uid="uid://djj4la1qwmloc" path="res://assets/sprites/enemies/hollow_miner_frames.tres" id="9_frames"]
 [ext_resource type="Resource" path="res://data/enemies/attacks/miner_swing.tres" id="2_attack"]
 [ext_resource type="Script" path="res://scripts/data/attack_pattern.gd" id="4_pat"]
 [ext_resource type="Resource" path="res://data/loot/enemy_common.tres" id="3_loot"]
@@ -8,6 +9,7 @@
 [resource]
 script = ExtResource("1_enemy")
 id = &"hollow_miner"
+sprite_frames = ExtResource("9_frames")
 display_name = "Hollow Miner"
 base_stats = {
 0: 42.0,

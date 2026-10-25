@@ -1,7 +1,7 @@
 [gd_scene format=3 uid="uid://c31yrup1dpbpv"]
 
 [ext_resource type="Script" uid="uid://yrn3wwaotd23" path="res://scenes/player/player.gd" id="1_player"]
-[ext_resource type="SpriteFrames" uid="uid://bxb0swmmkrfpo" path="res://assets/sprites/player/placeholder_frames.tres" id="2_frames"]
+[ext_resource type="SpriteFrames" uid="uid://camd64ih5ht83" path="res://assets/sprites/players/wren_frames.tres" id="2_frames"]
 [ext_resource type="Script" uid="uid://bjea7scc16d1c" path="res://scripts/components/state_machine.gd" id="3_machine"]
 [ext_resource type="Script" uid="uid://dqr7re3q06tjd" path="res://scenes/player/states/idle.gd" id="4_idle"]
 [ext_resource type="Script" path="res://scenes/player/states/hit_stun.gd" id="10_hitstun"]
@@ -115,7 +115,7 @@ script = ExtResource("12_dodge")
 script = ExtResource("6_ring")
 
 [node name="Sprite" type="AnimatedSprite2D" parent="."]
-position = Vector2(0, -20)
+position = Vector2(0, -44)
 sprite_frames = ExtResource("2_frames")
 animation = &"idle_s"
 

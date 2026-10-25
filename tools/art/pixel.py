@@ -20,7 +20,7 @@ from __future__ import annotations
 
 import math
 import random
-from collections.abc import Iterable, Mapping, Sequence
+from collections.abc import Callable, Iterable, Mapping, Sequence
 from pathlib import Path
 
 from PIL import Image
@@ -325,3 +325,364 @@ def save_png(canvas: Canvas, path: Path) -> None:
 def seeded(name: str) -> random.Random:
     """A reproducible RNG per asset so re-running a generator is byte-identical."""
     return random.Random(sum(ord(c) * (i + 1) for i, c in enumerate(name)))
+
+
+# --- v2 primitives (art direction v2, decisions 2026-10-24) ---------------------
+#
+# Ports of the approved mockup kit (docs/art-direction/v2/mockup-src/). World art
+# is drawn at quarter resolution, so the iso helpers below work on a 16x8 floor
+# diamond and generators ship the result through export_scaled(canvas, 4). UI
+# pieces are drawn on the 320x180 grid and exported 3x. Every color argument is
+# a palette name, as above.
+
+FaceColor = str | Callable[[int, int], str]
+
+
+def _i32(v: int) -> int:
+    v &= 0xFFFFFFFF
+    return v - 0x100000000 if v & 0x80000000 else v
+
+
+def _imul(a: int, b: int) -> int:
+    return _i32((a & 0xFFFFFFFF) * (b & 0xFFFFFFFF))
+
+
+def hash01(a: float, b: float) -> float:
+    """Deterministic hash of two numbers to [0, 1). Bit-for-bit the mockup's
+    `hs(a, b)`, so a recipe ported from mockup-src scatters the same way."""
+    ia, ib = _i32(int(a)), _i32(int(b))
+    n = _i32(_imul(ia, 374761393) + _imul(ib, 668265263))
+    n = _imul(n ^ ((n & 0xFFFFFFFF) >> 13), 1274126177)
+    return ((n ^ ((n & 0xFFFFFFFF) >> 16)) & 0xFFFFFFFF) / 4294967296
+
+
+def _round(v: float) -> int:
+    """JavaScript Math.round (halves go up), which the mockups used."""
+    return int(math.floor(v + 0.5))
+
+
+def _face(color: FaceColor, px: int, r: int) -> str:
+    return color(px, r) if callable(color) else color
+
+
+def circle(canvas: Canvas, cx: int, cy: int, r: int, color: str) -> None:
+    """Filled pixel circle as the mockups draw it: one span per row, half
+    width round(sqrt(r^2 - dy^2))."""
+    canvas._check(color)
+    for dy in range(-r, r + 1):
+        w = _round(math.sqrt(max(0, r * r - dy * dy)))
+        for x in range(cx - w, cx + w + 1):
+            canvas.put(x, cy + dy, color)
+
+
+def tri(canvas: Canvas, a: Point, b: Point, c: Point, color: str) -> None:
+    canvas.polygon([a, b, c], color)
+
+
+def quad(canvas: Canvas, a: Point, b: Point, c: Point, d: Point, color: str) -> None:
+    canvas.polygon([a, b, c, d], color)
+
+
+def lerp(a: Point, b: Point, t: float) -> Point:
+    return (a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t)
+
+
+def iso_tile(canvas: Canvas, x: int, y: int, color: str, hi: str | None = None, lo: str | None = None) -> None:
+    """Quarter-resolution floor diamond, 16x8, with (x, y) its top vertex.
+    Optional 2 px bevels: `hi` on the top-left edge, `lo` on the bottom-right."""
+    canvas._check(color)
+    for r in range(8):
+        k = r if r < 4 else 7 - r
+        w = 2 * k + 2
+        for px in range(x - w, x + w):
+            canvas.put(px, y + r, color)
+    if hi:
+        for r in range(4):
+            canvas.put(x - 2 * r - 2, y + r, hi)
+            canvas.put(x - 2 * r - 1, y + r, hi)
+    if lo:
+        for r in range(4, 8):
+            canvas.put(x + 2 * (7 - r), y + r, lo)
+            canvas.put(x + 2 * (7 - r) + 1, y + r, lo)
+
+
+def iso_block(canvas: Canvas, x: int, y: int, h: int, top: str, left: FaceColor, right: FaceColor, top_hi: str | None = None) -> None:
+    """Quarter-resolution block standing on the floor diamond whose top vertex
+    is (x, y): two h-tall faces and a raised top diamond. `left` and `right`
+    are a palette name or a texture function (screen_x, r) -> name, where r
+    counts rows up from the face's bottom edge (stone_face, plank_face)."""
+    for u in range(8):
+        lx, lt = x - 8 + u, y - h + 5 + (u >> 1)
+        rx, rt = x + u, y - h + 8 - (u >> 1)
+        for r in range(h):
+            canvas.put(lx, lt + h - 1 - r, _face(left, lx, r))
+            canvas.put(rx, rt + h - 1 - r, _face(right, rx, r))
+    iso_tile(canvas, x, y - h, top, top_hi)
+
+
+def stone_face(ramp: Mapping[str, str], seed: int) -> Callable[[int, int], str]:
+    """Coursed-stone texture for iso_block faces (the mockup's stonePx).
+    Courses are 4 rows high with mortar along the bottom row; stones are 6 px
+    long, offset per course. ramp keys: a, b, c (stone tones), hi (top row of a
+    course), lo (row above the mortar), m (mortar), and optional ore (rare
+    flecks)."""
+    for key in ("a", "b", "c", "hi", "lo", "m"):
+        if key not in ramp:
+            raise KeyError(f"stone_face ramp needs {key!r}")
+
+    def color(px: int, r: int) -> str:
+        band = r // 4
+        sx = px + int(hash01(band, seed) * 6) + 600
+        ri = r & 3
+        if ri == 0 or sx % 6 == 0:
+            return ramp["m"]
+        v = hash01(sx // 6, band + seed * 7)
+        if v > 0.97 and "ore" in ramp:
+            return ramp["ore"]
+        if ri == 3:
+            return ramp["hi"]
+        if ri == 1:
+            return ramp["lo"]
+        return ramp["a"] if v < 0.4 else ramp["b"] if v < 0.8 else ramp["c"]
+
+    return color
+
+
+def plank_face(base: str, line: str, h: int, period: int = 3, foundation: Callable[[int, int], str] | None = None, foundation_rows: int = 4) -> Callable[[int, int], str]:
+    """Horizontal boards for an h-tall face: a `line` row every `period` rows
+    counted from the top, and an optional `foundation` texture under the
+    bottom `foundation_rows` rows (the mockup houses' stone base)."""
+
+    def color(px: int, r: int) -> str:
+        if foundation is not None and r < foundation_rows:
+            return foundation(px, r)
+        return line if (h - r) % period == 0 else base
+
+    return color
+
+
+def brick_base(stone: str, stone_alt: str, mortar: str) -> Callable[[int, int], str]:
+    """The 4-row stone foundation under plank walls: 4 px bricks, staggered
+    every 2 rows, mortar on row 2 and every 4th column."""
+
+    def color(px: int, r: int) -> str:
+        shift = 2 if r > 2 else 0
+        if r == 2 or ((px + shift) & 3) == 0:
+            return mortar
+        return stone if ((px + shift) >> 2) & 1 else stone_alt
+
+    return color
+
+
+def shingle_roof(canvas: Canvas, eave_l: Point, eave_r: Point, ridge_r: Point, ridge_l: Point, base: str, stripe: str) -> None:
+    """One roof plane from the eave (eave_l -> eave_r) up to the ridge
+    (ridge_l -> ridge_r): filled in `base`, with shingle courses parallel to
+    the eave and staggered tab marks every 4 px."""
+    quad(canvas, eave_l, eave_r, ridge_r, ridge_l, base)
+    rise = abs(eave_l[1] - ridge_l[1])
+    n = max(3, _round(rise / 2.2))
+    for k in range(1, n):
+        t = k / n
+        p, q = lerp(eave_l, ridge_l, t), lerp(eave_r, ridge_r, t)
+        canvas.line(p[0], p[1], q[0], q[1], stripe)
+        length = q[0] - p[0]
+        u = (k % 2) * 2
+        while u < length:
+            canvas.put(p[0] + u, p[1] + u / 2 - 1, stripe)
+            u += 4
+
+
+def _skewed_columns(origin: Point, slope: int, fx: float, span: float, width: int) -> list[tuple[int, int]]:
+    """Columns of a feature placed a fraction fx along a sloped face edge:
+    (screen_x, bottom_y) for each of `width` columns."""
+    ox = _round(origin[0])
+    cx0 = _round(origin[0] + fx * span)
+    return [(cx0 + u, int(math.floor(origin[1] + (cx0 + u - ox) * slope / 2))) for u in range(width)]
+
+
+def iso_window(canvas: Canvas, origin: Point, slope: int, fx: float, span: float, r0: int, pal: Mapping[str, str]) -> None:
+    """7x8 framed window with a cross bar, sill and shutters on a sloped face.
+    pal keys: frame, cross, glass, glass_hi, sill, shutter."""
+    cols = _skewed_columns(origin, slope, fx, span, 9)
+    for u, (cx, by) in enumerate(cols[1:8]):
+        for r in range(r0, r0 + 8):
+            if u in (0, 6) or r in (r0, r0 + 7):
+                c = pal["frame"]
+            elif u == 3 or r == r0 + 4:
+                c = pal["cross"]
+            elif u < 3 and r > r0 + 4:
+                c = pal["glass_hi"]
+            else:
+                c = pal["glass"]
+            canvas.put(cx, by - r, c)
+        canvas.put(cx, by - r0 + 1, pal["sill"])
+    for cx, by in (cols[0], cols[8]):
+        for r in range(r0 + 1, r0 + 7):
+            canvas.put(cx, by - r, pal["shutter"])
+
+
+def iso_door(canvas: Canvas, origin: Point, slope: int, fx: float, span: float, pal: Mapping[str, str]) -> None:
+    """7x12 plank door on a sloped face, with a step and a knob.
+    pal keys: door_a, door_b, door_frame, step, knob."""
+    cols = _skewed_columns(origin, slope, fx, span, 7)
+    for u, (cx, by) in enumerate(cols):
+        for r in range(12):
+            c = pal["door_frame"] if u in (0, 6) or r == 11 else (pal["door_a"] if u & 1 else pal["door_b"])
+            canvas.put(cx, by - r, c)
+        canvas.put(cx, by + 1, pal["step"])
+    cx, by = cols[5]
+    canvas.put(cx, by - 6, pal["knob"])
+
+
+HOUSE_KEYS: tuple[str, ...] = (
+    "wall_l", "wall_l_line", "wall_r", "wall_r_line",
+    "base_stone", "base_stone_alt", "base_mortar", "base_stone_r", "base_stone_alt_r", "base_mortar_r",
+    "edge_dark", "edge_light",
+    "roof", "roof_stripe", "roof_hi", "roof_edge", "roof_back", "roof_outline",
+    "frame", "cross", "glass", "glass_hi", "sill", "shutter",
+    "door_a", "door_b", "door_frame", "step", "knob",
+    "chimney", "chimney_side", "chimney_cap",
+)
+
+
+def iso_house(
+    canvas: Canvas, x: int, y: int, w: int, d: int, h: int, rh: int, pal: Mapping[str, str],
+    windows_left: Sequence[float] = (), windows_right: Sequence[float] = (),
+    door_left: float | None = None, door_right: float | None = None, chimney: float | None = None,
+) -> None:
+    """Plank-and-shingle building (the mockup's house2) on a w x d tile
+    footprint whose top vertex is (x, y): plank walls on a brick foundation,
+    windows and doors placed by fraction along each wall, a shingled gable
+    roof with its ridge along the w axis, a gable window, and an optional
+    chimney at fraction `chimney` along the ridge. pal must hold every name in
+    HOUSE_KEYS."""
+    missing = [k for k in HOUSE_KEYS if k not in pal]
+    if missing:
+        raise KeyError(f"iso_house palette missing {missing}")
+    top = (x, y)
+    right = (x + 8 * w, y + 4 * w)
+    bottom = (x + 8 * w - 8 * d, y + 4 * w + 4 * d)
+    left = (x - 8 * d, y + 4 * d)
+
+    def wall(origin: Point, end: Point, slope: int, fill: Callable[[int, int], str]) -> None:
+        x0, x1 = _round(origin[0]), _round(end[0])
+        for cx in range(x0, x1):
+            by = int(math.floor(origin[1] + (cx - x0) * slope / 2))
+            for r in range(h):
+                canvas.put(cx, by - r, fill(cx, r))
+
+    wall(left, bottom, 1, plank_face(pal["wall_l"], pal["wall_l_line"], h, foundation=brick_base(pal["base_stone"], pal["base_stone_alt"], pal["base_mortar"])))
+    wall(bottom, right, -1, plank_face(pal["wall_r"], pal["wall_r_line"], h, foundation=brick_base(pal["base_stone_r"], pal["base_stone_alt_r"], pal["base_mortar_r"])))
+    for r in range(h):
+        canvas.put(left[0], left[1] - r, pal["edge_dark"])
+        canvas.put(bottom[0], bottom[1] - r, pal["edge_light"])
+        canvas.put(right[0] - 1, right[1] - r, pal["edge_dark"])
+    for f in windows_left:
+        iso_window(canvas, left, 1, f, bottom[0] - left[0], 6, pal)
+    for f in windows_right:
+        iso_window(canvas, bottom, -1, f, right[0] - bottom[0], 6, pal)
+    if door_left is not None:
+        iso_door(canvas, left, 1, door_left, bottom[0] - left[0], pal)
+    if door_right is not None:
+        iso_door(canvas, bottom, -1, door_right, right[0] - bottom[0], pal)
+
+    def up(p: Point, dh: float) -> Point:
+        return (p[0], p[1] - dh)
+
+    def off(p: Point, dx: float, dy: float) -> Point:
+        return (p[0] + dx, p[1] + dy)
+
+    lh, bh, th, rh_ = up(left, h), up(bottom, h), up(top, h), up(right, h)
+    ridge_l = up(lerp(top, left, 0.5), h + rh)
+    ridge_r = up(lerp(right, bottom, 0.5), h + rh)
+    quad(canvas, off(th, -1, -1), off(rh_, 2, 0), off(ridge_r, 2, 0), off(ridge_l, -1, 0), pal["roof_back"])
+    tri(canvas, bh, rh_, ridge_r, pal["wall_r"])
+    for k in range(3, rh, 3):
+        p, q = lerp(bh, ridge_r, k / rh), lerp(rh_, ridge_r, k / rh)
+        canvas.line(p[0], p[1], q[0], q[1], pal["wall_r_line"])
+    gw = lerp(lerp(bh, rh_, 0.5), ridge_r, 0.4)
+    circle(canvas, _round(gw[0]), _round(gw[1]), 2, pal["frame"])
+    canvas.rect(gw[0] - 1, gw[1] - 1, gw[0], gw[1], pal["glass"])
+    a, b, c, e = off(lh, -2, 2), off(bh, 1, 3), off(ridge_r, 2, 0), off(ridge_l, -2, 0)
+    shingle_roof(canvas, a, b, c, e, pal["roof"], pal["roof_stripe"])
+    canvas.line(a[0], a[1], b[0], b[1], pal["roof_edge"])
+    canvas.line(a[0], a[1] + 1, b[0], b[1] + 1, pal["roof_outline"])
+    canvas.line(e[0], e[1], c[0], c[1], pal["roof_hi"])
+    canvas.line(e[0], e[1] - 1, c[0], c[1] - 1, pal["roof_edge"])
+    canvas.line(b[0], b[1], c[0], c[1], pal["roof_edge"])
+    canvas.line(b[0] + 1, b[1], c[0] + 1, c[1], pal["roof_stripe"])
+    if chimney is not None:
+        cp = lerp(e, c, chimney)
+        canvas.rect(cp[0] - 2, cp[1] - 9, cp[0] + 2, cp[1] - 1, pal["chimney"])
+        canvas.rect(cp[0] + 1, cp[1] - 9, cp[0] + 2, cp[1] - 1, pal["chimney_side"])
+        canvas.rect(cp[0] - 3, cp[1] - 10, cp[0] + 3, cp[1] - 9, pal["chimney_cap"])
+
+
+def scatter(canvas: Canvas, count: int, fn: Callable[[Canvas, int, int, float, int], None], seed: int, mask: Callable[[int, int], bool] | None = None) -> None:
+    """Deterministic detail scatter (pebbles, grass tufts, cracks): `count`
+    hashed points over the canvas; fn(canvas, x, y, t, n) runs for each point
+    the mask accepts, with t in [0, 1) choosing the detail."""
+    for n in range(count):
+        x = int(hash01(n, seed + 11) * canvas.w)
+        y = int(hash01(n, seed + 13) * canvas.h)
+        if mask is None or mask(x, y):
+            fn(canvas, x, y, hash01(n, seed + 17), n)
+
+
+def sprite_from_rows(rows: Sequence[str], mapping: Mapping[str, str], colors: Mapping[str, str] | None = None) -> Canvas:
+    """Canvas from string rows, one character per pixel: '.' is transparent,
+    every other character is looked up in `mapping` (char -> palette name).
+    The mockup sprites (BODY, GOB, BAT2, icons) are written this way."""
+    if not rows:
+        raise ValueError("sprite needs at least one row")
+    width = len(rows[0])
+    for i, row in enumerate(rows):
+        if len(row) != width:
+            raise ValueError(f"row {i} is {len(row)} wide, expected {width}")
+    out = Canvas(width, len(rows), colors)
+    for y, row in enumerate(rows):
+        for x, ch in enumerate(row):
+            if ch == ".":
+                continue
+            if ch not in mapping:
+                raise KeyError(f"row {y} uses {ch!r}, which the mapping does not define")
+            out.put(x, y, mapping[ch])
+    return out
+
+
+def _oct(canvas: Canvas, x: int, y: int, w: int, h: int, cut: int, color: str) -> None:
+    for r in range(h):
+        k = cut - r if r < cut else (r - (h - 1 - cut) if r > h - 1 - cut else 0)
+        for px in range(x + k, x + w - k):
+            canvas.put(px, y + r, color)
+
+
+def oct_socket(size: int, rim: Sequence[str], fill: str, shade: str, outline_color: str = OUTLINE, colors: Mapping[str, str] | None = None) -> Canvas:
+    """Octagonal ability/relic socket (the mockup's sock): outline, a bevelled
+    rim (rim = (mid, hi, lo)), an inner outline, the `fill` well and a 1 px
+    `shade` line under the top edge."""
+    if size < 12:
+        raise ValueError("oct_socket needs size >= 12")
+    mid, hi, lo = rim
+    c = Canvas(size, size, colors)
+    _oct(c, 0, 0, size, size, 3, outline_color)
+    _oct(c, 1, 1, size - 2, size - 2, 2, lo)
+    _oct(c, 1, 1, size - 3, size - 3, 2, hi)
+    _oct(c, 2, 2, size - 4, size - 4, 2, mid)
+    _oct(c, 3, 3, size - 6, size - 6, 2, outline_color)
+    _oct(c, 4, 4, size - 8, size - 8, 1, fill)
+    c.rect(5, 4, size - 6, 4, shade)
+    return c
+
+
+def export_scaled(canvas: Canvas, k: int) -> Canvas:
+    """Nearest-neighbour k-times upscale (4 for world art, 3 for UI). Returns a
+    Canvas, so the palette check and save_png work unchanged."""
+    if k < 1:
+        raise ValueError("scale must be >= 1")
+    out = Canvas(canvas.w * k, canvas.h * k, canvas.colors)
+    for y, row in enumerate(canvas.grid):
+        wide = [name for name in row for _ in range(k)]
+        for j in range(k):
+            out.grid[y * k + j] = wide[:]
+    return out
