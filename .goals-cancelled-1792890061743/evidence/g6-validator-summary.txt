@@ -1,9 +1,0 @@
-hilde: entries=9 flags=6 gotos=2 ok=true
-gruff: entries=11 flags=7 gotos=2 ok=true
-moss: entries=9 flags=6 gotos=2 ok=true
-pip: entries=9 flags=6 gotos=2 ok=true
-sister_ash: entries=10 flags=7 gotos=2 ok=true
-old_tom: entries=10 flags=6 gotos=2 ok=true
-vesper: entries=11 flags=8 gotos=2 ok=true
-rescued_miner_v1: entries=10 flags=7 gotos=2 ok=true
-ALL CHECKS PASS
