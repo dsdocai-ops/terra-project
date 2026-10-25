@@ -33,6 +33,15 @@ var choice_popup: ChoicePopup
 var rope_vote_prompt: RopeVotePrompt
 var pause_layer: Control
 var pause_menu: CarvedMenu
+
+## Emitted when the player picks "Back to Menu" on the run-over screen.
+signal menu_requested()
+
+## True once the run has ended: the pause layer then shows the run-over screen.
+var _run_over: bool = false
+## The run's clock, kept from the last fill made while the run was live, so the
+## run-over screen can still show it after GameState has cleared the run.
+var _last_run_elapsed: int = 0
 var run_summary: RunSummary
 
 var _poll: Timer
@@ -53,7 +62,7 @@ func _ready() -> void:
 
 
 func _unhandled_input(event: InputEvent) -> void:
-	if event.is_action_pressed(&"pause") and not choice_popup.visible:
+	if event.is_action_pressed(&"pause") and not choice_popup.visible and not _run_over:
 		set_paused_view(not pause_layer.visible)
 		get_viewport().set_input_as_handled()
 
@@ -231,7 +240,21 @@ func _on_rope_voted(yes: bool) -> void:
 		NetworkManager.request_vote_rope.rpc_id(NetworkManager.HOST_PEER_ID, yes)
 
 
+## Opens the run-over screen after the run has ended: the same pause layer, its
+## title changed, and its single button leads back to the menu.
+func show_run_over() -> void:
+	_run_over = true
+	Player.input_locked = true
+	run_summary.title = "Run over"
+	pause_menu.items = ["Back to Menu"]
+	set_paused_view(true)
+	pause_menu.grab_focus()
+
+
 func _on_pause_chosen(index: int) -> void:
+	if _run_over:
+		menu_requested.emit()
+		return
 	if index == 0:
 		set_paused_view(false)
 	else:
@@ -308,9 +331,9 @@ func _holds_active_relic() -> bool:
 
 
 func _fill_run_summary() -> void:
-	var elapsed: int = 0
 	if GameState.run != null:
-		elapsed = (Time.get_ticks_msec() - GameState.run.time_started) / 1000
+		_last_run_elapsed = (Time.get_ticks_msec() - GameState.run.time_started) / 1000
+	var elapsed: int = _last_run_elapsed
 	run_summary.rows = [
 		PackedStringArray(["Floor", hud_model.floor_label.trim_prefix("FLOOR ")]),
 		PackedStringArray(["Gold", CurrencyReadout.format_amount(hud_model.gold)]),

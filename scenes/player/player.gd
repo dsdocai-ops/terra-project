@@ -90,6 +90,9 @@ var facing_index: int = 0:
 ## Raw movement input in input space (W is (0, -1)). Set by the owning
 ## peer's input layer, replicated to the host through InputSync.
 var move_input: Vector2 = Vector2.ZERO
+## Set while the run-over screen is up: the local player takes no movement or
+## attack input. Static, so it is one flag for every player on this peer.
+static var input_locked: bool = false
 ## Owning peer's physics tick counter for move_input, sent with it through
 ## InputSync so the host can say which input its pose includes.
 var input_tick: int = 0
@@ -236,6 +239,9 @@ func _physics_process(delta: float) -> void:
 		input_tick += 1
 		if debug_autowalk != Vector2.ZERO:
 			move_input = debug_autowalk
+		elif input_locked:
+			move_input = Vector2.ZERO
+			state_machine.set_process_unhandled_input(false)
 		else:
 			move_input = Input.get_vector(&"move_left", &"move_right", &"move_up", &"move_down")
 			aim_position = get_global_mouse_position()

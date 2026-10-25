@@ -43,8 +43,14 @@ var _smoke_floor_waited: float = 0.0
 
 @onready var menu: PlaceholderMenu = $UI/PlaceholderMenu
 
+## Menu status carried across the scene reload that follows a finished run. A
+## static var lives on the script, so it survives the reload.
+static var _pending_status: String = ""
+
 
 func _ready() -> void:
+	# A static flag outlives the scene reload, so a fresh load starts unlocked.
+	Player.input_locked = false
 	world = WORLD_SCENE.instantiate() as World
 	add_child(world)
 	move_child(world, 0)
@@ -55,6 +61,10 @@ func _ready() -> void:
 	menu.join_pressed.connect(_on_join)
 	NetworkManager.connection_failed.connect(_on_connection_failed)
 	NetworkManager.host_disconnected.connect(_on_host_disconnected)
+	Events.run_ended.connect(_on_run_ended)
+	if _pending_status != "":
+		menu.set_status(_pending_status)
+		_pending_status = ""
 
 	apply_options(LaunchArgs.parse(OS.get_cmdline_user_args()))
 	_maybe_add_debug_console()
@@ -296,6 +306,31 @@ func _on_join(ip: String) -> void:
 	var err := NetworkManager.join(ip, options.port if options != null else NetworkManager.DEFAULT_PORT)
 	if err != OK:
 		_show_menu_with_status("Could not join %s: %s" % [ip, error_string(err)])
+
+
+## A finished run (death or extract) opens the HUD's run-over screen. Its single
+## button ends the session and reloads to the menu, which then shows the floor
+## count as its status line. Without a HUD the reload happens straight away.
+func _on_run_ended(result: RunResult) -> void:
+	_pending_status = "Run over. Floors cleared: %d" % result.floors_cleared
+	var hud := get_node_or_null("HUD") as Hud
+	if hud == null:
+		_restart_to_menu.call_deferred()
+		return
+	hud.menu_requested.connect(_restart_to_menu, CONNECT_ONE_SHOT)
+	hud.show_run_over()
+
+
+func _restart_to_menu() -> void:
+	NetworkManager.disconnect_all()
+	get_tree().reload_current_scene()
+
+
+## The status line the menu should show on this load, consumed once.
+static func take_pending_status() -> String:
+	var status := _pending_status
+	_pending_status = ""
+	return status
 
 
 func _on_connection_failed(reason: String) -> void:

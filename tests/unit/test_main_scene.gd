@@ -54,3 +54,9 @@ func test_apply_options_menu_mode_keeps_menu() -> void:
 
 func test_menu_ip_field_defaults_to_localhost() -> void:
 	assert_eq(_main.menu.ip_field.text, "127.0.0.1")
+
+
+func test_take_pending_status_returns_and_clears_run_over_text() -> void:
+	Main._pending_status = "Run over. Floors cleared: 2"
+	assert_eq(Main.take_pending_status(), "Run over. Floors cleared: 2")
+	assert_eq(Main.take_pending_status(), "", "consumed once")
