@@ -121,14 +121,19 @@ def test_facing_rows_are_distinct_drawings_not_mirrors() -> None:
 def test_tile_atlas_layout_matches_tiles_gd(built: Path) -> None:
     for biome in gen_tiles.BIOMES:
         with Image.open(built / gen_tiles.OUT_DIR / biome / "atlas.png") as img:
-            assert img.size == (gen_tiles.CELL * 3, gen_tiles.CELL)
+            assert img.size == (gen_tiles.CELL * 3, gen_tiles.CELL * 2)
             rgba = img.convert("RGBA")
-            for column in range(3):
-                cell = rgba.crop((column * gen_tiles.CELL, 0, (column + 1) * gen_tiles.CELL, gen_tiles.CELL))
-                assert cell.getbbox() is not None, (biome, column)
-            # The floor diamond occupies rows 16..47 of the first cell and nothing above.
-            floor = rgba.crop((0, 0, gen_tiles.CELL, gen_tiles.CELL))
-            assert floor.getbbox()[1] >= gen_tiles.CY - gen_tiles.HALF_H
+            for row in range(2):
+                for column in range(3):
+                    box = (column * gen_tiles.CELL, row * gen_tiles.CELL, (column + 1) * gen_tiles.CELL, (row + 1) * gen_tiles.CELL)
+                    assert rgba.crop(box).getbbox() is not None, (biome, column, row)
+            # Every floor diamond occupies rows 16..47 of its cell and nothing above.
+            floors = []
+            for column, row in gen_tiles.FLOOR_VARIANT_CELLS:
+                floor = rgba.crop((column * gen_tiles.CELL, row * gen_tiles.CELL, (column + 1) * gen_tiles.CELL, (row + 1) * gen_tiles.CELL))
+                assert floor.getbbox()[1] >= gen_tiles.CY - gen_tiles.HALF_H, (biome, column, row)
+                floors.append(floor.tobytes())
+            assert len(set(floors)) == gen_tiles.FLOOR_VARIANTS, "%s floor variants differ" % biome
 
 
 def test_tile_colors_come_from_the_biome_palette_only(built: Path) -> None:

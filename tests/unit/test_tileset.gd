@@ -27,7 +27,28 @@ func test_has_floor_wall_and_pit_tiles() -> void:
 	assert_true(_source.has_tile(Tiles.FLOOR), "floor tile")
 	assert_true(_source.has_tile(Tiles.WALL), "wall tile")
 	assert_true(_source.has_tile(Tiles.PIT), "pit tile")
-	assert_eq(_source.get_tiles_count(), 3)
+	assert_eq(_source.get_tiles_count(), 2 + Tiles.FLOOR_VARIANTS.size())
+
+
+func test_every_floor_variant_is_walkable_without_collision() -> void:
+	for coords: Vector2i in Tiles.FLOOR_VARIANTS:
+		assert_true(_source.has_tile(coords), "floor variant %s" % coords)
+		var data := _source.get_tile_data(coords, 0)
+		assert_true(data.get_custom_data(Tiles.WALKABLE), "variant %s walkable" % coords)
+		assert_eq(data.get_collision_polygons_count(0), 0, "variant %s does not collide" % coords)
+
+
+func test_floor_at_is_deterministic_and_uses_every_variant() -> void:
+	var seen: Dictionary[Vector2i, int] = {}
+	for x in range(-10, 10):
+		for y in range(-10, 10):
+			var cell := Vector2i(x, y)
+			var variant := Tiles.floor_at(cell)
+			assert_eq(Tiles.floor_at(cell), variant, "same cell, same variant")
+			seen[variant] = seen.get(variant, 0) + 1
+	assert_eq(seen.size(), Tiles.FLOOR_VARIANTS.size(), "a 20x20 room shows every variant")
+	for variant: Vector2i in seen:
+		assert_gt(seen[variant], 50, "variant %s is not starved" % variant)
 
 
 func test_walkable_custom_data_layer() -> void:
@@ -48,8 +69,8 @@ func test_wall_has_collision_and_floor_does_not() -> void:
 	assert_eq(wall.get_collision_polygon_points(0, 0).size(), 4, "wall collision is the tile diamond")
 
 
-func test_atlas_texture_is_three_64x96_cells_wide() -> void:
+func test_atlas_texture_is_three_by_two_64x96_cells() -> void:
 	var tex := _source.texture
 	assert_not_null(tex, "atlas texture")
-	assert_eq(tex.get_size(), Vector2(192, 96))
+	assert_eq(tex.get_size(), Vector2(192, 192))
 	assert_eq(_source.texture_region_size, Vector2i(64, 96), "v2 64x96 cells (SPEC-art-audio D2) leave room for a 32 px wall above its diamond")

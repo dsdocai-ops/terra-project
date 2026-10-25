@@ -5,7 +5,8 @@ Each cell is drawn 16x24 and ships 64x96. The ground diamond is drawn 16x8 at
 rows 8..15 (ships rows 32..63), so its centre is the cell centre and the
 TileSet's default texture origin lines it up with the 64x32 tile. A wall rises
 8 drawn px (32 px) above its footprint; its top face fills rows 0..7. Atlas
-columns match scripts/tiles.gd: FLOOR (0,0), WALL (1,0), PIT (2,0).
+cells match scripts/tiles.gd: FLOOR (0,0), WALL (1,0), PIT (2,0), and the three
+extra floor variants on row 1 at (0,1), (1,1), (2,1).
 
 Recipes are ports of the approved mockups (docs/art-direction/v2/mockup-src/
 lib2.js: mineTex, stonePx/wallBlk); colors come from palette.v2_colors(biome).
@@ -20,7 +21,7 @@ from pathlib import Path
 
 import palette
 import pixel
-from gen_tiles import V2_BIOMES
+from gen_tiles import FLOOR_VARIANT_CELLS, FLOOR_VARIANTS, V2_BIOMES
 from pixel import Canvas
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
@@ -73,20 +74,59 @@ def _mine_detail(c: Canvas, x: int, y: int, t: float, n: int) -> None:
         c.put(x, y, "mine_floor_5" if t < 0.8 else "mine_floor_1")
 
 
-def mines_floor() -> Canvas:
+def mines_floor(variant: int = 0) -> Canvas:
+    """Variant 0 is the approved mockup floor; 1..FLOOR_VARIANTS-1 rehash the
+    base and the scatter and add one pattern each (worn patch, crack, stones),
+    so a painted room does not read as one stamp."""
     c = _canvas("collapsed_mines")
     pixel.iso_tile(c, TOP_X, TOP_Y, "mine_floor_3")
     # Two-tone base: a few warmer and darker patches so the tile is not flat.
     for y in range(TOP_Y, TOP_Y + 8):
         for x in range(CELL_W):
             if _in_diamond(x, y):
-                v = pixel.hash01(x * 7 + 1, y * 13 + 5)
+                v = pixel.hash01(x * 7 + 1 + variant * 101, y * 13 + 5)
                 if v < 0.12:
                     c.put(x, y, "mine_floor_2")
                 elif v > 0.9:
                     c.put(x, y, "mine_floor_4")
-    pixel.scatter(c, 28, _mine_detail, seed=31, mask=lambda x, y: _in_diamond(x, y) and _in_diamond(x + 1, y))
+    if variant == 1:
+        _mine_worn_patch(c)
+    elif variant == 2:
+        _mine_crack(c)
+    elif variant == 3:
+        _mine_stones(c)
+    pixel.scatter(c, 28 - variant * 4, _mine_detail, seed=31 + variant * 37, mask=lambda x, y: _in_diamond(x, y) and _in_diamond(x + 1, y))
     return c
+
+
+def _mine_worn_patch(c: Canvas) -> None:
+    """Packed, darker ground left of centre, dithered at its edge."""
+    for y in range(TOP_Y + 2, TOP_Y + 6):
+        for x in range(3, 10):
+            if not _in_diamond(x, y):
+                continue
+            r = ((x - 6) / 3.5) ** 2 + ((y - TOP_Y - 4) / 2.0) ** 2
+            if r < 0.5 or (r < 1.0 and (x + y) % 2 == 0):
+                c.put(x, y, "mine_floor_5")
+
+
+def _mine_crack(c: Canvas) -> None:
+    """One crack across the tile along the down-right iso axis."""
+    for k in range(11):
+        x, y = 2 + k, TOP_Y + 2 + k // 2
+        if _in_diamond(x, y):
+            c.put(x, y, "mine_floor_7")
+    c.put(9, TOP_Y + 4, "mine_floor_7")
+    c.put(10, TOP_Y + 3, "mine_floor_7")
+
+
+def _mine_stones(c: Canvas) -> None:
+    """Two embedded stones: lit top, dark lower edge."""
+    for x, y in ((5, TOP_Y + 3), (10, TOP_Y + 4)):
+        c.put(x, y, "mine_floor_0")
+        c.put(x + 1, y, "mine_floor_1")
+        c.put(x, y + 1, "mine_floor_6")
+        c.put(x + 1, y + 1, "mine_floor_6")
 
 
 MINE_STONE = {"a": "mine_stone_3", "b": "mine_stone_4", "c": "mine_stone_1", "hi": "mine_stone_0", "lo": "mine_stone_6", "m": "mine_stone_7", "ore": "copper_1"}
@@ -134,10 +174,13 @@ RECIPES = {
 
 def atlas(biome: str) -> Canvas:
     floor, wall, pit = RECIPES[biome]
-    out = Canvas(CELL_W * 3, CELL_H, palette.v2_colors(biome))
+    out = Canvas(CELL_W * 3, CELL_H * 2, palette.v2_colors(biome))
     out.blit(floor(), 0, 0)
     out.blit(wall(), CELL_W, 0)
     out.blit(pit(), CELL_W * 2, 0)
+    for variant in range(1, FLOOR_VARIANTS):
+        col, row = FLOOR_VARIANT_CELLS[variant]
+        out.blit(floor(variant), col * CELL_W, row * CELL_H)
     return pixel.export_scaled(out, SCALE)
 
 
