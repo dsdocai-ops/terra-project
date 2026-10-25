@@ -68,7 +68,7 @@ func _paint_tiles(world: World, biome: BiomeData) -> void:
 	world.walls_layer.clear()
 	world.floor_layer.modulate = biome.tint if biome != null else Color.WHITE
 	for cell: Vector2i in layout.walkable:
-		world.floor_layer.set_cell(cell, Tiles.SOURCE, Tiles.FLOOR)
+		world.floor_layer.set_cell(cell, Tiles.SOURCE, Tiles.floor_at(cell))
 	for cell: Vector2i in layout.walkable:
 		for dx: int in range(-1, 2):
 			for dy: int in range(-1, 2):

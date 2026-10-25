@@ -38,6 +38,24 @@ func test_corridor_turns_have_a_full_corner() -> void:
 			assert_true(cells.has(Vector2i(43 + dx, 13 + dy)), "corner cell %d,%d" % [dx, dy])
 
 
+func test_painted_floor_mixes_every_floor_variant() -> void:
+	var world := (load("res://scenes/main/world.tscn") as PackedScene).instantiate() as World
+	world.debug_test_floor = false
+	add_child_autofree(world)
+	var floor_node := Floor.new()
+	add_child_autofree(floor_node)
+	floor_node.layout = _layout(42)
+	floor_node._paint_tiles(world, BiomeData.for_index(1))
+	var seen: Dictionary[Vector2i, bool] = {}
+	for cell: Vector2i in floor_node.layout.walkable:
+		var coords: Vector2i = world.floor_layer.get_cell_atlas_coords(cell)
+		assert_eq(coords, Tiles.floor_at(cell), "cell %s paints its floor_at variant" % cell)
+		seen[coords] = true
+		if coords != Tiles.floor_at(cell):
+			return
+	assert_eq(seen.size(), Tiles.FLOOR_VARIANTS.size(), "a generated floor shows every variant")
+
+
 func test_stepping_into_a_hallway_clears_all_of_it() -> void:
 	var floor_node := Floor.new()
 	add_child_autofree(floor_node)
