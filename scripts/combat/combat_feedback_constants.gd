@@ -15,6 +15,8 @@ const HIT_STOP_HEAVY_FRAMES: int = 6
 const HIT_STOP_PLAYER_HURT_FRAMES: int = 4
 const HIT_STOP_BOSS_KILL_FRAMES: int = 10
 const HIT_STOP_CRIT_BONUS_FRAMES: int = 2
+## A perfect dodge freezes the dodger a moment so the timing is felt.
+const HIT_STOP_PERFECT_DODGE_FRAMES: int = 3
 ## A poise break (stagger) freezes longer than a heavy hit.
 const HIT_STOP_STAGGER_FRAMES: int = 8
 

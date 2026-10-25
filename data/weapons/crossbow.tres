@@ -1,4 +1,4 @@
-[gd_resource type="Resource" script_class="WeaponData" load_steps=5 format=3]
+[gd_resource type="Resource" script_class="WeaponData" load_steps=6 format=3]
 
 [ext_resource type="Script" path="res://scripts/data/weapon_data.gd" id="1_weapon"]
 [ext_resource type="Script" path="res://scripts/data/attack_spec.gd" id="2_spec"]
@@ -32,6 +32,22 @@ projectile_range = 520.0
 pierce = 3
 move_speed_factor = 0.3
 
+[sub_resource type="Resource" id="Skill"]
+script = ExtResource("2_spec")
+animation = &"skill_shoot"
+shape = 2
+windup_seconds = 0.08
+active_seconds = 0.02
+recovery_seconds = 0.35
+base_damage = 80.0
+knockback = 260.0
+poise_damage = 45.0
+hit_stun_seconds = 0.3
+projectile_speed = 700.0
+projectile_range = 640.0
+pierce = 8
+move_speed_factor = 0.3
+
 [resource]
 script = ExtResource("1_weapon")
 id = &"crossbow"
@@ -40,5 +56,7 @@ type = 2
 description = "A hand crossbow. Quick bolts; a charged shot pierces."
 light_combo = Array[ExtResource("2_spec")]([SubResource("Light1")])
 heavy = SubResource("Heavy")
+skill = SubResource("Skill")
+skill_cooldown_seconds = 6.0
 heavy_charge_seconds = 0.9
 color = Color(0.7, 0.55, 0.35, 1)

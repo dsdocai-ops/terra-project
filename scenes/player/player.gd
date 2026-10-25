@@ -133,6 +133,9 @@ var is_dead: bool = false:
 		_apply_downed_tint()
 var bleed_out_left: float = 0.0
 var _perfect_window_left: float = 0.0
+## True once a hit was blocked during the dodge that is running, so that dodge has
+## already emitted its one `player_dodged(player, true)`.
+var _dodge_was_perfect: bool = false
 
 ## Host-written pose, replicated by StateSync. Clients reconcile or
 ## interpolate toward it; nobody replicates `position` directly.
@@ -517,6 +520,7 @@ func begin_dodge() -> void:
 	if stats != null:
 		cooldown = maxf(stats.get_value(StatBlock.Stat.DODGE_COOLDOWN), MIN_DODGE_COOLDOWN)
 	_dodge_cooldown_left = cooldown
+	_dodge_was_perfect = false
 	if hurtbox != null:
 		hurtbox.invulnerable = true
 		hurtbox.dodge_invulnerable = true
@@ -530,14 +534,40 @@ func end_dodge() -> void:
 		if hit_iframes_left <= 0.0:
 			hurtbox.invulnerable = false
 	dodge_finished.emit()
+	if multiplayer.is_server() and not _dodge_was_perfect:
+		Events.player_dodged.emit(self, false)
+	_dodge_was_perfect = false
 
 
 ## A hit landed on the dodge's i-frames and was avoided: the perfect-dodge
-## window opens (SPEC-player-controller). Host only; Hurtbox emits it there.
+## window opens (SPEC-player-controller). Host only; Hurtbox emits it there. The
+## host freezes the dodger for 3 frames and pings it on every peer
+## (CombatFeedback), and tells the owning client so it can predict the skill.
+## `player_dodged` is emitted once per dodge: `true` here at the first blocked hit,
+## or `false` when a dodge ends without one.
 func _on_dodge_blocked(_hit: HitInfo) -> void:
+	open_perfect_dodge_window()
+	if multiplayer.is_server() and not _dodge_was_perfect:
+		Events.player_dodged.emit(self, true)
+	_dodge_was_perfect = true
+	var world: World = GameState.world
+	if world != null and world.combat_feedback != null:
+		world.combat_feedback.play_perfect_dodge(self)
+	if multiplayer.is_server() and peer_id != multiplayer.get_unique_id() and peer_id != 0:
+		_perfect_window_opened.rpc_id(peer_id)
+
+
+## Opens the 0.5 s perfect-dodge window on this copy of the player.
+func open_perfect_dodge_window() -> void:
 	_perfect_dodge_window_open = true
 	_perfect_window_left = PERFECT_DODGE_SECONDS
-	Events.player_dodged.emit(self, true)
+
+
+## Host -> owning client: the window opened. The client has no Hurtbox result of
+## its own, so without this it could not predict the skill when it presses heavy.
+@rpc("authority", "call_remote", "reliable")
+func _perfect_window_opened() -> void:
+	open_perfect_dodge_window()
 
 
 ## Host. Health hit zero: a teammate still standing means this player is downed

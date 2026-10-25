@@ -110,7 +110,7 @@ func _cone_shape() -> ConvexPolygonShape2D:
 		var angle: float = lerpf(-half, half, float(step) / float(MELEE_ARC_STEPS))
 		points.append(Vector2.RIGHT.rotated(angle) * _pattern.telegraph_size.x)
 	var shape := ConvexPolygonShape2D.new()
-	shape.points = points
+	shape.set_point_cloud(points)
 	return shape
 
 

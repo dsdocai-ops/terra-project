@@ -15,11 +15,14 @@ extends Node
 
 ## Emitted on this peer each time the presentation plays (tests listen).
 signal feedback_played(payload: Dictionary)
+## Emitted on this peer when the perfect-dodge ping shows over a player.
+signal dodge_ping_played(player: Player)
 
 const BOSS_GROUP: StringName = &"bosses"
 ## WeaponController tags the last step of a light combo with this.
 const FINISHER_TAG: StringName = &"finisher"
 const STAGGER_TEXT: String = "STAGGER"
+const PERFECT_DODGE_SFX: StringName = &"perfect_dodge"
 
 ## Where numbers and sparks are parented (World/FX).
 var fx_root: Node = null
@@ -89,6 +92,42 @@ func _is_boss_kill(target: Node) -> bool:
 		return false
 	var health: Health = target.get_node_or_null("Health") as Health
 	return health != null and health.is_dead
+
+
+# --- perfect dodge -------------------------------------------------------------------
+
+
+## Host: a hit was blocked by a dodge. Freezes the dodger for 3 frames and tells
+## every peer to ping it.
+func play_perfect_dodge(player: Player) -> void:
+	if not multiplayer.is_server() or player == null or not is_instance_valid(player):
+		return
+	TimeManager.hit_stop(player, player, CombatFeedbackConstants.HIT_STOP_PERFECT_DODGE_FRAMES)
+	var anchor: Node = get_parent() if get_parent() != null else self
+	var path: NodePath = anchor.get_path_to(player)
+	if multiplayer.get_peers().is_empty():
+		show_dodge_ping(path)
+	else:
+		_receive_dodge_ping.rpc(path)
+
+
+@rpc("authority", "call_local", "unreliable")
+func _receive_dodge_ping(path: NodePath) -> void:
+	show_dodge_ping(path)
+
+
+## Every peer: the expanding ring over the dodger, and the perfect-dodge sound
+## for the player who dodged.
+func show_dodge_ping(path: NodePath) -> void:
+	var anchor: Node = get_parent() if get_parent() != null else self
+	var player: Player = anchor.get_node_or_null(path) as Player
+	if player == null:
+		return
+	if fx_root != null:
+		DodgePing.spawn(fx_root, player.global_position)
+	if player.is_local:
+		AudioManager.play_sfx(PERFECT_DODGE_SFX)
+	dodge_ping_played.emit(player)
 
 
 # --- every peer: present ------------------------------------------------------------

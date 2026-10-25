@@ -17,6 +17,12 @@ extends Node
 ## dodge. A heavy released while busy stays buffered instead of being dropped.
 ## Both the owner and the host run their own buffer, so a press that reaches the
 ## host a little early still fires.
+##
+## Weapon skill (combat v2 C4): a heavy press while `Player.is_perfect_dodge_window()`
+## is open and the weapon's skill is off cooldown is a SKILL instead: it consumes
+## the window and fires `WeaponController.weapon_skill()`. Otherwise it is the
+## usual heavy charge. The host tells the owning client when the window opens, so
+## both sides decide the same way.
 
 ## SWAP, HEAVY (the release) and the four buffered kinds. New kinds go at the
 ## end: they travel over the wire as ints.
@@ -35,6 +41,8 @@ var _weapons: WeaponController = null
 var _buffer: Dictionary = {}
 ## Owner only: the heavy button went down and has not come back up.
 var _heavy_down: bool = false
+## The last heavy press became a skill, so its release must not fire a heavy.
+var _skill_press: bool = false
 
 
 func _ready() -> void:
@@ -105,8 +113,11 @@ func _act_or_buffer(kind: int, aim: Vector2) -> void:
 
 func _is_legal(kind: int) -> bool:
 	match kind:
-		Kind.LIGHT, Kind.HEAVY_PRESS, Kind.SKILL:
+		Kind.LIGHT, Kind.HEAVY_PRESS:
 			return _can_start_attack()
+		Kind.SKILL:
+			# The skill follows a dodge, so it may also start out of the roll itself.
+			return _can_start_attack() or _player.state_machine.current_name() == &"Dodge"
 		Kind.DODGE:
 			return _can_dodge_now()
 	return false
@@ -122,6 +133,11 @@ func _can_start_attack() -> bool:
 		var attack: PlayerAttackState = _player.state_machine.current as PlayerAttackState
 		return attack != null and attack.can_combo_cancel()
 	return false
+
+
+## True when a heavy press right now would fire the weapon skill.
+func skill_available() -> bool:
+	return _player.is_perfect_dodge_window() and _weapons.skill_ready()
 
 
 ## A dodge may start unless one is running or the player is stunned; it cancels
@@ -149,6 +165,8 @@ func _run(kind: int, aim: Vector2, item: Dictionary) -> void:
 				_enter_charge(float(item.get("age", 0.0)))
 		Kind.DODGE:
 			_begin_dodge(aim)
+		Kind.SKILL:
+			_fire_skill(aim)
 
 
 # --- input entry points ---------------------------------------------------------------
@@ -213,7 +231,10 @@ func apply(kind: int, aim: Vector2, charge: float, perfect: bool = false) -> voi
 	if _player == null or _player.is_downed or _player.is_dead:
 		return
 	match kind:
-		Kind.LIGHT, Kind.HEAVY_PRESS, Kind.DODGE, Kind.SKILL:
+		Kind.HEAVY_PRESS:
+			_skill_press = skill_available()
+			_act_or_buffer(Kind.SKILL if _skill_press else Kind.HEAVY_PRESS, aim)
+		Kind.LIGHT, Kind.DODGE, Kind.SKILL:
 			_act_or_buffer(kind, aim)
 		Kind.HEAVY:
 			_release_heavy(aim, charge, perfect)
@@ -241,6 +262,9 @@ func _enter_charge(credit: float) -> void:
 ## With no press in sight it fires directly when legal, and is dropped when the
 ## charge was interrupted (a hit, a dodge).
 func _release_heavy(aim: Vector2, charge: float, perfect: bool) -> void:
+	if _skill_press:
+		_skill_press = false
+		return
 	if _charge_state() != null:
 		_fire_heavy(aim, charge, perfect)
 	elif not _buffer.is_empty() and int(_buffer["kind"]) == Kind.HEAVY_PRESS:
@@ -250,6 +274,17 @@ func _release_heavy(aim: Vector2, charge: float, perfect: bool) -> void:
 		_buffer["aim"] = aim
 	elif _is_legal(Kind.HEAVY_PRESS):
 		_fire_heavy(aim, charge, perfect)
+
+
+## The weapon skill: consumes the perfect-dodge window and runs the skill as a
+## heavy-class attack. Nothing happens when the cooldown is running by the time a
+## buffered skill gets its legal frame.
+func _fire_skill(aim: Vector2) -> void:
+	var spec: AttackSpec = _weapons.weapon_skill()
+	if spec == null:
+		return
+	_player.consume_perfect_dodge_window()
+	_begin_attack(spec, aim, 0.0, true, false)
 
 
 func _fire_heavy(aim: Vector2, charge: float, perfect: bool) -> void:

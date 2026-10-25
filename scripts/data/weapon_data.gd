@@ -10,6 +10,11 @@ enum Type { BLADE, HEAVY, RANGED, MAGIC, EXOTIC }
 @export var description: String = ""
 @export var light_combo: Array[AttackSpec] = []
 @export var heavy: AttackSpec = null
+## The weapon skill, fired by a heavy press inside the perfect-dodge window
+## (combat v2 C4). Phase 1: a stronger heavy with its own shape; real per-weapon
+## skills land with the weapons module in week 7.
+@export var skill: AttackSpec = null
+@export var skill_cooldown_seconds: float = 6.0
 ## Seconds of holding `attack_heavy` for a full charge.
 @export var heavy_charge_seconds: float = 0.8
 ## Share of full move speed while holding a heavy charge (combat v2 C3).

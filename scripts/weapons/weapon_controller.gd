@@ -32,6 +32,8 @@ var active_slot: int = 0
 var combo_step: int = 0
 
 var _combo_timer: float = 0.0
+## Seconds left on each slot's weapon skill, counted in TimeManager-scaled time.
+var _skill_cooldowns: Array[float] = [0.0, 0.0]
 var _swap_lockout: float = 0.0
 var _hitbox: Hitbox = null
 var _hitbox_shape: CollisionShape2D = null
@@ -50,6 +52,9 @@ func _ready() -> void:
 
 func _physics_process(delta: float) -> void:
 	_swap_lockout = maxf(_swap_lockout - delta, 0.0)
+	var scaled: float = delta * (TimeManager.scale_for(_player) if _player != null else 1.0)
+	for slot: int in SLOT_COUNT:
+		_skill_cooldowns[slot] = maxf(_skill_cooldowns[slot] - scaled, 0.0)
 	if _combo_timer > 0.0:
 		_combo_timer -= delta
 		if _combo_timer <= 0.0:
@@ -123,6 +128,28 @@ func take_light() -> AttackSpec:
 	return spec
 
 
+## True when the active weapon has a skill that is off cooldown.
+func skill_ready() -> bool:
+	var weapon: WeaponData = active_weapon()
+	return weapon != null and weapon.skill != null and _skill_cooldowns[active_slot] <= 0.0
+
+
+func skill_cooldown_left(slot: int = -1) -> float:
+	return _skill_cooldowns[active_slot if slot < 0 else slot]
+
+
+## Fires the active weapon's skill: returns its AttackSpec and starts the
+## cooldown (`skill_cooldown_seconds`, TimeManager-scaled), or null when there is
+## no skill or it is still cooling down. The caller runs the returned spec as an
+## attack; the perfect-dodge check lives in AttackController.
+func weapon_skill() -> AttackSpec:
+	if not skill_ready():
+		return null
+	var weapon: WeaponData = active_weapon()
+	_skill_cooldowns[active_slot] = weapon.skill_cooldown_seconds
+	return weapon.skill
+
+
 func take_heavy() -> AttackSpec:
 	var weapon: WeaponData = active_weapon()
 	return weapon.heavy if weapon != null else null
@@ -171,6 +198,8 @@ func build_hit(spec: AttackSpec, dir: Vector2, charge: float, heavy: bool, perfe
 	hit.tags.append(&"ranged" if hit.is_projectile else &"melee")
 	if heavy and perfect:
 		hit.tags.append(&"perfect_release")
+	if weapon != null and weapon.skill != null and weapon.skill == spec:
+		hit.tags.append(&"weapon_skill")
 	if not heavy and weapon != null and weapon.light_combo.size() > 1 and weapon.light_combo.back() == spec:
 		hit.tags.append(CombatFeedback.FINISHER_TAG)
 	return hit
@@ -247,8 +276,10 @@ func _melee_shape(spec: AttackSpec, charge: float, heavy: bool) -> Shape2D:
 	for step: int in range(ARC_SEGMENTS + 1):
 		var angle: float = lerpf(-half, half, float(step) / float(ARC_SEGMENTS))
 		points.append(Vector2.RIGHT.rotated(angle) * reach)
+	# A fan wider than 180 degrees is not convex (the pickaxe skill is 300), so the
+	# shape takes the convex hull of the points; for narrower fans that is the fan.
 	var polygon := ConvexPolygonShape2D.new()
-	polygon.points = points
+	polygon.set_point_cloud(points)
 	return polygon
 
 

@@ -40,8 +40,9 @@ enum Type { BLADE, HEAVY, RANGED, MAGIC, EXOTIC }
 @export var heavy: AttackSpec
 @export var heavy_charge_seconds: float = 0.8
 @export var charge_move_factor: float = 0.3       # share of move speed while holding a heavy (combat v2 C3)
-@export var weapon_skill: PackedScene             # WeaponSkill node, instanced on equip
-@export var weapon_skill_cooldown: float = 6.0
+@export var skill: AttackSpec                     # Phase 1 skill (combat v2 C4): a stronger heavy with its own shape
+@export var skill_cooldown_seconds: float = 6.0
+# weapons (week 7) replaces `skill` with a WeaponSkill scene instanced on equip: `weapon_skill: PackedScene`
 @export var mutations: Array[MutationData]        # exactly 6
 @export var move_speed_while_attacking: float     # 0.5 light default, type-specific
 @export var unlock_cost_gold: int                 # Blacksmith
@@ -55,7 +56,7 @@ enum Type { BLADE, HEAVY, RANGED, MAGIC, EXOTIC }
 
 Node on the player under `WeaponPivot`. Holds 2 `WeaponData` slots, instances the active weapon's `attack_scene` (a `WeaponAttack` subclass with `light(step)`, `heavy(charge)`, `skill()`), handles swap with 0.2 s lockout, applies affinity bonuses from `ClassData` by tagging `HitInfo` (`"affinity"`) so class effects can react. Weapon damage tiers from Blacksmith add percent to weapon `base_damage`.
 
-Weapon skill rule: `attack_heavy` pressed while `Player.is_perfect_dodge_window()` and skill cooldown ready triggers `skill()` and consumes the window; cooldown 6 s (Weapon Master node +10% damage per rank, not cooldown). If on cooldown, a normal heavy happens.
+Weapon skill rule: `attack_heavy` pressed while `Player.is_perfect_dodge_window()` and skill cooldown ready triggers `WeaponController.weapon_skill()` and consumes the window; cooldown 6 s per weapon slot, counted in `TimeManager`-scaled time (Weapon Master node +10% damage per rank, not cooldown). If on cooldown, a normal heavy happens and the window stays open. Phase 1 (combat v2 C4): Pickaxe's skill is a 300 degree sweep (reach 96, damage 70, poise 50); Crossbow's is a bolt that pierces 8 (damage 80, range 640, poise 45). A skill hit is a heavy hit tagged `weapon_skill`.
 
 ### Per-weapon mechanics that need engine support
 

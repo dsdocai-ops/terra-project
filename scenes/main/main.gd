@@ -27,6 +27,10 @@ var _smoke3_stagger_logged: bool = false
 var _smoke3_heavy_ticks: int = -1
 var _smoke3_charge_seen: bool = false
 var _smoke3_feedback_repeats: int = 0
+var _smoke3_window_pending: bool = false
+var _smoke3_window_sent: bool = false
+var _smoke3_window_seen: bool = false
+var _smoke3_skill_seen: bool = false
 var _smoke3_hit_refusal_logged: bool = false
 var _smoke3_death_logged: bool = false
 var _smoke3_kill_logged: bool = false
@@ -145,6 +149,7 @@ func _log_smoke() -> void:
 func _start_smoke3(seconds: float) -> void:
 	Events.enemy_killed.connect(_on_smoke3_enemy_killed)
 	world.combat_feedback.feedback_played.connect(_on_smoke3_feedback_played)
+	world.combat_feedback.dodge_ping_played.connect(_on_smoke3_dodge_ping)
 	Events.heavy_attack_released.connect(_on_smoke3_heavy_released)
 	_smoke3_poll = Timer.new()
 	_smoke3_poll.wait_time = 0.25
@@ -166,6 +171,12 @@ func _on_smoke3_feedback_played(payload: Dictionary) -> void:
 ## The host logs the heavy a client released, with the charge it validated.
 func _on_smoke3_heavy_released(player: Player, charge: float) -> void:
 	print("[smoke3] heavy_attack_released from peer %d charge=%.2f" % [player.peer_id, charge])
+	if player.peer_id != NetworkManager.local_peer_id:
+		_smoke3_window_pending = true
+
+
+func _on_smoke3_dodge_ping(player: Player) -> void:
+	print("[smoke3] dodge ping played on peer %d over Player%d" % [NetworkManager.local_peer_id, player.peer_id])
 
 
 ## Client: after the kill request, press and hold the heavy button through
@@ -184,6 +195,19 @@ func _smoke3_drive_heavy() -> void:
 		controller.send(AttackController.Kind.HEAVY, 0.9, false)
 		print("[smoke3] client released heavy")
 	_smoke3_heavy_ticks += 1
+
+
+## Client: once the host's perfect-dodge window reaches this player (the host RPC),
+## press heavy inside it. That fires the weapon skill on both sides.
+func _smoke3_drive_skill() -> void:
+	var me: Player = NetworkManager.players.get(NetworkManager.local_peer_id) as Player
+	if me == null or _smoke3_window_seen or not me.is_perfect_dodge_window():
+		return
+	_smoke3_window_seen = true
+	print("[smoke3] client sees the perfect-dodge window (host RPC)")
+	var controller: AttackController = me.get_node("AttackController") as AttackController
+	controller.send(AttackController.Kind.HEAVY_PRESS, 0.0)
+	print("[smoke3] client pressed heavy inside the window")
 
 
 func _on_smoke3_enemy_killed(_enemy: Node, _hit: RefCounted) -> void:
@@ -211,6 +235,25 @@ func _smoke3_find_enemy() -> Node:
 ## of 3 (HP 10 -> 7, replicated to everyone). When the client's kill lands,
 ## log how many times enemy_killed fired — it must be exactly 1.
 func _smoke3_host_tick() -> void:
+	if _smoke3_window_pending and not _smoke3_window_sent:
+		# Stand-in for a dodged hit: the same call Player makes when the hurtbox
+		# reports a blocked hit (opens the host's window, freezes and pings the
+		# dodger, tells the owning client).
+		for peer_id: int in NetworkManager.players:
+			var target: Player = NetworkManager.players[peer_id] as Player
+			if peer_id != NetworkManager.local_peer_id and target != null:
+				_smoke3_window_sent = true
+				target._on_dodge_blocked(HitInfo.new())
+				print("[smoke3] host opened a perfect-dodge window for Player%d" % peer_id)
+	if _smoke3_window_sent and not _smoke3_skill_seen:
+		for peer_id: int in NetworkManager.players:
+			var other_player: Player = NetworkManager.players[peer_id] as Player
+			if peer_id == NetworkManager.local_peer_id or other_player == null:
+				continue
+			var weapons: WeaponController = other_player.get_node("WeaponController") as WeaponController
+			if weapons.skill_cooldown_left() > 0.0:
+				_smoke3_skill_seen = true
+				print("[smoke3] host sees the client fire the weapon skill")
 	if not _smoke3_charge_seen:
 		for peer_id: int in NetworkManager.players:
 			var other: Player = NetworkManager.players[peer_id] as Player
@@ -264,6 +307,7 @@ func _smoke3_client_tick() -> void:
 		return
 	if _smoke3_heavy_ticks >= 0 and _smoke3_heavy_ticks <= 4:
 		_smoke3_drive_heavy()
+	_smoke3_drive_skill()
 	if not _smoke3_spawn_requested:
 		_smoke3_spawn_requested = true
 		NetworkManager.rpc_id(NetworkManager.HOST_PEER_ID, "request_debug", "spawn grub 1", NetworkManager.local_peer_id)

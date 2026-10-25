@@ -33,8 +33,8 @@ mkdir -p "$OUT"
 PORT="${PORT:-7777}"
 HOST_SECONDS="${HOST_SECONDS:-10}"
 CLIENT_SECONDS="${CLIENT_SECONDS:-5}"
-HOST3_SECONDS="${HOST3_SECONDS:-14}"
-CLIENT3_SECONDS="${CLIENT3_SECONDS:-9}"
+HOST3_SECONDS="${HOST3_SECONDS:-18}"
+CLIENT3_SECONDS="${CLIENT3_SECONDS:-13}"
 
 fail=0
 check() {  # check <file> <grep -E pattern> <description>
@@ -105,6 +105,11 @@ check "$OUT/client3.log" '\[smoke3\] client pressed heavy'                 "clie
 check "$OUT/host3.log"   '\[smoke3\] host sees the client player charging a heavy' "host3 saw the client charge (heavy press RPC)"
 check "$OUT/client3.log" '\[smoke3\] client released heavy'                "client3 released the heavy"
 check "$OUT/host3.log"   '\[smoke3\] heavy_attack_released from peer [0-9]+ charge=0\.[0-9]+' "host3 saw the release with a validated charge"
+check "$OUT/host3.log"   '\[smoke3\] host opened a perfect-dodge window for Player[0-9]+' "host3 opened a perfect-dodge window for the client"
+check "$OUT/client3.log" '\[smoke3\] client sees the perfect-dodge window \(host RPC\)' "client3 learned of the window over the wire"
+check "$OUT/host3.log"   '\[smoke3\] host sees the client fire the weapon skill' "host3 saw the client fire the weapon skill"
+check "$OUT/host3.log"   '\[smoke3\] dodge ping played on peer 1 over Player[0-9]+' "host3 played the perfect-dodge ping"
+check "$OUT/client3.log" '\[smoke3\] dodge ping played on peer [0-9]+ over Player[0-9]+' "client3 played the perfect-dodge ping from the host RPC"
 check "$OUT/client3.log" '\[smoke3\] client requested kill'              "client3 asked the host to kill the enemy"
 check "$OUT/host3.log"   '\[console\] kill .* -> killed 1 enem'         "host3 ran the kill through the console"
 check "$OUT/host3.log"   '\[smoke3\] enemy_killed emitted 1 time'        "host3 registered the kill exactly once"

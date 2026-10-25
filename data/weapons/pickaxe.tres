@@ -1,4 +1,4 @@
-[gd_resource type="Resource" script_class="WeaponData" load_steps=7 format=3]
+[gd_resource type="Resource" script_class="WeaponData" load_steps=8 format=3]
 
 [ext_resource type="Script" path="res://scripts/data/weapon_data.gd" id="1_weapon"]
 [ext_resource type="Script" path="res://scripts/data/attack_spec.gd" id="2_spec"]
@@ -55,6 +55,21 @@ poise_damage = 30.0
 hit_stun_seconds = 0.3
 move_speed_factor = 0.3
 
+[sub_resource type="Resource" id="Skill"]
+script = ExtResource("2_spec")
+animation = &"skill"
+shape = 0
+windup_seconds = 0.08
+active_seconds = 0.2
+recovery_seconds = 0.3
+reach = 96.0
+arc_degrees = 300.0
+base_damage = 70.0
+knockback = 380.0
+poise_damage = 50.0
+hit_stun_seconds = 0.3
+move_speed_factor = 0.3
+
 [resource]
 script = ExtResource("1_weapon")
 id = &"pickaxe"
@@ -63,5 +78,7 @@ type = 0
 description = "A miner's pickaxe. Three-hit combo, ground-cracking heavy."
 light_combo = Array[ExtResource("2_spec")]([SubResource("Light1"), SubResource("Light2"), SubResource("Light3")])
 heavy = SubResource("Heavy")
+skill = SubResource("Skill")
+skill_cooldown_seconds = 6.0
 heavy_charge_seconds = 0.8
 color = Color(0.85, 0.85, 0.9, 1)

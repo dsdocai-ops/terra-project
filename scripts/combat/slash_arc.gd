@@ -83,6 +83,13 @@ func outline() -> PackedVector2Array:
 	points.append(Vector2.ZERO)
 	for step_index: int in range(ARC_SEGMENTS + 1):
 		points.append(Vector2.RIGHT.rotated(lerpf(-half, half, float(step_index) / float(ARC_SEGMENTS))) * reach)
+	if arc_degrees > 180.0:
+		# The hitbox of a fan this wide is its convex hull (WeaponController), so
+		# the wedge shows the hull too.
+		var hull: PackedVector2Array = Geometry2D.convex_hull(points)
+		if hull.size() > 1 and hull[0] == hull[hull.size() - 1]:
+			hull.remove_at(hull.size() - 1)
+		return hull
 	return points
 
 
