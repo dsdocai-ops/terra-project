@@ -31,7 +31,8 @@ jobs:
           ./godot --version
 
       - name: Import project (refreshes the class cache)
-        run: "$RUNNER_TEMP/godot/godot" --headless --path . --import
+        run: |
+          "$RUNNER_TEMP/godot/godot" --headless --path . --import
 
       - name: Run tests
         run: >
