@@ -159,9 +159,9 @@ func _apply_use(player: Player, peer_id: int) -> void:
 	# offer, and the codex records every id the player has now seen (G10).
 	RelicFlow.record_offer(peer_id, ids, self, player)
 	relic_choice_offered.emit(peer_id, ids)
-	# The offered peer's copy of it, for the choice popup. A solo host has no
-	# remote peer and routes nothing.
-	NetworkManager.route_relic_choice_offered(peer_id, ids)
+	# The offered peer's copy of it, for the choice popup: the host's own HUD
+	# directly, a remote peer over the wire.
+	NetworkManager.deliver_relic_offer(peer_id, ids)
 
 
 # --- the client path --------------------------------------------------------

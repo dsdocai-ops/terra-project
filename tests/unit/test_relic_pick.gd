@@ -410,3 +410,14 @@ func test_the_client_sender_refuses_a_session_with_no_remote_host() -> void:
 		"a session with no remote host sends nothing")
 	assert_true(RelicFlow.has_offer(GUEST_PEER),
 		"the offer is untouched by a request that never left")
+
+
+func test_a_shrine_used_by_the_host_opens_the_hosts_own_popup() -> void:
+	_host()
+	_player.peer_id = HOST_PEER
+	_start_run([HOST_PEER])
+	_offers_received.clear()
+	_offer_to(_player)
+	assert_eq(_offers_received.size(), 1, "the host's HUD hears its own shrine offer")
+	if not _offers_received.is_empty():
+		assert_eq(int(_offers_received[0]["peer_id"]), HOST_PEER)
