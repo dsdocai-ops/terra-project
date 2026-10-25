@@ -15,7 +15,7 @@ signal room_visited(index: int)
 
 const FLOOR_TILE_TINT_NODE: StringName = &"Floor"
 ## Dark veil over a room the local player has not entered yet.
-const SHADE_COLOR := Color(0.02, 0.02, 0.05, 0.82)
+const SHADE_COLOR := Color(0, 0, 0, 1)
 const SHADE_FADE_SECONDS: float = 0.45
 
 var layout: FloorLayout = null

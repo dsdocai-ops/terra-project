@@ -44,6 +44,11 @@ var inventory_screen: InventoryScreen
 var death_screen: DeathScreen
 var pause_items: Array[String] = []
 var _confirming_quit: bool = false
+## What the minimap last drew, so it only redraws when the player moves rooms,
+## explores a new one, or a new floor arrives.
+var _map_room: int = -2
+var _map_visits: int = -1
+var _map_layout: RefCounted = null
 
 var _poll: Timer
 
@@ -427,3 +432,16 @@ func _biome_text(biome: Resource) -> String:
 	if biome_id is int:
 		return "Biome %d" % biome_id
 	return ""
+
+
+func _process(_delta: float) -> void:
+	var floor_node: Floor = GameState.world.floor_node if GameState.world != null else null
+	if floor_node == null:
+		return
+	var layout: RefCounted = NetworkManager.last_floor_layout
+	if layout == _map_layout and floor_node.current_room_index == _map_room and floor_node.visited.size() == _map_visits:
+		return
+	_map_layout = layout
+	_map_room = floor_node.current_room_index
+	_map_visits = floor_node.visited.size()
+	_apply_layout()
