@@ -69,8 +69,7 @@ func _ready() -> void:
 	GameState.world = world
 
 	menu.solo_pressed.connect(_on_solo)
-	menu.host_pressed.connect(_open_lobby)
-	menu.join_pressed.connect(_open_lobby)
+	menu.coop_pressed.connect(_open_lobby)
 	lobby = LobbyMenu.new()
 	lobby.name = "LobbyMenu"
 	$UI.add_child(lobby)
@@ -527,7 +526,7 @@ func _on_leave_coop() -> void:
 # --- co-op lobby ----------------------------------------------------------------
 
 
-## Menu Host / Join: the lobby handles both (the IP field pre-fills its address).
+## Menu Co-op: the lobby handles both hosting and joining.
 func _open_lobby(address: Variant = "") -> void:
 	menu.hide()
 	lobby.open(str(address) if address is String else "")

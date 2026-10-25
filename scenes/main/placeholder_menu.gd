@@ -1,13 +1,12 @@
 class_name PlaceholderMenu
 extends Control
-## The main menu: Play Solo, Host, and Join with an IP field, drawn as carved
+## The main menu: Play Solo and one Co-op entry (opens the lobby), drawn as carved
 ## gold-and-parchment text with a pickaxe pointing at the highlighted line, over a
 ## dark vignette, in the UI pixel font. Owned by foundation (look: ui-hud, Dev B).
 ## Sync: none. Codex and Settings join the list in weeks 11 and 12.
 
 signal solo_pressed()
-signal host_pressed()
-signal join_pressed(ip: String)
+signal coop_pressed()
 signal settings_pressed()
 signal codex_pressed()
 signal quit_pressed()
@@ -22,11 +21,9 @@ const POINTER_SCALE: int = 2
 ## Left indent per row so the list bows out like the pit wall.
 const INDENTS: Array[int] = [0, 10, 16, 18, 16, 10, 0]
 
-@onready var ip_field: LineEdit = %IpField
 @onready var status_label: Label = %Status
 @onready var solo_button: Button = %Solo
-@onready var host_button: Button = %Host
-@onready var join_button: Button = %Join
+@onready var coop_button: Button = %Coop
 @onready var settings_button: Button = %Settings
 @onready var codex_button: Button = %Codex
 @onready var quit_button: Button = %Quit
@@ -39,8 +36,7 @@ func _ready() -> void:
 	# the pixel font) itself instead of falling back to Godot's default font.
 	theme = load(THEME_PATH) as Theme
 	solo_button.pressed.connect(func() -> void: solo_pressed.emit())
-	host_button.pressed.connect(func() -> void: host_pressed.emit())
-	join_button.pressed.connect(func() -> void: join_pressed.emit(ip_field.text.strip_edges()))
+	coop_button.pressed.connect(func() -> void: coop_pressed.emit())
 	settings_button.pressed.connect(func() -> void: settings_pressed.emit())
 	codex_button.pressed.connect(func() -> void: codex_pressed.emit())
 	quit_button.pressed.connect(func() -> void: quit_pressed.emit())
@@ -112,17 +108,11 @@ func _style() -> void:
 	spacer.custom_minimum_size = Vector2(0, 28)
 	rows.add_child(spacer)
 	rows.move_child(spacer, tagline.get_index() + 1)
-	var buttons: Array[Button] = [solo_button, host_button, join_button, settings_button, codex_button, quit_button]
+	var buttons: Array[Button] = [solo_button, coop_button, settings_button, codex_button, quit_button]
 	for index: int in buttons.size():
 		_carve(buttons[index], INDENTS[index + 1])
 	status_label.add_theme_color_override("font_color", Color(0.85, 0.35, 0.3))
 	status_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_LEFT
-	ip_field.flat = true
-	ip_field.add_theme_color_override("font_color", PARCHMENT)
-	ip_field.add_theme_font_size_override("font_size", ITEM_SIZE)
-	ip_field.add_theme_stylebox_override("normal", _underline())
-	ip_field.add_theme_stylebox_override("focus", _underline(GOLD))
-	ip_field.custom_minimum_size = Vector2(200, 0)
 
 
 ## Turns a Button into carved text: no box, left aligned, gold when highlighted,

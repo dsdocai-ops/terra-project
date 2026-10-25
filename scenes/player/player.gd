@@ -50,7 +50,7 @@ const FACING_HYSTERESIS_DEG := 3.0
 
 ## Pixels per second on screen with no modifiers. StatBlock.MOVE_SPEED
 ## replaces this in week 2; tuned numbers are written back to the spec.
-const BASE_MOVE_SPEED := 120.0
+const BASE_MOVE_SPEED := 170.0
 ## Time to reach full speed from rest, and to stop from full speed: 4 physics
 ## frames at 60 Hz. Expressed as time so a speed buff keeps the same feel.
 const ACCEL_SECONDS := 4.0 / 60.0
