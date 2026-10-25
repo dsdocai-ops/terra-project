@@ -16,6 +16,15 @@ var grid_tiles: int = 96:
 	set(value):
 		grid_tiles = maxi(value, 1)
 		queue_redraw()
+## Off until a floor reports visits: every room shows. On, only rooms the player has
+## entered (`visited`) and their neighbours on the path show, the neighbours
+## shaded as unexplored.
+var fog: bool = false
+## Room indices the local player has entered.
+var visited: Dictionary = {}:
+	set(value):
+		visited = value
+		queue_redraw()
 ## Index into `rooms` of the room the local player is in; -1 for none.
 var current_room: int = 0:
 	set(value):
@@ -49,12 +58,20 @@ func _draw() -> void:
 	for index: int in rooms.size():
 		points.append(center + room_offset(index) * diameter * 1.1)
 	for index: int in range(1, points.size()):
-		UiPalette.line(self, points[index - 1], points[index], Color(0.42, 0.31, 0.19), 2)
+		if is_revealed(index) and is_revealed(index - 1):
+			UiPalette.line(self, points[index - 1], points[index], Color(0.42, 0.31, 0.19), 2)
 	for index: int in points.size():
+		if not is_revealed(index):
+			continue
 		var point: Vector2 = points[index]
 		if point.distance_to(center) > glass_radius:
 			point = center + (point - center).normalized() * glass_radius
 		var room_radius: float = maxf(radius * 0.1, 4.0)
+		if not is_explored(index):
+			# Seen from a neighbour but not entered yet: a shaded, unlit disc.
+			UiPalette.fill_circle(self, point, room_radius, Color(0.05, 0.04, 0.03))
+			UiPalette.ring(self, point, room_radius, 2.0, Color(0.24, 0.18, 0.12))
+			continue
 		var tint: Color = UiPalette.ROPE
 		if index == 0:
 			tint = UiPalette.ALLY_GREEN
@@ -64,3 +81,13 @@ func _draw() -> void:
 		UiPalette.ring(self, point, room_radius, 2.0, tint)
 		if index == current_room:
 			UiPalette.fill_circle(self, point, room_radius * 0.5, Color.WHITE)
+
+
+## True when the room has been entered (or fog is off).
+func is_explored(index: int) -> bool:
+	return not fog or visited.has(index)
+
+
+## True when the room is drawn at all: explored, or next to an explored room.
+func is_revealed(index: int) -> bool:
+	return is_explored(index) or visited.has(index - 1) or visited.has(index + 1)

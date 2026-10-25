@@ -363,6 +363,11 @@ func _apply_layout() -> void:
 			elif entry is RoomSpec:
 				rects.append((entry as RoomSpec).rect)
 		lamp_map.rooms = rects
+	var floor_node: Floor = GameState.world.floor_node if GameState.world != null else null
+	if floor_node != null:
+		lamp_map.fog = true
+		lamp_map.visited = floor_node.visited
+		lamp_map.current_room = floor_node.current_room_index
 
 
 func _apply_weapon_slots() -> void:

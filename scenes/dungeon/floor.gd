@@ -10,7 +10,13 @@ extends Node2D
 ## Fired on every peer once the layout is painted.
 signal painted(layout: FloorLayout)
 
+## Fired on every peer the first time the local player stands in a room.
+signal room_visited(index: int)
+
 const FLOOR_TILE_TINT_NODE: StringName = &"Floor"
+## Dark veil over a room the local player has not entered yet.
+const SHADE_COLOR := Color(0.02, 0.02, 0.05, 0.82)
+const SHADE_FADE_SECONDS: float = 0.45
 
 var layout: FloorLayout = null
 var astar: AStarGrid2D = null
@@ -18,7 +24,13 @@ var rooms: Array[Room] = []
 ## Room index -> that room's Door nodes.
 var doors_by_room: Dictionary[int, Array] = {}
 
+## Local presentation only: which rooms this peer's player has entered, and the
+## room they stand in now (-1 in a corridor). Never synced.
+var visited: Dictionary[int, bool] = {}
+var current_room_index: int = -1
+
 var _world: World = null
+var _shades: Dictionary[int, Polygon2D] = {}
 
 
 ## Paints `layout` into `world`'s tile layers and builds rooms, doors and the
@@ -39,6 +51,9 @@ func _clear_children() -> void:
 		child.queue_free()
 	rooms.clear()
 	doors_by_room.clear()
+	visited.clear()
+	_shades.clear()
+	current_room_index = -1
 
 
 func _paint_tiles(world: World, biome: BiomeData) -> void:
@@ -82,6 +97,7 @@ func _build_rooms() -> void:
 			add_child(door)
 			doors.append(door)
 		doors_by_room[spec.index] = doors
+		_add_shade(spec)
 
 
 ## Host. Runs every registered populator for every room (chests, shrines,
@@ -129,3 +145,46 @@ func _apply_room_locked(room_index: int, locked: bool) -> void:
 	var doors: Array = doors_by_room.get(room_index, [])
 	for door: Door in doors:
 		door.set_closed(locked)
+
+
+func _physics_process(_delta: float) -> void:
+	var player: Player = NetworkManager.players.get(NetworkManager.local_peer_id)
+	if player == null or not is_instance_valid(player):
+		return
+	var room: Room = room_at(player.position)
+	current_room_index = room.spec.index if room != null else -1
+	if room != null and not visited.has(room.spec.index):
+		_visit(room.spec.index)
+
+
+func _visit(index: int) -> void:
+	visited[index] = true
+	var shade: Polygon2D = _shades.get(index)
+	if shade != null and is_instance_valid(shade):
+		var tween: Tween = shade.create_tween()
+		tween.tween_property(shade, "modulate:a", 0.0, SHADE_FADE_SECONDS)
+		tween.tween_callback(shade.queue_free)
+	_shades.erase(index)
+	room_visited.emit(index)
+
+
+## A veil over the room (and its wall ring) until the local player walks in.
+func _add_shade(spec: RoomSpec) -> void:
+	var rect: Rect2i = spec.rect.grow(1)
+	var x0: float = float(rect.position.x) - 0.5
+	var y0: float = float(rect.position.y) - 0.5
+	var x1: float = float(rect.end.x) - 0.5
+	var y1: float = float(rect.end.y) - 0.5
+	var shade := Polygon2D.new()
+	shade.name = "Shade%d" % spec.index
+	shade.polygon = PackedVector2Array([
+		_tile_corner(x0, y0), _tile_corner(x1, y0), _tile_corner(x1, y1), _tile_corner(x0, y1)])
+	shade.color = SHADE_COLOR
+	shade.z_index = 40
+	add_child(shade)
+	_shades[spec.index] = shade
+
+
+## Screen point of a fractional tile-space position (see Iso.to_screen).
+func _tile_corner(x: float, y: float) -> Vector2:
+	return Vector2((x - y) * Iso.HALF_W + Iso.HALF_W, (x + y) * Iso.HALF_H + Iso.HALF_H)
