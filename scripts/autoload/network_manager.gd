@@ -343,6 +343,17 @@ func route_relic_choice_offered(peer_id: int, ids: Array[StringName]) -> bool:
 	return true
 
 
+## Host only. Hands an offer to the peer it belongs to: the host's own player
+## gets it straight on `relic_offer_received` (no RPC reaches the local peer),
+## a remote peer gets it over the wire. Returns true when it was delivered.
+func deliver_relic_offer(peer_id: int, ids: Array[StringName]) -> bool:
+	if not is_host:
+		return false
+	if peer_id == local_peer_id:
+		return apply_relic_offer(peer_id, ids)
+	return route_relic_choice_offered(peer_id, ids)
+
+
 ## Host only. Announces a pick to every remote peer, the same one rpc_id per peer
 ## shape `route_player_downed` uses. The host's own bus event already fired in
 ## `RelicFlow.apply_pick_request`, so this never loops back to the host.

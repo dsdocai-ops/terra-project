@@ -45,6 +45,8 @@ signal relics_rolled(peer_id: int, ids: Array[StringName])
 const PROMPT_TEXT: String = "Open"
 ## Press, not hold: only revive holds an interact (SPEC-player-controller).
 const HOLD_SECONDS: float = 0.0
+## How an opened chest is drawn: darkened, so a spent one reads at a glance.
+const SPENT_TINT: Color = Color(0.45, 0.45, 0.45)
 ## Physics layer 6, "interactable" (project.godot layer_names).
 const INTERACTABLE_LAYER: int = 32
 ## The scene the populator spawns. Loaded at runtime rather than preloaded,
@@ -170,9 +172,19 @@ func loot(player: Player) -> Array[Dictionary]:
 			LootDrops.spawn_drop(drop, global_position, player, spawner)
 	var ids: Array[StringName] = RelicRoller.roll(player, relic_count(_tier), allows_cursed(_tier))
 	if not ids.is_empty():
+		# The same pick flow a shrine uses, so the HUD's choice popup offers it.
+		RelicFlow.record_offer(opener, ids, self, player)
 		relics_rolled.emit(opener, ids)
+		NetworkManager.deliver_relic_offer(opener, ids)
+	_show_spent()
 	looted.emit(opener, drops)
 	return drops
+
+
+## An opened chest stops offering its prompt and reads as empty.
+func _show_spent() -> void:
+	prompt_text = ""
+	modulate = SPENT_TINT
 
 
 # --- the client path --------------------------------------------------------

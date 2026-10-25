@@ -748,3 +748,52 @@ func test_the_host_body_of_each_container_is_readable_on_its_own() -> void:
 	assert_eq(_node.hits_left(), MiningNode.HITS_REQUIRED, "a fresh node has its full count left")
 	assert_false(_breakable.is_broken(), "and a fresh breakable is whole")
 	assert_false(_chest.is_open(), "and a fresh chest is shut")
+
+
+# =============================================================================
+# A used container looks used, and a chest's relic reaches the popup
+# =============================================================================
+
+var _offers_received: Array[int] = []
+
+
+func _on_relic_offer_received(peer_id: int, _ids: Array[StringName]) -> void:
+	_offers_received.append(peer_id)
+
+
+func test_an_opened_chest_drops_its_prompt_and_darkens() -> void:
+	_chest.table_path = GOLD_FIXTURE_PATH
+	_chest.interact(_player)
+	assert_true(_chest.is_open())
+	assert_eq(_chest.prompt_text, "", "a spent chest no longer offers Open")
+	assert_eq(_chest.modulate, Chest.SPENT_TINT)
+
+
+func test_an_opened_chests_relic_offer_reaches_the_local_players_popup() -> void:
+	_offers_received.clear()
+	NetworkManager.relic_offer_received.connect(_on_relic_offer_received)
+	_chest.table_path = GOLD_FIXTURE_PATH
+	_chest.interact(_player)
+	NetworkManager.relic_offer_received.disconnect(_on_relic_offer_received)
+	assert_eq(_rolled.size(), 1, "the chest drew a relic")
+	assert_eq(_offers_received, [PEER_ID], "the host's own HUD hears the offer")
+	assert_true(RelicFlow.has_offer(PEER_ID), "the pick flow holds it for the popup's answer")
+	RelicFlow.reset()
+
+
+func test_a_smashed_crate_disappears() -> void:
+	_breakable.interact(_player)
+	assert_true(_breakable.is_broken())
+	assert_eq(_breakable.prompt_text, "", "a smashed crate no longer offers Smash")
+	assert_false(_breakable.visible)
+
+
+func test_a_mined_out_seam_disappears_but_not_before() -> void:
+	_node.interact(_player)
+	assert_true(_node.visible, "one hit leaves the seam standing")
+	assert_eq(_node.prompt_text, MiningNode.PROMPT_TEXT)
+	_node.interact(_player)
+	_node.interact(_player)
+	assert_true(_node.is_depleted())
+	assert_eq(_node.prompt_text, "", "a spent seam no longer offers Mine")
+	assert_false(_node.visible)

@@ -127,6 +127,9 @@ func break_it(attacker: Player = null) -> int:
 	if run == null:
 		return 0
 	_broken = true
+	# A smashed crate is gone: no prompt, nothing drawn.
+	prompt_text = ""
+	visible = false
 	var paid: int = 0
 	var rng: RandomNumberGenerator = RelicRoller.seeded_rng()
 	if rolls_gold(gold_chance, rng.randf()):

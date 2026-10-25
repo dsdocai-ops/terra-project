@@ -55,6 +55,8 @@ const SCENE_PATH: String = "res://scenes/dungeon/interactables/mining_node.tscn"
 ## SPEC-run-economy: "3 hits with any attack". The count the spec gives, and the
 ## only thing that empties a seam.
 const HITS_REQUIRED: int = 3
+## The tint a seam flashes on a hit that does not empty it.
+const HIT_FLASH: Color = Color(1.8, 1.6, 1.2)
 
 ## What one seam yields, in ore. SPEC-run-economy's sentence gives numbers for
 ## the three *kills* ("elites 1, mini-boss 3, biome boss 6") and none for a node,
@@ -124,9 +126,18 @@ func apply_hit(damage: int, attacker: Player = null) -> bool:
 		return false
 	hits_taken += 1
 	if hits_taken < HITS_REQUIRED:
+		_flash_hit()
 		return true
 	pay_out(attacker)
 	return true
+
+
+## A hit that did not empty the seam: a brief flash, so the press reads as landed.
+func _flash_hit() -> void:
+	if not is_inside_tree():
+		return
+	modulate = HIT_FLASH
+	create_tween().tween_property(self, ^"modulate", Color.WHITE, 0.15)
 
 
 ## The biome's ore id, or an empty id when there is no live run and no biome. One
@@ -149,6 +160,9 @@ func pay_out(attacker: Player = null) -> int:
 	if run == null:
 		return 0
 	_depleted = true
+	# A mined-out seam is gone: no prompt, nothing drawn.
+	prompt_text = ""
+	visible = false
 	var paid: int = OrePayout.award(run, attacker, OrePayout.KIND_MINED)
 	mined.emit(peer_id_of(attacker), ore_id(), paid)
 	_leave_ore(attacker, paid)
