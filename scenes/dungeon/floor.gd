@@ -30,6 +30,11 @@ var current_room_index: int = -1
 
 var _world: World = null
 var _fog: ColorRect = null
+## Per layout edge: the tiles of its hallway; which are cleared; the mask texture.
+var _edge_cells: Array[Dictionary] = []
+var _edge_cleared: Dictionary[int, bool] = {}
+var _corridor_mask: Image = null
+var _corridor_texture: ImageTexture = null
 
 
 ## Paints `layout` into `world`'s tile layers and builds rooms, doors and the
@@ -53,6 +58,8 @@ func _clear_children() -> void:
 	doors_by_room.clear()
 	visited.clear()
 	_fog = null
+	_edge_cells.clear()
+	_edge_cleared.clear()
 	current_room_index = -1
 
 
@@ -150,11 +157,9 @@ func _physics_process(_delta: float) -> void:
 	var player: Player = NetworkManager.players.get(NetworkManager.local_peer_id)
 	if player == null or not is_instance_valid(player):
 		return
-	if _fog != null:
-		var u: float = player.global_position.x / Iso.HALF_W
-		var v: float = player.global_position.y / Iso.HALF_H
-		(_fog.material as ShaderMaterial).set_shader_parameter(&"player_tile", Vector2((u + v) * 0.5 - 1.0, (v - u) * 0.5))
 	var room: Room = room_at(player.position)
+	if room == null:
+		_reveal_hallway_at(Iso.to_tile(player.position))
 	current_room_index = room.spec.index if room != null else -1
 	if room != null and not visited.has(room.spec.index):
 		_visit(room.spec.index)
@@ -187,6 +192,8 @@ func _build_fog() -> void:
 		rects.append(Vector4.ZERO)
 	material.set_shader_parameter(&"rects", rects)
 	material.set_shader_parameter(&"count", mini(layout.rooms.size(), FOG_MAX_ROOMS))
+	_build_hallway_cells()
+	material.set_shader_parameter(&"corridors", _corridor_texture)
 	_fog.material = material
 	add_child(_fog)
 	_sync_fog()
@@ -201,3 +208,33 @@ func _sync_fog() -> void:
 		if index < FOG_MAX_ROOMS:
 			lit[index] = 1.0
 	(_fog.material as ShaderMaterial).set_shader_parameter(&"lit", lit)
+
+
+## Stepping into a hallway clears that whole hallway, walls included.
+func _reveal_hallway_at(cell: Vector2i) -> void:
+	for index: int in _edge_cells.size():
+		if _edge_cleared.has(index) or not _edge_cells[index].has(cell):
+			continue
+		_edge_cleared[index] = true
+		for tile: Vector2i in _edge_cells[index]:
+			for dx: int in range(-1, 2):
+				for dy: int in range(-1, 2):
+					var near: Vector2i = tile + Vector2i(dx, dy)
+					if near.x >= 0 and near.y >= 0 and near.x < FloorGenerator.GRID and near.y < FloorGenerator.GRID:
+						_corridor_mask.set_pixelv(near, Color.WHITE)
+		_corridor_texture.update(_corridor_mask)
+
+
+## The tiles each layout edge's hallway covers, from the generator's own carving.
+func _build_hallway_cells() -> void:
+	var rects: Array[Rect2i] = []
+	for spec: RoomSpec in layout.rooms:
+		rects.append(spec.rect)
+	_edge_cells.clear()
+	for edge: Vector2i in layout.edges:
+		var cells: Dictionary = {}
+		for cell: Vector2i in FloorGenerator._carve_corridors(rects, [edge]):
+			cells[cell] = true
+		_edge_cells.append(cells)
+	_corridor_mask = Image.create(FloorGenerator.GRID, FloorGenerator.GRID, false, Image.FORMAT_R8)
+	_corridor_texture = ImageTexture.create_from_image(_corridor_mask)

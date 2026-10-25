@@ -36,3 +36,16 @@ func test_corridor_turns_have_a_full_corner() -> void:
 	for dx: int in range(-1, 2):
 		for dy: int in range(-1, 2):
 			assert_true(cells.has(Vector2i(43 + dx, 13 + dy)), "corner cell %d,%d" % [dx, dy])
+
+
+func test_stepping_into_a_hallway_clears_all_of_it() -> void:
+	var floor_node := Floor.new()
+	add_child_autofree(floor_node)
+	floor_node.layout = _layout(42)
+	floor_node._build_hallway_cells()
+	var edge_cells: Dictionary = floor_node._edge_cells[0]
+	var first: Vector2i = edge_cells.keys()[0]
+	var last: Vector2i = edge_cells.keys()[edge_cells.size() - 1]
+	assert_eq(floor_node._corridor_mask.get_pixelv(last).r, 0.0, "dark before anyone steps in")
+	floor_node._reveal_hallway_at(first)
+	assert_eq(floor_node._corridor_mask.get_pixelv(last).r, 1.0, "the far end clears with the first step")

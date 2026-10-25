@@ -28,7 +28,6 @@ var enemies_alive: int = 0
 var floor_node: Floor = null
 
 var _tracked: Dictionary[int, bool] = {}
-var _label: Label = null
 
 
 func setup(p_spec: RoomSpec, p_floor: Floor) -> void:
@@ -39,16 +38,9 @@ func setup(p_spec: RoomSpec, p_floor: Floor) -> void:
 	position = Iso.to_screen(p_spec.anchor)
 	# A room that never locks has nothing to clear.
 	cleared = not p_spec.locks()
-	_label = Label.new()
-	_label.position = Vector2(-48.0, -56.0)
-	_label.add_theme_font_size_override(&"font_size", 10)
-	_label.z_index = 10
-	add_child(_label)
-	_refresh_label()
 
 
 func _physics_process(_delta: float) -> void:
-	_refresh_label()
 	if not multiplayer.is_server():
 		return
 	_scan_players()
@@ -139,14 +131,3 @@ func _check_exit() -> void:
 		if Vector2(offset).length() <= EXIT_RADIUS_TILES:
 			GameState.next_floor()
 			return
-
-
-## Placeholder marker: the room type's name, with the exit's state.
-func _refresh_label() -> void:
-	if _label == null:
-		return
-	var text: String = FloorGenerator.RoomType.keys()[type].capitalize()
-	if type == FloorGenerator.RoomType.EXIT:
-		text += " (open)" if GameState.can_advance_floor() else " (sealed)"
-	if _label.text != text:
-		_label.text = text
