@@ -1,0 +1,5 @@
+[2026-10-25T03:04:10.711Z] step 2 work
+exit 1 (no result): Step stopped by the watchdog: ran over 90 minutes.
+[claude-code:unrecognized_model] {"model":"z-ai/glm-5.3-flash:floor","query_source":"generate_session_title"}
+⚠ claude.ai connectors are disabled because ANTHROPIC_API_KEY or another auth source is set and takes precedence over your claude.ai login · Unset it to load your organization's connectors
+

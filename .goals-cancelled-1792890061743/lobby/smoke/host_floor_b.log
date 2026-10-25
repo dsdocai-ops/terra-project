@@ -1,0 +1,19 @@
+Godot Engine v4.7.2.stable.official.ed1daf0bf - https://godotengine.org
+
+[run] ROPE populator registered with FloorGenerator
+[relics] SHRINE populator registered with FloorGenerator
+[run] TREASURE populator registered with FloorGenerator
+[run] SHOP populator registered with FloorGenerator
+[story] LORE populator registered with FloorGenerator
+[net] hosting on port 7777 as peer 1
+[net] peer 1 joined (1 total)
+[spawn] Player1 spawned at (80.0, 336.0) (local peer 1)
+[smoke-floor] armed on peer 1 (host)
+[net] peer 941956838 passed the password check
+[net] peer 941956838 joined (2 total)
+[spawn] Player941956838 spawned at (64.74677, 318.4526) (local peer 1)
+[floor] ready seed 987654321 floor 1 biome 1 — layout_hash 342853261594 from floor-generation on peer 1
+[run] started seed 987654321 at floor 1 with 2 player(s)
+[smoke-floor] host started the run with 2 player(s)
+[net] peer 941956838 left (1 total)
+[smoke-floor] done, quitting

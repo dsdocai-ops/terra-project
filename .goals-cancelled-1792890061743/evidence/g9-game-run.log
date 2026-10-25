@@ -1,0 +1,28 @@
+Godot Engine v4.7.2.stable.official.ed1daf0bf - https://godotengine.org
+OpenGL API 3.3.0 NVIDIA 617.42 - Compatibility - Using Device: NVIDIA - NVIDIA GeForce RTX 2080 SUPER
+
+[run] ROPE populator not registered — blocked on Dev A (W3-A3): res://scripts/generation/floor_generator.gd does not exist yet, so the rope spawns with the registry
+WARNING: [relics] SHRINE populator not registered — blocked on Dev A (W4-A3): res://scripts/generation/floor_generator.gd does not exist yet, so the shrine spawns with the registry
+   at: push_warning (core/variant/variant_utility.cpp:1033)
+   GDScript backtrace (most recent call first):
+       [0] _note_blocked (res://scripts/relics/shrine.gd:288)
+       [1] register_populator (res://scripts/relics/shrine.gd:206)
+       [2] _ready (res://scenes/main/main.gd:71)
+WARNING: [run] TREASURE populator not registered — blocked on Dev A (W3-A3): res://scripts/generation/floor_generator.gd does not exist yet, so a chest spawns with the registry
+   at: push_warning (core/variant/variant_utility.cpp:1033)
+   GDScript backtrace (most recent call first):
+       [0] _note_blocked (res://scripts/run/chest.gd:366)
+       [1] register_populator (res://scripts/run/chest.gd:288)
+       [2] _ready (res://scenes/main/main.gd:72)
+WARNING: [run] SHOP populator not registered — blocked on Dev A (W3-A3): res://scripts/generation/floor_generator.gd does not exist yet, so a shopkeeper spawns with the registry
+   at: push_warning (core/variant/variant_utility.cpp:1033)
+   GDScript backtrace (most recent call first):
+       [0] _note_blocked (res://scripts/run/shopkeeper.gd:317)
+       [1] register_populator (res://scripts/run/shopkeeper.gd:271)
+       [2] _ready (res://scenes/main/main.gd:73)
+WARNING: [story] LORE populator not registered — blocked on Dev A (W3-A3): res://scripts/generation/floor_generator.gd does not exist yet, so a page spawns with the registry
+   at: push_warning (core/variant/variant_utility.cpp:1033)
+   GDScript backtrace (most recent call first):
+       [0] _note_blocked (res://scripts/world/lore_page.gd:264)
+       [1] register_populator (res://scripts/world/lore_page.gd:183)
+       [2] _ready (res://scenes/main/main.gd:74)

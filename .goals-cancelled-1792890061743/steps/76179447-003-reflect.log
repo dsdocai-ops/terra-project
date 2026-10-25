@@ -1,0 +1,26 @@
+phase: reflect   step: 3   model: haiku   endpoint: https://openrouter.ai/api
+took: 57s   exit: 0   tool calls: 8 (edits 1, bash 0, errors 1)
+
+[said] I'll read the goal files to analyze what happened and extract lessons from the recent work.
+[tool] Read C:\Users\Dsedg\OneDrive\Documents\GitHub\terra-project\.goals\BRIEF.md
+[tool] Read C:\Users\Dsedg\OneDrive\Documents\GitHub\terra-project\.goals\PLAN.md
+[tool] Read C:\Users\Dsedg\OneDrive\Documents\GitHub\terra-project\.goals\LOG.md
+[tool] Read C:\Users\Dsedg\OneDrive\Documents\GitHub\terra-project\.goals\LESSONS.md
+[said] I'll analyze the completed work (G1-G3) for patterns and lessons learned.
+[tool] Read C:\Users\Dsedg\OneDrive\Documents\GitHub\terra-project\specs\SPEC-story-dialogue.md
+[tool] Read C:\Users\Dsedg\OneDrive\Documents\GitHub\terra-project\tests\unit\test_story_manager.gd
+[tool error] File does not exist. Note: your current working directory is c:\Users\Dsedg\OneDrive\Documents\GitHub\terra-project.
+[tool] Read C:\Users\Dsedg\OneDrive\Documents\GitHub\terra-project\tests\integration\test_dialogue_data.gd
+[said] Now I'll update the lessons file with concrete rules extracted from G1-G3.
+[tool] Write C:\Users\Dsedg\OneDrive\Documents\GitHub\terra-project\.goals\LESSONS.md
+[said] **Lessons from G1-G3:** Comprehensive schema validation with data-driven testing caught two loader bugs (data loss on append, missing object form support) before runtime. Sequential goal structure with full completion between steps prevented rework—each goal fully passed before dependents started, using unit+integration test split to isolate operator bugs from logic bugs. **What changed:** Updated
+
+[final reply]
+**Lessons from G1-G3:**
+
+Comprehensive schema validation with data-driven testing caught two loader bugs (data loss on append, missing object form support) before runtime. Sequential goal structure with full completion between steps prevented rework—each goal fully passed before dependents started, using unit+integration test split to isolate operator bugs from logic bugs.
+
+**What changed:**
+
+Updated `.goals/LESSONS.md` with four concrete rules: validation catches implementation bugs, sequential completion prevents rework, unit+integration split isolates bugs, and data-driven JSON scales content without new code.
+
