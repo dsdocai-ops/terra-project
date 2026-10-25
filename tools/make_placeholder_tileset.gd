@@ -17,7 +17,7 @@ var _out_path: String = ""
 
 ## Collision diamond in tile-local space (origin at tile center).
 const DIAMOND: Array[Vector2] = [Vector2(0, -16), Vector2(32, 0), Vector2(0, 16), Vector2(-32, 0)]
-const TILE_COORDS: Array[Vector2i] = [Tiles.FLOOR, Tiles.WALL, Tiles.PIT]
+const TILE_COORDS: Array[Vector2i] = [Tiles.WALL, Tiles.PIT]
 
 
 func _init() -> void:
@@ -44,10 +44,12 @@ func _init() -> void:
 	source.texture_region_size = Vector2i(64, 64)
 	tile_set.add_source(source, Tiles.SOURCE)
 
+	for coords: Vector2i in Tiles.FLOOR_VARIANTS:
+		source.create_tile(coords)
+		source.get_tile_data(coords, 0).set_custom_data(Tiles.WALKABLE, true)
 	for coords: Vector2i in TILE_COORDS:
 		source.create_tile(coords)
 
-	source.get_tile_data(Tiles.FLOOR, 0).set_custom_data(Tiles.WALKABLE, true)
 	source.get_tile_data(Tiles.PIT, 0).set_custom_data(Tiles.WALKABLE, false)
 
 	var wall := source.get_tile_data(Tiles.WALL, 0)

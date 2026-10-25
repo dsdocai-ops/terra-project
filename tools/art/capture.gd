@@ -53,7 +53,7 @@ func _build() -> void:
 			elif x == 7 and y == 7:
 				floor_layer.set_cell(Vector2i(x, y), Tiles.SOURCE, Tiles.PIT)
 			else:
-				floor_layer.set_cell(Vector2i(x, y), Tiles.SOURCE, Tiles.FLOOR)
+				floor_layer.set_cell(Vector2i(x, y), Tiles.SOURCE, Tiles.floor_at(Vector2i(x, y)))
 	var entities: Node2D = _world.get_node("Entities")
 	for prop: Dictionary in PROPS:
 		var node := (load(prop["scene"] as String) as PackedScene).instantiate() as Node2D

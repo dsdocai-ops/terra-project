@@ -20,7 +20,9 @@ func test_every_biome_has_a_tileset_with_the_shared_ids() -> void:
 		assert_eq(source.texture_region_size, Vector2i(64, 64), "%s cells" % biome)
 		for coords: Vector2i in [Tiles.FLOOR, Tiles.WALL, Tiles.PIT]:
 			assert_true(source.has_tile(coords), "%s has tile %s" % [biome, coords])
-		assert_true(source.get_tile_data(Tiles.FLOOR, 0).get_custom_data(Tiles.WALKABLE))
+		for coords: Vector2i in Tiles.FLOOR_VARIANTS:
+			assert_true(source.has_tile(coords), "%s has floor variant %s" % [biome, coords])
+			assert_true(source.get_tile_data(coords, 0).get_custom_data(Tiles.WALKABLE), "%s variant %s walkable" % [biome, coords])
 		assert_false(source.get_tile_data(Tiles.WALL, 0).get_custom_data(Tiles.WALKABLE))
 		assert_eq(source.get_tile_data(Tiles.WALL, 0).get_collision_polygons_count(0), 1, "%s wall collides" % biome)
 
