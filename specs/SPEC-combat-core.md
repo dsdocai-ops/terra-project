@@ -75,7 +75,7 @@ Combat v2 C3 (`docs/proposals/combat-v2.md` 3.2 and 3.3).
   - **Refill**: 1.5 s after the last hit, 50% of the pool per second, in `TimeManager`-scaled time.
   - **Sync**: poise is host only. The `staggered` flag rides the enemy's StateSync so every peer can draw the dazed marker. Stagger feedback: 8 frames of hit-stop, shake 4, a 6-frame flash and a "STAGGER" pop (see Hit feedback).
   - The older two-argument `apply_knockback(impulse, stun_seconds)` (no hit) still gives a plain `HitStun`; `Hurtbox` passes the hit as a third argument to any entity whose method declares it.
-- **Hit-stun (players)**: the target enters `HitStun` for `hit.hit_stun_seconds`. Enemy `stagger_resist` no longer shortens a stun; it scales poise damage.
+- **Hit reactions for players (combat v2 C5)**: a **light** enemy hit (`hit.is_heavy == false`, the default) is a **flinch**: the knockback impulse shoves the player (`Player._shove_from_flinch`, blocked by walls, decaying over 0.2 s), the flash plays and the 0.4 s i-frames start, but the state does not change and the player keeps control, including a charge or an attack in progress. A **heavy** enemy hit (`AttackPattern.is_heavy`, boss slams) is the full **`HitStun`** for `hit.hit_stun_seconds` with no input. `Hurtbox` passes the hit as a third argument to `apply_knockback` on any entity that declares it; a call without a hit is the full stun. Enemy `stagger_resist` no longer shortens a stun; it scales poise damage.
 - **Knockback**: impulse along hit direction scaled by `hit.knockback.length()`, decays over 0.2 s, blocked by walls. Enemies with `knockback_resist`. Stone Skin and Battle Cry grant immunity.
 - **Post-hit i-frames**: players get 0.4 s `invulnerable` after any damage (design doc: brief invincibility). Enemies do not.
 
@@ -95,6 +95,7 @@ The numbers live in one table, `CombatFeedbackConstants` (`scripts/combat/combat
 
 - **Hit-stop**: `TimeManager.hit_stop(attacker, target, frames)` on the host, which broadcasts it. Projectile hits freeze the target only; a hit on a player freezes the player only. `StateMachine.physics_update` multiplies every state's delta by `TimeManager.scale_for(actor)` and does not step a state at all at scale 0, so players and enemies actually stop; states that set `velocity` directly scale it by `machine.effective_scale`.
 - **Hit flash**: `hit_flash.gdshader` (`flash_amount`, `flash_color`) on the enemy body and sprite and the player sprite, driven by `HitFlash`.
+- **Hitbox shapes** are built once and reused: `WeaponController` caches one melee `Shape2D` per `AttackSpec` and charge bucket (a heavy's reach steps in quarters of the charge, and the slash arc draws the same stepped reach), and each enemy keeps one cone per `AttackPattern`. Arcs wider than 180 degrees use the convex hull of the fan.
 - **Slash arc**: `SlashArc` draws the attack's real shape (`AttackSpec.shape`, `reach` with the charge bonus, `arc_degrees`) for the active window. `WeaponController.begin_swing` plays it on the owner and the host; the host sends an unreliable RPC to the other clients.
 - **Spark**: `HitSpark` at the hit point, small for a light hit, large for a heavy one.
 - **Damage numbers**: `DamageNumber` labels in `World/FX`; crits larger and gold. Local only, from the RPC above.
@@ -110,7 +111,7 @@ active   : hitbox enabled for the listed frames
 recovery : enemy vulnerable, cannot act, duration >= 0.3 s
 ```
 
-`Telegraph` scene: draws a ground shape (`circle`, `cone`, `line`, `ring`) that fills from 0 to 100% over the windup. The Pit's Eye relic multiplies windup display lead by showing it 0.5 s earlier (telegraph fills over `windup + 0.5`, attack still fires at the original time). Telegraph drawing is `combat-core`; which pattern each enemy uses is `enemies-ai`.
+`Telegraph` scene: draws a ground shape (`circle`, `cone`, `line`, `ring`) that fills from 0 to 100% over the windup. A `ring` is a band between two radii that fills from the inner edge outward (`Telegraph.ring_geometry`). No pattern uses a ring yet and its hitbox (an annulus) arrives with the first boss pattern that does. The Pit's Eye relic multiplies windup display lead by showing it 0.5 s earlier (telegraph fills over `windup + 0.5`, attack still fires at the original time). Telegraph drawing is `combat-core`; which pattern each enemy uses is `enemies-ai`.
 
 ### Projectiles
 
@@ -129,7 +130,7 @@ recovery : enemy vulnerable, cannot act, duration >= 0.3 s
 
 ## Data model
 
-`AttackPattern` (Resource): `id`, `windup_seconds`, `active_frames: int`, `recovery_seconds`, `telegraph_shape`, `telegraph_size: Vector2`, `hit: HitInfo` template fields, `animation: String`, `sfx_windup`, `sfx_hit`. Stored under `data/enemies/attacks/` and `data/bosses/attacks/`, owned by `enemies-ai`/`bosses` but the class is defined here.
+`AttackPattern` (Resource): `id`, `kind` (MELEE, RUSH, PROJECTILE), `windup_seconds`, `active_seconds`, `recovery_seconds`, `telegraph_shape` (CIRCLE, CONE, LINE, RING), `telegraph_size: Vector2` (a RING reads x as the outer radius and y as the band width), `damage`, `knockback`, `hit_stun_seconds`, `element`, `speed`, `trigger_range`, `is_heavy: bool` (a heavy hit is the full HitStun on a player; default false is a flinch), `poise_damage: float` (carried on the hit, default 0; players have no poise yet). Stored under `data/enemies/attacks/` and `data/bosses/attacks/`, owned by `enemies-ai`/`bosses` but the class is defined here.
 
 ## Multiplayer ownership
 
@@ -147,7 +148,7 @@ Sync: host-authoritative; `Hitbox.active` is not synced (host only); `Health.cur
 ## Success criteria
 
 - [ ] Light combo, heavy charge and release, swap all work on the Pickaxe and Crossbow in week 2.
-- [ ] 3 enemies attack through windup, active, recovery with visible telegraphs; none can hit without a telegraph (CI test asserts every `AttackPattern` has `windup_seconds >= 0.2`).
+- [ ] 3 enemies attack through windup, active, recovery with visible telegraphs; none can hit without a telegraph (`tests/unit/test_attack_pattern.gd` asserts every `AttackPattern`, under `data/enemies/attacks/` and `data/bosses/attacks/` and on every `EnemyData`, has `windup_seconds >= 0.2`, `active_seconds > 0` and `recovery_seconds >= 0.3`).
 - [ ] Hit flash, shake, hit-stop, and damage numbers on every hit; crits visibly different.
 - [ ] Perfect dodge registers only when a hit was actually blocked.
 - [ ] All of the above synced in two-instance smoke.

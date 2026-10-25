@@ -21,6 +21,10 @@ const HEAVY_POISE_CHARGE_BONUS: float = 30.0
 ## heavy's damage and poise damage.
 const PERFECT_RELEASE_BONUS: float = 0.2
 const ARC_SEGMENTS: int = 6
+## A heavy's reach grows with its charge in this many steps (0 to 4 quarters), so
+## the hitbox shapes can be cached per attack and bucket instead of built per
+## swing. The slash arc uses the same stepped reach, so it shows the real hitbox.
+const CHARGE_BUCKETS: int = 4
 const DEFAULT_WEAPON_PATHS: Array[String] = [
 	"res://data/weapons/pickaxe.tres",
 	"res://data/weapons/crossbow.tres",
@@ -30,6 +34,13 @@ const PROJECTILE_ID: StringName = &"bolt"
 var slots: Array[WeaponData] = []
 var active_slot: int = 0
 var combo_step: int = 0
+
+## One hitbox shape per AttackSpec and charge bucket, built the first time it is
+## swung and reused after that: swinging allocates no shapes once warm. (Per
+## controller, not a static: a static cache of Resources trips the engine's leak
+## report at shutdown.) AttackSpecs are immutable at run time, so entries never
+## go stale.
+var _shape_cache: Dictionary = {}
 
 var _combo_timer: float = 0.0
 ## Seconds left on each slot's weapon skill, counted in TimeManager-scaled time.
@@ -230,7 +241,15 @@ func end_swing() -> void:
 
 ## Forward reach of a melee swing in px, including the heavy's charge bonus.
 static func melee_reach(spec: AttackSpec, charge: float, heavy: bool) -> float:
-	return spec.reach * (1.0 + (charge * 0.35 if heavy else 0.0))
+	var stepped: float = float(charge_bucket(charge, heavy)) / float(CHARGE_BUCKETS)
+	return spec.reach * (1.0 + stepped * 0.35)
+
+
+## Which quarter of the charge a swing falls in: 0 for a light or an uncharged heavy.
+static func charge_bucket(charge: float, heavy: bool) -> int:
+	if not heavy:
+		return 0
+	return clampi(roundi(charge * float(CHARGE_BUCKETS)), 0, CHARGE_BUCKETS)
 
 
 ## Plays the swing visual here, and on the host also on every other peer except
@@ -265,8 +284,21 @@ func _attack_speed() -> float:
 	return maxf(stats.get_value(StatBlock.Stat.ATTACK_SPEED), StatBlock.ATTACK_SPEED_MIN)
 
 
+## The hitbox shape for a swing: cached per spec and charge bucket.
 func _melee_shape(spec: AttackSpec, charge: float, heavy: bool) -> Shape2D:
-	var reach: float = melee_reach(spec, charge, heavy)
+	var bucket: int = charge_bucket(charge, heavy)
+	var shapes: Array = _shape_cache.get(spec, [])
+	if shapes.is_empty():
+		shapes.resize(CHARGE_BUCKETS + 1)
+		_shape_cache[spec] = shapes
+	var cached: Shape2D = shapes[bucket] as Shape2D
+	if cached == null:
+		cached = _build_melee_shape(spec, melee_reach(spec, charge, heavy))
+		shapes[bucket] = cached
+	return cached
+
+
+func _build_melee_shape(spec: AttackSpec, reach: float) -> Shape2D:
 	if spec.shape == AttackSpec.Shape.CIRCLE:
 		var circle := CircleShape2D.new()
 		circle.radius = reach

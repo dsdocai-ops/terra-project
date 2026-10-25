@@ -303,7 +303,11 @@ func _smoke3_host_tick() -> void:
 ## kill it. The kill gate (hp < 10) guarantees the drop was seen before the
 ## kill, proving HP drops on both screens.
 func _smoke3_client_tick() -> void:
-	if not NetworkManager.is_active:
+	# Wait for the handshake to finish: an RPC sent while the peer is still
+	# connecting is refused, which used to lose the whole step-3 run when the
+	# client started slowly.
+	var peer: MultiplayerPeer = multiplayer.multiplayer_peer
+	if not NetworkManager.is_active or peer == null or peer.get_connection_status() != MultiplayerPeer.CONNECTION_CONNECTED:
 		return
 	if _smoke3_heavy_ticks >= 0 and _smoke3_heavy_ticks <= 4:
 		_smoke3_drive_heavy()

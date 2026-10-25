@@ -230,16 +230,33 @@ func _on_damaged(_hit: HitInfo) -> void:
 	start_hit_iframes()
 
 
-## Hurtbox calls this on the host when a hit connects: HitStun for
-## `stun_seconds`, with `impulse` as the starting knockback velocity. Ignored
-## while downed. A hit during HitStun restarts the stun instead of re-entering.
-func apply_knockback(impulse: Vector2, stun_seconds: float) -> void:
+## Hurtbox calls this on the host when a hit connects, with the hit as the third
+## argument. A heavy hit (a boss slam) is the full HitStun for `stun_seconds`,
+## with `impulse` as the starting knockback velocity. Any other hit is a flinch:
+## the same shove, but the player keeps control and the state does not change
+## (the flash and the 0.4 s i-frames come from `_on_damaged` and CombatFeedback
+## either way). Without a hit (older callers) it is the full stun. Ignored while
+## downed. A heavy hit during HitStun restarts the stun instead of re-entering.
+func apply_knockback(impulse: Vector2, stun_seconds: float, hit: HitInfo = null) -> void:
 	if is_downed or state_machine == null:
 		return
-	hit_stun_left = stun_seconds
 	knockback_velocity = impulse
 	_knockback_decel = impulse.length() / KNOCKBACK_DECAY_SECONDS
+	if hit != null and not hit.is_heavy:
+		return
+	hit_stun_left = stun_seconds
 	state_machine.change_to(&"HitStun")
+
+
+## A flinch's shove: moves the player along the knockback impulse while they keep
+## control, until it decays or a wall stops it. Called every physics tick; a
+## no-op during HitStun, which moves the player from the same impulse itself.
+func _shove_from_flinch(scaled_delta: float) -> void:
+	if knockback_velocity.is_zero_approx() or state_machine == null or state_machine.current_name() == &"HitStun":
+		return
+	decay_knockback(scaled_delta)
+	if move_and_collide(knockback_velocity * scaled_delta) != null:
+		knockback_velocity = Vector2.ZERO
 
 
 ## Shrinks the knockback velocity toward zero at a constant rate. Called by
@@ -318,6 +335,7 @@ static func interpolation_mode_for(role: SyncRole) -> Node.PhysicsInterpolationM
 ## input and an already reconciled position.
 func _physics_process(delta: float) -> void:
 	advance_hit_iframes(delta)
+	_shove_from_flinch(delta * TimeManager.scale_for(self))
 	_tick_combat_timers(delta)
 	if sync_role() == SyncRole.LOCAL_PREDICTS:
 		# `position` is the result of last tick's input. Correct it on the

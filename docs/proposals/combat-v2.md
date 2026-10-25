@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| Status | **Approved 2026-10-24** (C1 to C5; C6 deferred). Nothing implemented yet |
+| Status | **Implemented** (C1 to C5, 2026-10-24; C6 deferred to `enemies-ai`) |
 | Modules | `combat-core` (primary), `weapons`, `player-controller`, `enemies-ai` |
 | Design doc | section 1 pillar 3, section 6, section 7 |
 | Supersedes on approval | parts of `specs/SPEC-combat-core.md` "Attack input layer", "Hit reactions", "Hit feedback" |

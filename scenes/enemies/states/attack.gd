@@ -8,6 +8,10 @@ enum Phase { WINDUP, ACTIVE, RECOVERY }
 
 const MELEE_ARC_STEPS: int = 6
 
+## One cone hitbox per pattern, built the first time the pattern is used by this
+## enemy and reused after that: attacking allocates no shapes once warm.
+var _cone_cache: Dictionary = {}
+
 var _pattern: AttackPattern = null
 var _phase: Phase = Phase.WINDUP
 var _elapsed: float = 0.0
@@ -99,11 +103,21 @@ func _build_hit() -> HitInfo:
 	hit.knockback = _dir * _pattern.knockback
 	hit.hit_stun_seconds = _pattern.hit_stun_seconds
 	hit.is_projectile = _pattern.kind == AttackPattern.Kind.PROJECTILE
+	hit.is_heavy = _pattern.is_heavy
+	hit.poise_damage = _pattern.poise_damage
 	hit.tags.append(&"enemy")
 	return hit
 
 
 func _cone_shape() -> ConvexPolygonShape2D:
+	var cached: ConvexPolygonShape2D = _cone_cache.get(_pattern) as ConvexPolygonShape2D
+	if cached == null:
+		cached = _build_cone_shape()
+		_cone_cache[_pattern] = cached
+	return cached
+
+
+func _build_cone_shape() -> ConvexPolygonShape2D:
 	var half: float = deg_to_rad(_pattern.telegraph_size.y) * 0.5
 	var points := PackedVector2Array([Vector2.ZERO])
 	for step: int in range(MELEE_ARC_STEPS + 1):
