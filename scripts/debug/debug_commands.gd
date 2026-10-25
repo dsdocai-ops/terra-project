@@ -218,6 +218,14 @@ func _cmd_kill(_args: PackedStringArray, _peer_id: int) -> String:
 		return "no world loaded; nothing to kill"
 	var killed := 0
 	for child in world.entities.get_children():
+		var enemy := child as Enemy
+		if enemy != null:
+			if not enemy.health.is_dead:
+				var lethal := HitInfo.new()
+				lethal.final_damage = enemy.health.current_hp
+				enemy.health.apply_damage(lethal)
+				killed += 1
+			continue
 		if not child.has_method("apply_hit"):
 			continue
 		if int(child.get("current_hp")) <= 0:

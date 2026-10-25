@@ -5,6 +5,7 @@ extends Node
 ## Owned by foundation. Sync: none; NetworkManager owns connection state.
 
 const WORLD_SCENE: PackedScene = preload("res://scenes/main/world.tscn")
+const VOID_COLOR: Color = Color(0.055, 0.043, 0.035, 1.0)
 ## How often the floor-sync smoke driver looks for the client before starting
 ## the run, and how long it waits for one before starting it alone.
 const SMOKE_FLOOR_POLL_SECONDS: float = 0.25
@@ -40,19 +41,40 @@ var _smoke3_full_hp_ticks: int = 0
 var _smoke_floor_poll: Timer
 var _smoke_floor_started: bool = false
 var _smoke_floor_waited: float = 0.0
+var _last_result: RunResult = null
+## The co-op lobby screen and the LAN announcer a hosting session runs.
+var lobby: LobbyMenu = null
+var _announcer: LobbyDiscovery = null
+var _last_join: Dictionary = {}
+## The in-game HUD; hidden whenever a menu is up or no session is running.
+var _hud: CanvasLayer = null
 
 @onready var menu: PlaceholderMenu = $UI/PlaceholderMenu
 
 
 func _ready() -> void:
+	# Dark cave void around the floor instead of the engine's default grey.
+	RenderingServer.set_default_clear_color(VOID_COLOR)
 	world = WORLD_SCENE.instantiate() as World
 	add_child(world)
 	move_child(world, 0)
 	GameState.world = world
 
 	menu.solo_pressed.connect(_on_solo)
-	menu.host_pressed.connect(_on_host)
-	menu.join_pressed.connect(_on_join)
+	menu.host_pressed.connect(_open_lobby)
+	menu.join_pressed.connect(_open_lobby)
+	lobby = LobbyMenu.new()
+	lobby.name = "LobbyMenu"
+	$UI.add_child(lobby)
+	lobby.host_requested.connect(_on_lobby_host)
+	lobby.join_requested.connect(_on_lobby_join)
+	lobby.back_pressed.connect(_on_lobby_back)
+	NetworkManager.join_refused.connect(_on_join_refused)
+	multiplayer.connected_to_server.connect(lobby.close)
+	menu.settings_pressed.connect(_on_menu_stub.bind("Settings arrive in a later update"))
+	menu.codex_pressed.connect(_on_menu_stub.bind("The Codex fills as you play"))
+	menu.quit_pressed.connect(_on_quit)
+	GameState.run_ended.connect(_on_run_ended)
 	NetworkManager.connection_failed.connect(_on_connection_failed)
 	NetworkManager.host_disconnected.connect(_on_host_disconnected)
 
@@ -63,8 +85,11 @@ func _ready() -> void:
 	# registers its room populators at startup). Guarded in each module itself:
 	# a no-op that records its blocker once until the registry exists.
 	Rope.register_populator()
+	SpawnDirector.register_populators()
 	Shrine.register_populator()
 	Chest.register_populator()
+	Shopkeeper.register_populator()
+	LorePage.register_populator()
 	_start_from_options()
 	if options.smoke_seconds > 0.0:
 		_start_smoke(options.smoke_seconds)
@@ -267,6 +292,9 @@ func _maybe_add_hud() -> void:
 	var hud: CanvasLayer = hud_scene.instantiate() as CanvasLayer
 	hud.name = "HUD"
 	add_child(hud)
+	_hud = hud
+	hud.connect(&"return_to_town_requested", _on_return_to_town)
+	hud.connect(&"leave_coop_requested", _on_leave_coop)
 
 
 func _start_from_options() -> void:
@@ -282,30 +310,176 @@ func _start_from_options() -> void:
 func _on_solo() -> void:
 	menu.hide()
 	NetworkManager.start_solo()
+	_begin_dive()
 
 
 func _on_host() -> void:
 	menu.hide()
-	var err := NetworkManager.host(options.port if options != null else NetworkManager.DEFAULT_PORT)
+	var port: int = options.port if options != null else NetworkManager.DEFAULT_PORT
+	var host_name: String = options.server_name if options != null and not options.server_name.is_empty() else "Sinkhole host"
+	var password: String = options.password if options != null else ""
+	var err := NetworkManager.host(port, host_name, password)
 	if err != OK:
 		_show_menu_with_status("Could not host: %s" % error_string(err))
+	else:
+		_start_announcing(host_name, not password.is_empty(), port)
+		_begin_dive()
+
+
+## Host and solo: starts a run straight into floor 1 (the town flow replaces this
+## once the walkable town spawns players). Skipped when a run already exists.
+func _begin_dive() -> void:
+	if GameState.run != null or not NetworkManager.is_host:
+		return
+	if options != null and (options.smoke_seconds > 0.0 or options.smoke3_seconds > 0.0 or options.smoke_floor_seconds > 0.0):
+		return
+	var party: Array = []
+	for peer_id: int in NetworkManager.peer_ids:
+		party.append(PlayerSpawnInfo.new(peer_id))
+	GameState.start_run(0, 1, party)
 
 
 func _on_join(ip: String) -> void:
 	menu.hide()
-	var err := NetworkManager.join(ip, options.port if options != null else NetworkManager.DEFAULT_PORT)
+	var err := NetworkManager.join(ip, options.port if options != null else NetworkManager.DEFAULT_PORT, options.password if options != null else "")
 	if err != OK:
 		_show_menu_with_status("Could not join %s: %s" % [ip, error_string(err)])
 
 
 func _on_connection_failed(reason: String) -> void:
+	if lobby != null and lobby.visible:
+		lobby.show_error("Connection failed: %s" % reason)
+		return
 	_show_menu_with_status("Connection failed: %s" % reason)
 
 
 func _on_host_disconnected() -> void:
+	_stop_announcing()
+	GameState.abandon_run()
 	_show_menu_with_status("Host left the game")
 
 
 func _show_menu_with_status(text: String) -> void:
 	menu.set_status(text)
+	menu.show()
+
+
+## Settings (week 12) and Codex (week 10) are not built yet; the menu says so.
+func _on_menu_stub(text: String) -> void:
+	menu.set_status(text)
+
+
+func _on_quit() -> void:
+	get_tree().quit()
+
+
+## Banks this machine's kept row the moment the run ends, so quitting, leaving
+## co-op or closing the game from the death screen cannot lose it.
+func _on_run_ended(result: RefCounted) -> void:
+	_last_result = result as RunResult
+	bank_last_run()
+
+
+## Banks what this machine kept (SPEC-run-economy "Banking") and saves, then goes
+## back to town. blocked on Dev A (W5-A1): the walkable town needs the Player to
+## spawn there, so until it does this stops after banking.
+func _on_return_to_town() -> void:
+	bank_last_run()
+	print("[run] back in Hollowmere (the walkable town is not wired yet, so a new dive starts)")
+	if NetworkManager.is_host:
+		for player: Player in NetworkManager.players.values():
+			player.reset_for_run()
+		_begin_dive()
+
+
+## Merges the local player's kept row into their profile and saves. Idempotent:
+## a run banks once.
+func bank_last_run() -> bool:
+	if _last_result == null or SaveManager.profile == null:
+		return false
+	var gains: Dictionary = RunEconomyRules.gains_for(_last_result, NetworkManager.local_peer_id)
+	SaveManager.profile.merge_run_gains(gains)
+	SaveManager.save()
+	_last_result = null
+	return true
+
+
+func _on_leave_coop() -> void:
+	_stop_announcing()
+	NetworkManager.disconnect_all()
+	GameState.abandon_run()
+	_show_menu_with_status("You left the co-op session")
+
+
+# --- co-op lobby ----------------------------------------------------------------
+
+
+## Menu Host / Join: the lobby handles both (the IP field pre-fills its address).
+func _open_lobby(address: Variant = "") -> void:
+	menu.hide()
+	lobby.open(str(address) if address is String else "")
+
+
+func _on_lobby_host(server_name: String, password: String) -> void:
+	if NetworkManager.is_active:
+		return
+	var port: int = options.port if options != null else NetworkManager.DEFAULT_PORT
+	var err: Error = NetworkManager.host(port, server_name, password)
+	if err != OK:
+		lobby.show_error("Could not host: %s" % error_string(err))
+		return
+	lobby.close()
+	_start_announcing(server_name, not password.is_empty(), port)
+	_begin_dive()
+
+
+func _on_lobby_join(address: String, port: int, password: String) -> void:
+	if NetworkManager.is_active:
+		return
+	_last_join = {"address": address, "port": port, "had_password": not password.is_empty()}
+	var err: Error = NetworkManager.join(address, port, password)
+	if err != OK:
+		lobby.show_error("Could not join %s: %s" % [address, error_string(err)])
+		return
+	lobby.show_error("Joining %s…" % address)
+
+
+## A server turned the player away: ask for the password again.
+func _on_join_refused(_reason: StringName) -> void:
+	if _last_join.is_empty():
+		return
+	var message: String = "Wrong password. Try again." if bool(_last_join["had_password"]) else "That server needs a password."
+	lobby.show()
+	lobby.ask_password(String(_last_join["address"]), int(_last_join["port"]), message)
+
+
+func _start_announcing(server_name: String, locked: bool, port: int) -> void:
+	_stop_announcing()
+	_announcer = LobbyDiscovery.new()
+	_announcer.name = "LobbyAnnouncer"
+	add_child(_announcer)
+	_announcer.start_announcing(server_name, locked, port)
+
+
+func _stop_announcing() -> void:
+	if _announcer != null:
+		_announcer.stop()
+		_announcer.queue_free()
+		_announcer = null
+
+
+## The HUD belongs to the game: it shows only in a live session, never over the
+## main menu or the co-op lobby.
+func _process(_delta: float) -> void:
+	if _hud == null:
+		return
+	var menus_up: bool = (menu != null and menu.visible) or (lobby != null and lobby.visible)
+	_hud.visible = NetworkManager.is_active and not menus_up
+
+
+## Back from the lobby cancels a join that is still connecting, then shows the
+## main menu again.
+func _on_lobby_back() -> void:
+	if NetworkManager.is_active:
+		NetworkManager.disconnect_all()
 	menu.show()

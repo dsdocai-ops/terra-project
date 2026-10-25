@@ -76,8 +76,7 @@ static func _crit_rng(rng: RandomNumberGenerator) -> RandomNumberGenerator:
 
 
 ## Returns the final damage for a connecting hit and fills hit.is_crit /
-## hit.final_damage. `hit` is the week-2 HitData mirror of combat-core's
-## HitInfo; the fields the formula reads match by name. `rng` is the host's
+## hit.final_damage. `rng` is the host's
 ## seeded generator for the run; null uses Damage's fallback generator. A forced
 ## crit — the hit's own flag, or a MARK on the target — short-circuits, so it
 ## consumes no draw (W3-B1's rule, now reachable from a status as well).
@@ -94,7 +93,7 @@ static func _crit_rng(rng: RandomNumberGenerator) -> RandomNumberGenerator:
 ##
 ## Called once per connecting hit: the call spends the target's MARK and its
 ## pending freeze double, which is what makes each land on exactly one hit.
-static func compute(attacker: StatBlock, target: StatBlock, hit: HitData, \
+static func compute(attacker: StatBlock, target: StatBlock, hit: HitInfo, \
 		rng: RandomNumberGenerator = null, target_statuses: StatusEffects = null) -> int:
 	var crit_rng: RandomNumberGenerator = _crit_rng(rng)
 	var raw := hit.base_damage * (attacker.get_value(StatBlock.Stat.ATTACK) / ATTACK_REFERENCE) \

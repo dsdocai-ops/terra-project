@@ -70,7 +70,7 @@ func _on_attach() -> void:
 
 ## One of this player's own hits: split it, three ways, along the line it
 ## travelled.
-func _on_hit_landed(hit: HitData) -> void:
+func _on_hit_landed(hit: HitInfo) -> void:
 	if not _is_my_hit(hit):
 		return
 	var origin: Vector2 = _impact_of(hit)
@@ -82,7 +82,7 @@ func _on_hit_landed(hit: HitData) -> void:
 ## Where the hit landed: the enemy's own position when the payload names one
 ## that has one, otherwise this player's — a split sprays from the player when
 ## the payload cannot say where it struck, rather than inventing a point.
-func _impact_of(hit: HitData) -> Vector2:
+func _impact_of(hit: HitInfo) -> Vector2:
 	if hit.target is Node2D:
 		return (hit.target as Node2D).global_position
 	if player != null:
@@ -95,7 +95,7 @@ func _impact_of(hit: HitData) -> Vector2:
 ## Falls back to the player's facing when the two points coincide (a melee hit
 ## landed on top of the attacker, a payload with no positioned target), and to
 ## `FALLBACK_FORWARD` when even that has no length.
-func _axis_of(hit: HitData, origin: Vector2) -> Vector2:
+func _axis_of(hit: HitInfo, origin: Vector2) -> Vector2:
 	if player == null:
 		return FALLBACK_FORWARD
 	var along: Vector2 = origin - player.global_position
@@ -118,7 +118,7 @@ func _offset_degrees(index: int) -> float:
 
 ## The spec one split flies with: the triggering hit's element and a fraction of
 ## its damage, and no scene — the projectile's body is combat-core's (W2-A6).
-func _spec_for(hit: HitData) -> ProjectileSpec:
+func _spec_for(hit: HitInfo) -> ProjectileSpec:
 	var spec := ProjectileSpec.new()
 	spec.speed = SPLIT_SPEED
 	spec.damage = hit.base_damage * SPLIT_DAMAGE_FRACTION
@@ -131,7 +131,7 @@ func _spec_for(hit: HitData) -> ProjectileSpec:
 ## True when `hit` is a hit this effect's own player landed, and not one of the
 ## procs this player's own effects produced — which is what keeps a split from
 ## splitting itself.
-func _is_my_hit(hit: HitData) -> bool:
+func _is_my_hit(hit: HitInfo) -> bool:
 	if player == null or hit == null or hit.owner_player != player:
 		return false
 	return hit.proc_depth == 0

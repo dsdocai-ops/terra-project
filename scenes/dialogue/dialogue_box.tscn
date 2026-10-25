@@ -1,0 +1,106 @@
+[gd_scene load_steps=3 format=3]
+
+[ext_resource type="Script" path="res://scripts/dialogue/dialogue_box.gd" id="1_box"]
+
+[sub_resource type="StyleBoxFlat" id="sb_panel"]
+content_margin_left = 16.0
+content_margin_top = 12.0
+content_margin_right = 16.0
+content_margin_bottom = 12.0
+bg_color = Color(0.910, 0.847, 0.690, 1)
+border_width_left = 3
+border_width_top = 3
+border_width_right = 3
+border_width_bottom = 3
+border_color = Color(0.604, 0.416, 0.18, 1)
+corner_radius_top_left = 6
+corner_radius_top_right = 6
+corner_radius_bottom_right = 6
+corner_radius_bottom_left = 6
+
+[node name="DialogueBox" type="CanvasLayer"]
+layer = 20
+visible = false
+script = ExtResource("1_box")
+
+[node name="Root" type="Control" parent="."]
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+
+[node name="Dim" type="ColorRect" parent="Root"]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 0
+color = Color(0, 0, 0, 0.35)
+
+[node name="Box" type="PanelContainer" parent="Root"]
+custom_minimum_size = Vector2(680, 0)
+layout_mode = 1
+anchors_preset = 7
+anchor_left = 0.5
+anchor_top = 1.0
+anchor_right = 0.5
+anchor_bottom = 1.0
+offset_left = -360.0
+offset_top = -300.0
+offset_right = 360.0
+offset_bottom = -48.0
+grow_horizontal = 2
+grow_vertical = 0
+theme_override_styles/panel = SubResource("sb_panel")
+
+[node name="Margin" type="MarginContainer" parent="Root/Box"]
+layout_mode = 2
+theme_override_constants/margin_left = 16
+theme_override_constants/margin_top = 12
+theme_override_constants/margin_right = 16
+theme_override_constants/margin_bottom = 12
+
+[node name="Column" type="VBoxContainer" parent="Root/Box/Margin"]
+layout_mode = 2
+theme_override_constants/separation = 8
+
+[node name="Header" type="HBoxContainer" parent="Root/Box/Margin/Column"]
+layout_mode = 2
+theme_override_constants/separation = 12
+
+[node name="Portrait" type="TextureRect" parent="Root/Box/Margin/Column/Header"]
+custom_minimum_size = Vector2(96, 96)
+layout_mode = 2
+mouse_filter = 2
+texture = null
+expand_mode = 1
+stretch_mode = 5
+
+[node name="NamePlate" type="Label" parent="Root/Box/Margin/Column/Header"]
+layout_mode = 2
+size_flags_vertical = 4
+theme_override_colors/font_color = Color(0.169, 0.129, 0.094, 1)
+theme_override_font_sizes/font_size = 22
+
+[node name="Text" type="Label" parent="Root/Box/Margin/Column"]
+custom_minimum_size = Vector2(0, 84)
+layout_mode = 2
+theme_override_colors/font_color = Color(0.169, 0.129, 0.094, 1)
+theme_override_font_sizes/font_size = 16
+autowrap_mode = 3
+
+[node name="Choices" type="VBoxContainer" parent="Root/Box/Margin/Column"]
+layout_mode = 2
+theme_override_constants/separation = 4
+
+[node name="Hint" type="Label" parent="Root/Box/Margin/Column"]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.275, 0.208, 0.137, 1)
+theme_override_font_sizes/font_size = 11
+text = "Space / F — next   ·   Click — skip   ·   Esc — close"
+horizontal_alignment = 2

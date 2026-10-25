@@ -174,6 +174,12 @@ static func load_ore(id: StringName) -> OreData:
 ## 0 — writing nothing and announcing nothing — off-host, without a run, without
 ## a biome that has an ore, or for a non-positive amount.
 ##
+## The paid amount carries two multipliers, in this order: the earner's own
+## bonus (Wren's +25%, above), then the biome depth curve —
+## `CurrencyScaler.ORE_ID` on the live run's biome (W6-B5, goal G8). The return
+## value is the scaled total, so every caller that presents the ore as a pickup
+## presents exactly what was credited.
+##
 ## `player` is the earner and is named in the announcement; it may be null (a
 ## hazard kill pays the party but names nobody).
 static func award(
@@ -194,6 +200,7 @@ static func award(
 	var amount: int = amount_override if amount_override > 0 else amount_for_kill(kill_kind, player)
 	if amount <= 0:
 		return 0
+	amount = CurrencyScaler.amount_for(CurrencyScaler.ORE_ID, amount, run.biome_index)
 	run.shared_ore[ore_id] = int(run.shared_ore.get(ore_id, 0)) + amount
 	Events.currency_gained.emit(player, CURRENCY_ID, amount)
 	return amount

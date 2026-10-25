@@ -1,0 +1,1 @@
+{ "id": "lore.test_bad_biome", "title": "Bad Biome", "body": "A biome must be an index, not a name.", "biome": "two", "act": 1, "order": 1 }

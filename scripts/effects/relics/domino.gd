@@ -43,7 +43,7 @@ extends Effect
 ## means the two cannot drift, and the batch's case asserts the value against the
 ## component's own.
 ##
-## **Nothing here is a hit.** No damage is dealt and no `HitData` is built, so
+## **Nothing here is a hit.** No damage is dealt and no `HitInfo` is built, so
 ## there is no proc depth to stamp and no rule-2 tag to carry: a spread status is
 ## an application, not a link in the damage chain (`SPEC-effect-system`, "Proc
 ## chain limits"). The relic cannot re-trigger off its own spread, because what
@@ -88,7 +88,7 @@ func spread_count() -> int:
 
 
 ## One of this player's kills: the corpse's statuses go out to its neighbours.
-func _on_enemy_killed(enemy: Node, hit: HitData) -> void:
+func _on_enemy_killed(enemy: Node, hit: HitInfo) -> void:
 	if not _is_my_kill(enemy, hit):
 		return
 	_spread(enemy)
@@ -97,7 +97,7 @@ func _on_enemy_killed(enemy: Node, hit: HitData) -> void:
 ## True when `enemy` is a positioned, valid node and `hit` is this player's own
 ## kill. The `owner_player` read is the payload's, not a signal argument:
 ## `enemy_killed` carries no `Player` for `Effect.listen()` to filter on.
-func _is_my_kill(enemy: Node, hit: HitData) -> bool:
+func _is_my_kill(enemy: Node, hit: HitInfo) -> bool:
 	if player == null or enemy == null or not is_instance_valid(enemy):
 		return false
 	if hit == null:

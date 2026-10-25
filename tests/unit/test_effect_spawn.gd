@@ -136,7 +136,7 @@ func _spec() -> ProjectileSpec:
 		load(PLACEHOLDER_PROJECTILE) as PackedScene,
 		SPEC_SPEED,
 		SPEC_DAMAGE,
-		HitData.Element.FIRE,
+		HitInfo.Element.FIRE,
 		SPEC_PIERCE,
 		SPEC_BOUNCE,
 	)
@@ -307,7 +307,7 @@ func test_fire_projectile_forwards_the_specs_numbers() -> void:
 	var spec: ProjectileSpec = _spy.last_projectile_spec()
 	assert_almost_eq(spec.speed, SPEC_SPEED, EPSILON, "speed")
 	assert_almost_eq(spec.damage, SPEC_DAMAGE, EPSILON, "damage")
-	assert_eq(spec.element, HitData.Element.FIRE, "element")
+	assert_eq(spec.element, HitInfo.Element.FIRE, "element")
 	assert_eq(spec.pierce, SPEC_PIERCE, "pierce")
 	assert_eq(spec.bounce, SPEC_BOUNCE, "bounce")
 	assert_eq(_spy.projectiles[0]["from"], PROJECTILE_FROM, "from")
@@ -326,7 +326,7 @@ func test_fire_projectile_carries_the_source_id_and_the_depth() -> void:
 func test_fire_projectile_increments_the_proc_depth_like_deal_damage() -> void:
 	var effect: Effect = _attach()
 	effect.trigger_depth = TRIGGER_DEPTH
-	var hit := HitData.new()
+	var hit := HitInfo.new()
 	effect.deal_damage(_player, hit)
 	effect.fire_projectile(_spec(), PROJECTILE_FROM, PROJECTILE_DIR)
 	assert_eq(hit.proc_depth, TRIGGER_DEPTH + 1, "deal_damage: trigger + 1")

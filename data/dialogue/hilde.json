@@ -1,0 +1,109 @@
+{
+	"id": "hilde",
+	"entries": [
+		{
+			"id": "intro",
+			"priority": 60,
+			"conditions": { "flag_not": "story.met_hilde" },
+			"lines": [
+				{ "speaker": "Mayor Hilde", "text": "You're awake. Good. Hollowmere doesn't have the food to feed dreamers.", "emotion": "weary" },
+				{ "speaker": "Mayor Hilde", "text": "The mine ate our Foreman and eleven of his crew two weeks ago. Whatever took them is still down there.", "emotion": "worried" }
+			],
+			"choices": [
+				{ "text": "What do you need from me?", "goto": "intro_what" },
+				{ "text": "Take care, Mayor.", "end": true }
+			]
+		},
+		{
+			"id": "intro_what",
+			"priority": 5,
+			"lines": [
+				{ "speaker": "Mayor Hilde", "text": "Go down. Come back. Keep breathing. That's the whole job for now, warden.", "emotion": "resolute" },
+				{ "speaker": "Mayor Hilde", "text": "Talk to the others before you descend. Gruff sharpens, Moss brews, and Pip will beg you for maps.", "emotion": "weary" }
+			],
+			"choices": [
+				{ "text": "Understood.", "end": true }
+			]
+		},
+		{
+			"id": "act_1",
+			"priority": 10,
+			"conditions": { "flag": "story.foreman_defeated" },
+			"lines": [
+				{ "speaker": "Mayor Hilde", "text": "So it's true. You put the Foreman down.", "emotion": "grim" },
+				{ "speaker": "Mayor Hilde", "text": "He was a good man under the rust. Whatever wore him down there, it wasn't him anymore.", "emotion": "worried" }
+			],
+			"choices": [
+				{ "text": "He wasn't a man at all at the end.", "goto": "act_1_spear" },
+				{ "text": "The mine is quieter now.", "end": true }
+			]
+		},
+		{
+			"id": "act_1_spear",
+			"priority": 5,
+			"lines": [
+				{ "speaker": "Mayor Hilde", "text": "Then Hollowmere needs more than a warden. It needs a spear.", "emotion": "resolute" },
+				{ "speaker": "Mayor Hilde", "text": "Rest. Resupply. Then go deeper — the town's fate is down there with the rest of them.", "emotion": "weary" }
+			],
+			"choices": [
+				{ "text": "I'll go deeper.", "end": true }
+			]
+		},
+		{
+			"id": "act_1_possessed",
+			"priority": 15,
+			"conditions": { "flag": "story.miners_possessed" },
+			"lines": [
+				{ "speaker": "Mayor Hilde", "text": "They're walking back up. Brannoc's crew, lanterns lit, smiling like nothing happened.", "emotion": "worried" },
+				{ "speaker": "Mayor Hilde", "text": "That's not rescue, warden. That's the pit reaching for us.", "emotion": "grim" },
+				{ "speaker": "Mayor Hilde", "text": "I'm sorry about your father. I knew him. He'd have gone down after them anyway.", "emotion": "distant", "character_only": "wren" }
+			],
+			"choices": [
+				{ "text": "I'll cut them loose myself if I must.", "end": true }
+			]
+		},
+		{
+			"id": "act_2_stub",
+			"priority": 8,
+			"conditions": { "act_min": 2 },
+			"lines": [
+				{ "speaker": "Mayor Hilde", "text": "The deep shafts have opened wider since your last descent.", "emotion": "worried" }
+			],
+			"choices": [
+				{ "text": "I'll look into it.", "end": true }
+			]
+		},
+		{
+			"id": "act_3_stub",
+			"priority": 30,
+			"conditions": { "act_min": 3 },
+			"lines": [
+				{ "speaker": "Mayor Hilde", "text": "Whatever you found below, you'll tell me before you act on it. Understood?", "emotion": "grim" }
+			],
+			"choices": [
+				{ "text": "Understood.", "end": true }
+			]
+		},
+		{
+			"id": "endings_stub",
+			"priority": 40,
+			"conditions": {
+				"any": [
+					{ "flag": "ending.seal" },
+					{ "flag": "ending.keeper" },
+					{ "flag": "ending.true" }
+				]
+			},
+			"lines": [
+				{ "speaker": "Mayor Hilde", "text": "It's over, isn't it. One way or another.", "emotion": "weary" }
+			]
+		},
+		{
+			"id": "default",
+			"priority": 0,
+			"lines": [
+				{ "speaker": "Mayor Hilde", "text": "The town holds, warden. Keep it that way.", "emotion": "resolute" }
+			]
+		}
+	]
+}

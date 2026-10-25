@@ -22,6 +22,7 @@ from pathlib import Path
 
 import palette
 from gen_character import FRAME, IDLE_FRAMES, SUFFIX_ANGLES, WALK_FRAMES, facing_vectors
+from gen_sprites_v2 import V2_ENEMIES
 from pixel import Canvas, sheet
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
@@ -543,12 +544,14 @@ def build_one(root: Path, enemy_id: str) -> Canvas:
 
 
 def build(root: Path) -> None:
-    """Writes every enemy sheet under root at its repo-relative path."""
+    """Writes every enemy sheet under root at its repo-relative path, except
+    the ids gen_sprites_v2.py draws in the v2 style (art direction v2)."""
     for enemy_id in ENEMIES:
-        build_one(root, enemy_id)
+        if enemy_id not in V2_ENEMIES:
+            build_one(root, enemy_id)
 
 
 if __name__ == "__main__":
-    for name in sys.argv[1:] or list(ENEMIES):
+    for name in sys.argv[1:] or [e for e in ENEMIES if e not in V2_ENEMIES]:
         build_one(REPO_ROOT, name)
         print("enemy:", name)

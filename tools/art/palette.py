@@ -30,6 +30,14 @@ edits after that are a human decision recorded here):
   module alone (merge of feat/ui-hud-pixel-art-pass). drowned_city swaps
   neutral_5 for neutral_0 and the_heart swaps neutral_3 for neutral_0 so each
   wall ramp has a darkest step; both selections are still drafts.
+- 2026-10-24: art direction v2 (decision D5, Dev A and Dev B). Adds the v2
+  layer below the v1 tables: V2_RAMPS (named ramps from the approved mockups,
+  docs/art-direction/v2/), CHARACTER_SLOTS / V2_CHARACTERS (the BODY template
+  palettes), and V2_SETS (which ramps a UI, collapsed_mines or town v2 canvas
+  may use). v1 tables are unchanged so committed v1 assets still pass
+  build_all.py --check; each v1 table retires when its assets are regenerated
+  in v2 (AR-3 mines tiles, AR-5 town, AR-12 theme). Remaining biomes get their
+  v2 ramps in AR-6.
 """
 
 from __future__ import annotations
@@ -336,6 +344,179 @@ ELEMENT: Mapping[str, str] = MappingProxyType({
 })
 
 
+# --- v2 layer (art direction v2, decision D5, 2026-10-24) ------------------------
+#
+# Named ramps taken from the approved mockups (docs/art-direction/v2/). Each
+# color is addressed as "<ramp>_<n>", n = 0 the lightest step, so a ramp reads
+# light -> dark like MATERIAL. Two ramps are not lightness-ordered and say so:
+# rarity_v2 (common, rare, epic, legendary, cursed) and flowers. A hex may
+# repeat across ramps (the mockups reuse colors), never within one.
+# docs/art-direction/v2/palette-map.md records how every mockup color maps here.
+
+V2_RAMPS: Mapping[str, tuple[str, ...]] = MappingProxyType({
+    # UI
+    "void":       ("#8A93AE", "#6B7590", "#474F68", "#2E3449", "#1E2233", "#12141F", "#0C0E16", "#07080D"),
+    "lamp":       ("#FFF3C4", "#F7D27A", "#E0A040", "#A8661E", "#6A3A12", "#3A1E0C"),
+    "bone":       ("#EDE4D3", "#E8C9A0", "#C9BBA0", "#9A8F7E", "#5A4630"),
+    "ash":        ("#B5AEC0", "#9A93A6", "#6E6880"),
+    "wood":       ("#94643A", "#6E4428", "#4A2C1A", "#2A1810", "#1E1009"),
+    "parchment":  ("#EFE2BC", "#EAD8AE", "#DCC69A", "#D8C49A", "#C8B080", "#A88E64", "#7A6444"),
+    "ink":        ("#9A2A1A", "#6A5034", "#3A2414"),
+    "blood":      ("#FFB0A0", "#F0605A", "#C8323A", "#7A1A22", "#3A0E14"),
+    "hp":         ("#FFE0B0", "#FFD0C0", "#FF7A6A", "#FF4A4A", "#E0303A", "#9A1A22", "#7A1018"),
+    "rage":       ("#FFD15C", "#FF8A1E", "#3A1A06"),
+    "echo":       ("#E6DCFF", "#C9B6FF", "#9C7CFF", "#8E6CF0", "#6B4FC0", "#5B3FC4", "#4A2E9A", "#1E1240"),
+    "glow":       ("#FFF6D0", "#FFE6A8", "#FFD27A", "#FFC86A"),
+    "party_teal": ("#A8F0E4", "#3FC1B8", "#1E6A66", "#0E2E30"),
+    "party_rose": ("#FFC0DA", "#E879A6", "#A83A72", "#4A1430"),
+    "party_lime": ("#E0FFA0", "#A6D65A", "#4A7A28", "#1E3014"),
+    "rim_storm":  ("#9FE6FF", "#2A5AA8", "#102040"),
+    "rim_fire":   ("#FFD15C", "#D8601E", "#7A2410"),
+    "rim_frost":  ("#E0F8FF", "#3FA0D0", "#1A4A6A"),
+    "rim_steel":  ("#EDE4D3", "#8A93AE", "#474F68"),
+    "rim_brass":  ("#FFF3C4", "#E0A040", "#A8661E"),
+    "rim_rare":   ("#BFE0FF", "#2A5AA8", "#102040"),
+    "rim_epic":   ("#C9B6FF", "#4A2E9A", "#1E1240"),
+    "rarity_v2":  ("#B9B2A5", "#4FA3FF", "#A77BFF", "#F2B65A", "#D9385E"),
+    "tab":        ("#FF8A4A", "#C8501E", "#5A1408"),
+    "ult":        ("#FFB040", "#E07A1E"),
+    "sunset":     ("#FFD89A", "#F7B878", "#F09A68", "#E07A5A", "#C85A4E", "#8A4A3A"),
+    # Collapsed Mines
+    "mine_floor":       ("#B08058", "#A0704A", "#80553A", "#7A4E32", "#744A2E", "#6A4430", "#4A2E1C", "#3A2214"),
+    "mine_stone":       ("#A08A74", "#86705C", "#7A6450", "#7A6250", "#6E5646", "#5E4A3C", "#5A4638", "#3A2A20"),
+    "mine_stone_shade": ("#736354", "#605142", "#58483A", "#58473A", "#4F3E32", "#44352B", "#413228", "#2A1E17"),
+    "timber":           ("#B07A44", "#9A6A3A", "#7A4A26", "#6A3E1E", "#5A3420", "#4A2A18", "#3A2214", "#2A1810"),
+    "copper":           ("#FFC28A", "#E0956A", "#C9733A", "#A16B4C", "#7A3E1E", "#5A2A14"),
+    "iron_v2":          ("#B8C0CC", "#9AA0AE", "#8A8F9A", "#7A808E", "#5A5F6A", "#4E5462", "#4A4E5A", "#3A3E4A", "#2A2E38", "#1A1A20"),
+    "crate":            ("#E8C080", "#D0A064", "#C88A50", "#A86E3C", "#8A5A30", "#6A3E20"),
+    "rubble":           ("#A08A70", "#6E5A48", "#2A1A10"),
+    "gas":              ("#C8FFA0", "#9AE070", "#7BE05A"),
+    "danger":           ("#FF4A3A",),
+    # Town
+    "grass":      ("#9AD060", "#86C04E", "#78B84A", "#64A43E", "#5E9E3A", "#589636", "#3E7428", "#2E6A22", "#20401A"),
+    "leaf":       ("#A8D870", "#86C04E", "#5A9A3A", "#3E7A2E", "#2E5A22", "#20401A"),
+    "fruit":      ("#FF9A80", "#E04A3A"),
+    "flowers":    ("#F7F0E0", "#FFD15C", "#E879A6", "#8AB8FF", "#E04A3A"),
+    "cobble":     ("#E2D4B4", "#CDBC9C", "#C4B090", "#B8A484", "#8E7E66", "#6A5C48"),
+    "dirt":       ("#D0A070", "#B8885A", "#B08254", "#8A6440"),
+    "plaster":    ("#E2D2B0", "#C4B290", "#BBA884", "#9A8866"),
+    "plank":      ("#E8C090", "#E0B070", "#C8945A", "#C8884E", "#A86E3C", "#9A6236", "#7E4E28", "#6A3E20", "#3A2214"),
+    "roof_red":   ("#E07A58", "#D8664A", "#D8502E", "#B8442E", "#B03A22", "#8E3020", "#8A2A18", "#7A2818", "#5A1A10"),
+    "roof_teal":  ("#6EAABA", "#3E8AA8", "#3E7A8A", "#2E6A88", "#2E5A6A", "#24485A", "#1E4A68", "#1A3440"),
+    "foundation": ("#B8B2A6", "#A8A294", "#9A9488", "#8E887C", "#8A8478", "#7A7468", "#77716A", "#6A6458", "#5A5448"),
+    "window":     ("#F2E6CC", "#E0D2B4", "#9AC4E6", "#3E5E84", "#2E6A3A"),
+    "water":      ("#3A5A7A", "#2A4060"),
+    "lamp_iron":  ("#4A3A2E", "#3A3A44", "#3A2A20", "#2A2A30"),
+    "night":      ("#6A9A4E", "#54803E", "#4E7A3A", "#487236", "#2E5226"),
+})
+
+# The BODY template (players, NPCs, humanoid enemies): one string-row sprite,
+# recolored per character. CHARACTER_SLOTS is the slot order; the template's
+# row characters are o Y y L H S s e J j B G N n K in this order.
+CHARACTER_SLOTS: tuple[str, ...] = (
+    "outline", "helmet", "helmet_shade", "lamp", "hair", "skin", "skin_shade", "eye",
+    "jacket", "jacket_shade", "strap", "glove", "pants", "pants_shade", "boot",
+)
+CHARACTER_CHARS: str = "oYyLHSseJjBGNnK"
+
+_WREN: tuple[str, ...] = ("#3A2014", "#F2B65A", "#C7782E", "#FFF6D0", "#7A4422", "#EDB98E", "#D0946A", "#2A1A14",
+                          "#D9572B", "#A83A1E", "#6A3A1E", "#8A5A30", "#3E4E74", "#2C3858", "#5A3420")
+
+
+def _char(**over: str) -> tuple[str, ...]:
+    slots = dict(zip(CHARACTER_SLOTS, _WREN, strict=True))
+    for key, value in over.items():
+        if key not in slots:
+            raise KeyError(key)
+        slots[key] = value
+    return tuple(slots[s] for s in CHARACTER_SLOTS)
+
+
+V2_CHARACTERS: Mapping[str, tuple[str, ...]] = MappingProxyType({
+    "wren": _WREN,
+    "kestrel": _char(helmet="#4A5A6E", helmet_shade="#2E3A4A", lamp="#E0FFF8", hair="#2A2A30", skin="#E2B48A", skin_shade="#C0906A",
+                     jacket="#2E9E96", jacket_shade="#1E6A66", strap="#164A46", glove="#3A3040", pants="#3A3040", pants_shade="#2A2230"),
+    "ivy": _char(helmet="#7A3A6A", helmet_shade="#4E2244", lamp="#FFD0F0", hair="#E8C060", skin="#C08860", skin_shade="#9A6844",
+                 jacket="#C85A94", jacket_shade="#8A2E62", strap="#5A1E44", pants="#2A2238", pants_shade="#1E1828"),
+    "brann": _char(helmet="#8A8F9A", helmet_shade="#5A5F6A", hair="#B8B8B8", skin="#C08A60", skin_shade="#9A6A44",
+                   jacket="#6E9A3E", jacket_shade="#4A6A28", strap="#3A5420", pants="#3A2A1A", pants_shade="#2A1E12"),
+    "hilde": _char(outline="#2A1410", helmet="#8A8FA0", helmet_shade="#5E6372", lamp="#FFE07A", hair="#C8CCD8", skin="#8E5C3C", skin_shade="#6E4228",
+                   jacket="#C2622E", jacket_shade="#8A3A1A", strap="#EFE2C8", glove="#5A3A2A", pants="#6A4258", pants_shade="#4A2A3E", boot="#3A2418"),
+    "hollow_miner": _char(outline="#1A1420", helmet="#6E7086", helmet_shade="#4A4C5E", lamp="#2A2A34", hair="#3A3A44", skin="#9AB08E", skin_shade="#76907A",
+                          eye="#D8C8FF", jacket="#5A4E70", jacket_shade="#3E3452", strap="#2D2640", glove="#76907A", pants="#3A3A48",
+                          pants_shade="#2A2A36", boot="#2A2230"),
+})
+
+
+def _build_v2() -> Mapping[str, str]:
+    colors: dict[str, str] = {}
+    for ramp, steps in V2_RAMPS.items():
+        if len(set(steps)) != len(steps):
+            raise ValueError(f"v2 ramp {ramp} repeats a color")
+        for i, value in enumerate(steps):
+            colors[f"{ramp}_{i}"] = value
+    for who, values in V2_CHARACTERS.items():
+        for slot, value in zip(CHARACTER_SLOTS, values, strict=True):
+            colors[f"char_{who}_{slot}"] = value
+    return MappingProxyType(colors)
+
+
+# Every v2 name: "<ramp>_<n>" and "char_<who>_<slot>".
+V2: Mapping[str, str] = _build_v2()
+
+_V2_UI_RAMPS: tuple[str, ...] = (
+    "void", "lamp", "bone", "ash", "wood", "parchment", "ink", "blood", "hp", "rage", "echo", "glow",
+    "party_teal", "party_rose", "party_lime",
+    "rim_storm", "rim_fire", "rim_frost", "rim_steel", "rim_brass", "rim_rare", "rim_epic", "rarity_v2",
+    "tab", "ult", "sunset",
+)
+
+# Which ramps (and character palettes) a v2 canvas may use, by set id.
+V2_SETS: Mapping[str, tuple[str, ...]] = MappingProxyType({
+    "ui": _V2_UI_RAMPS,
+    "collapsed_mines": ("mine_floor", "mine_stone", "mine_stone_shade", "timber", "copper", "iron_v2", "crate", "rubble",
+                        "gas", "danger", "glow", "lamp", "char_wren", "char_kestrel", "char_ivy", "char_brann", "char_hollow_miner"),
+    "town": ("grass", "leaf", "fruit", "flowers", "cobble", "dirt", "plaster", "plank", "roof_red", "roof_teal", "foundation",
+             "window", "water", "lamp_iron", "night", "glow", "wood", "char_wren", "char_hilde"),
+})
+
+
+def v2_ramp(name: str) -> tuple[str, ...]:
+    """A v2 ramp as palette names, light -> dark: v2_ramp("lamp") is
+    ("lamp_0", ..., "lamp_5")."""
+    if name not in V2_RAMPS:
+        raise KeyError(name)
+    return tuple(f"{name}_{i}" for i in range(len(V2_RAMPS[name])))
+
+
+def character(who: str) -> dict[str, str]:
+    """BODY template mapping for one character: row char -> palette name, ready
+    for pixel.sprite_from_rows."""
+    if who not in V2_CHARACTERS:
+        raise KeyError(who)
+    return {ch: f"char_{who}_{slot}" for ch, slot in zip(CHARACTER_CHARS, CHARACTER_SLOTS, strict=True)}
+
+
+def v2_colors(set_id: str) -> dict[str, str]:
+    """Names a v2 canvas for `set_id` ("ui", "collapsed_mines", "town")
+    resolves: its ramps and characters plus the two accents."""
+    if set_id not in V2_SETS:
+        raise KeyError(set_id)
+    out: dict[str, str] = dict(ACCENT)
+    for entry in V2_SETS[set_id]:
+        if entry.startswith("char_"):
+            who = entry[len("char_"):]
+            out.update({f"char_{who}_{slot}": v for slot, v in zip(CHARACTER_SLOTS, V2_CHARACTERS[who], strict=True)})
+        else:
+            out.update({name: V2[name] for name in v2_ramp(entry)})
+    return out
+
+
+def v2_rgb(set_id: str) -> frozenset[tuple[int, int, int]]:
+    """Allowed colors for build_all.py's palette check on a v2 generator."""
+    return frozenset(rgb_set(v2_colors(set_id).values()))
+
+
 def _build_named() -> Mapping[str, str]:
     """GLOBAL plus the UI, RARITY and ELEMENT tables. Names must not collide."""
     named: dict[str, str] = dict(GLOBAL)
@@ -356,10 +537,15 @@ def _build_all() -> Mapping[str, str]:
     for b in _BIOMES:
         for name, value in b.biome_only.items():
             colors[b.qualified(name)] = value
+    for name, value in V2.items():
+        if name in colors:
+            raise ValueError(f"palette name collision: {name}")
+        colors[name] = value
     return MappingProxyType(colors)
 
 
-# NAMED plus every biome-only color under "<biome>.<name>". pixel.Canvas's default.
+# NAMED, every biome-only color under "<biome>.<name>", and every v2 name.
+# pixel.Canvas's default.
 ALL: Mapping[str, str] = _build_all()
 
 
@@ -398,4 +584,5 @@ def all_hex() -> list[str]:
         values.extend(b.biome_only.values())
     for table in (UI, RARITY, ELEMENT):
         values.extend(table.values())
+    values.extend(V2.values())
     return list(dict.fromkeys(values))

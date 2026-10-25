@@ -57,7 +57,7 @@ func _on_attach() -> void:
 
 
 ## One of this player's own hits: roll, and light the chain when it comes good.
-func _on_hit_landed(hit: HitData) -> void:
+func _on_hit_landed(hit: HitInfo) -> void:
 	if not _is_my_hit(hit):
 		return
 	if not chance(chain_chance):
@@ -67,7 +67,7 @@ func _on_hit_landed(hit: HitData) -> void:
 
 ## True when `hit` is a hit this effect's own player landed, and not one of the
 ## procs this player's own effects produced.
-func _is_my_hit(hit: HitData) -> bool:
+func _is_my_hit(hit: HitInfo) -> bool:
 	if player == null or hit == null or hit.owner_player != player:
 		return false
 	return hit.proc_depth == 0

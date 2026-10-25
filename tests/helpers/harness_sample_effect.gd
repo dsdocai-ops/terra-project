@@ -56,6 +56,6 @@ func _on_dodge(_dodger: Player, _perfect: bool) -> void:
 	if status_target != null and status_id > 0:
 		apply_status(status_target, status_id, status_stacks)
 	if damage_target != null and hit_damage > 0.0:
-		var hit := HitData.new()
+		var hit := HitInfo.new()
 		hit.base_damage = hit_damage
 		deal_damage(damage_target, hit)

@@ -1,0 +1,96 @@
+[gd_scene format=3]
+
+[ext_resource type="Script" path="res://scenes/enemies/enemy.gd" id="1_enemy"]
+[ext_resource type="Script" path="res://scripts/components/stat_block.gd" id="2_stats"]
+[ext_resource type="Script" path="res://scripts/components/health.gd" id="3_health"]
+[ext_resource type="Script" path="res://scripts/components/hurtbox.gd" id="4_hurtbox"]
+[ext_resource type="Script" path="res://scripts/components/hitbox.gd" id="5_hitbox"]
+[ext_resource type="Script" path="res://scripts/combat/telegraph.gd" id="6_telegraph"]
+[ext_resource type="Script" path="res://scripts/components/state_machine.gd" id="7_machine"]
+[ext_resource type="Script" path="res://scenes/enemies/states/idle.gd" id="8_idle"]
+[ext_resource type="Script" path="res://scenes/enemies/states/chase.gd" id="9_chase"]
+[ext_resource type="Script" path="res://scenes/enemies/states/attack.gd" id="10_attack"]
+[ext_resource type="Script" path="res://scenes/enemies/states/hit_stun.gd" id="11_hitstun"]
+
+[sub_resource type="SceneReplicationConfig" id="SceneReplicationConfig_state"]
+properties/0/path = NodePath(".:synced_position")
+properties/0/spawn = true
+properties/0/replication_mode = 1
+properties/1/path = NodePath(".:current_anim")
+properties/1/spawn = true
+properties/1/replication_mode = 2
+properties/2/path = NodePath("Health:current_hp")
+properties/2/spawn = true
+properties/2/replication_mode = 1
+properties/3/path = NodePath(".:telegraph_progress")
+properties/3/spawn = false
+properties/3/replication_mode = 1
+properties/4/path = NodePath(".:aim_dir")
+properties/4/spawn = false
+properties/4/replication_mode = 1
+
+[sub_resource type="CircleShape2D" id="CircleShape2D_body"]
+radius = 10.0
+
+[sub_resource type="CircleShape2D" id="CircleShape2D_hurt"]
+radius = 12.0
+
+[node name="Enemy" type="CharacterBody2D"]
+collision_layer = 4
+collision_mask = 1
+motion_mode = 1
+script = ExtResource("1_enemy")
+
+[node name="BodyShape" type="CollisionShape2D" parent="."]
+shape = SubResource("CircleShape2D_body")
+
+[node name="StatBlock" type="Node" parent="."]
+script = ExtResource("2_stats")
+
+[node name="Health" type="Node" parent="."]
+script = ExtResource("3_health")
+
+[node name="StatusEffects" type="Node" parent="."]
+
+[node name="Hurtbox" type="Area2D" parent="."]
+script = ExtResource("4_hurtbox")
+team = 1
+
+[node name="HurtShape" type="CollisionShape2D" parent="Hurtbox"]
+shape = SubResource("CircleShape2D_hurt")
+
+[node name="Hitbox" type="Area2D" parent="."]
+script = ExtResource("5_hitbox")
+team = 1
+
+[node name="Shape" type="CollisionShape2D" parent="Hitbox"]
+
+[node name="Telegraph" type="Node2D" parent="."]
+script = ExtResource("6_telegraph")
+
+[node name="Body" type="Polygon2D" parent="."]
+color = Color(0.9, 0.22, 0.16, 1)
+polygon = PackedVector2Array(-10, -16, 10, -16, 10, 5, -10, 5)
+
+[node name="Sprite" type="AnimatedSprite2D" parent="."]
+visible = false
+
+[node name="StateMachine" type="Node" parent="."]
+script = ExtResource("7_machine")
+initial_state = &"Idle"
+
+[node name="Idle" type="Node" parent="StateMachine"]
+script = ExtResource("8_idle")
+
+[node name="Chase" type="Node" parent="StateMachine"]
+script = ExtResource("9_chase")
+
+[node name="Attack" type="Node" parent="StateMachine"]
+script = ExtResource("10_attack")
+
+[node name="HitStun" type="Node" parent="StateMachine"]
+script = ExtResource("11_hitstun")
+
+[node name="StateSync" type="MultiplayerSynchronizer" parent="."]
+root_path = NodePath("..")
+replication_config = SubResource("SceneReplicationConfig_state")

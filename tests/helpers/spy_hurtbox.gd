@@ -29,7 +29,7 @@ var world: SpyWorld = null
 ## Records the hit against this hurtbox's owner (its parent, which is the
 ## target `Effect.deal_damage` addressed) and, when the world asks for it,
 ## announces it on the bus exactly as the real hurtbox does.
-func receive(hit: HitData) -> void:
+func receive(hit: HitInfo) -> void:
 	if world == null:
 		return
 	world.note_damage(get_parent(), hit)

@@ -25,7 +25,9 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 OUT_DIR = Path("assets/tilesets")
 
 # Pit biomes in floor order; town gets its own generator (gen_town.py, week 5).
-BIOMES: tuple[str, ...] = tuple(b for b in palette.BIOME_IDS if b != "town")
+# Biomes with a v2 recipe (gen_tiles_v2.py, art direction v2) are drawn there.
+V2_BIOMES: tuple[str, ...] = ("collapsed_mines",)
+BIOMES: tuple[str, ...] = tuple(b for b in palette.BIOME_IDS if b != "town" and b not in V2_BIOMES)
 
 CELL = 64
 HALF_W = 32

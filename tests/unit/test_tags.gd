@@ -185,7 +185,7 @@ func test_projectile_spec_defaults_are_neutral() -> void:
 	assert_null(spec.scene, "no scene by default")
 	assert_eq(spec.speed, 0.0, "speed")
 	assert_eq(spec.damage, 0.0, "damage")
-	assert_eq(spec.element, HitData.Element.NONE, "element")
+	assert_eq(spec.element, HitInfo.Element.NONE, "element")
 	assert_eq(spec.pierce, 0, "pierce")
 	assert_eq(spec.bounce, 0, "bounce")
 
@@ -194,21 +194,21 @@ func test_projectile_spec_round_trips_through_a_dictionary() -> void:
 	var scene: PackedScene = load(PLACEHOLDER_PROJECTILE_SCENE)
 	assert_not_null(scene, "the placeholder projectile scene must exist")
 	var spec: ProjectileSpec = ProjectileSpec.new(
-		scene, 240.0, 12.5, HitData.Element.STORM, 2, 3
+		scene, 240.0, 12.5, HitInfo.Element.STORM, 2, 3
 	)
 	var copy: ProjectileSpec = ProjectileSpec.from_dict(spec.to_dict())
 	assert_not_null(copy.scene, "the scene survives the round trip")
 	assert_eq(copy.scene.resource_path, scene.resource_path, "the same scene comes back")
 	assert_eq(copy.speed, 240.0, "speed")
 	assert_eq(copy.damage, 12.5, "damage")
-	assert_eq(copy.element, HitData.Element.STORM, "element")
+	assert_eq(copy.element, HitInfo.Element.STORM, "element")
 	assert_eq(copy.pierce, 2, "pierce")
 	assert_eq(copy.bounce, 3, "bounce")
 
 
 func test_projectile_spec_dictionary_uses_plain_types_for_the_spawner() -> void:
 	var spec: ProjectileSpec = ProjectileSpec.new(
-		load(PLACEHOLDER_PROJECTILE_SCENE), 120.0, 7.0, HitData.Element.FIRE, 1, 0
+		load(PLACEHOLDER_PROJECTILE_SCENE), 120.0, 7.0, HitInfo.Element.FIRE, 1, 0
 	)
 	var data: Dictionary = spec.to_dict()
 	assert_eq(typeof(data["scene_path"]), TYPE_STRING, "the scene travels as a resource path")
@@ -230,11 +230,11 @@ func test_projectile_spec_from_dict_is_costless_about_a_missing_scene() -> void:
 
 func test_projectile_spec_from_dict_refuses_an_unknown_element() -> void:
 	var out_of_range: ProjectileSpec = ProjectileSpec.from_dict({"element": 99})
-	assert_eq(out_of_range.element, HitData.Element.NONE, "an unknown element degrades to NONE")
+	assert_eq(out_of_range.element, HitInfo.Element.NONE, "an unknown element degrades to NONE")
 	var negative: ProjectileSpec = ProjectileSpec.from_dict({"element": -3})
-	assert_eq(negative.element, HitData.Element.NONE, "a negative element degrades to NONE")
-	var real: ProjectileSpec = ProjectileSpec.from_dict({"element": int(HitData.Element.BLOOD)})
-	assert_eq(real.element, HitData.Element.BLOOD, "a real element survives")
+	assert_eq(negative.element, HitInfo.Element.NONE, "a negative element degrades to NONE")
+	var real: ProjectileSpec = ProjectileSpec.from_dict({"element": int(HitInfo.Element.BLOOD)})
+	assert_eq(real.element, HitInfo.Element.BLOOD, "a real element survives")
 
 
 func _tags_script() -> GDScript:

@@ -11,12 +11,10 @@ extends Node
 ##
 ## Parameter types use the nearest existing class until the owning module
 ## defines the real one. Where the real class already exists the signal names
-## it (`HitData` is stats-status's week-2 mirror of combat-core's `HitInfo`,
-## field-for-field, so the swap-in is a rename; `RunResult` is run-economy's).
+## it (`HitInfo` is combat-core's, `RunResult` is run-economy's).
 ## Every remaining placeholder carries exactly one pinned line below, naming
 ## the class that replaces it and the module that owns that class; the test
 ## fails if a placeholder loses its line or a line loses its owner.
-## TODO(combat-core): HitInfo <- RefCounted (blocked on Dev A, W2-A1)
 ## TODO(combat-core): Projectile <- Node (blocked on Dev A, W2-A6)
 ## TODO(enemies-ai): Enemy <- Node (blocked on Dev A, W2-A9)
 ## TODO(floor-generation): Room <- Node (blocked on Dev A, W3-A2)
@@ -28,9 +26,9 @@ extends Node
 ## TODO(stats-status): StatusEffects.Status <- int (blocked on Dev B, W4-B4)
 
 # combat (combat-core)
-signal hit_landed(hit: HitData)
-signal crit_landed(hit: HitData)
-signal player_damaged(player: Player, hit: HitData)
+signal hit_landed(hit: HitInfo)
+signal crit_landed(hit: HitInfo)
+signal player_damaged(player: Player, hit: HitInfo)
 signal player_healed(player: Player, amount: int, source: Node)
 signal heavy_attack_released(player: Player, charge: float)
 signal weapon_swapped(player: Player, slot: int)
@@ -42,8 +40,8 @@ signal player_revived(player: Player, by: Player)
 signal player_died(player: Player)
 # enemies (enemies-ai)
 signal enemy_spawned(enemy: Node)
-signal enemy_killed(enemy: Node, hit: HitData)
-signal elite_killed(enemy: Node, hit: HitData)
+signal enemy_killed(enemy: Node, hit: HitInfo)
+signal elite_killed(enemy: Node, hit: HitInfo)
 signal boss_defeated(boss_id: StringName)
 # status (stats-status)
 signal status_applied(target: Node, status: int, stacks: int, source: Node)

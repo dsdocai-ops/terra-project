@@ -1,0 +1,86 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Sinkhole shrine relic choice</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+body{margin:0;background:#07080D}
+a{color:#F7D27A}a:hover{color:#FFF3C4}
+</style>
+</helmet>
+<div style="width: 1280px; height: 720px; background: #07080D">
+  <canvas ref="{{scene}}" role="img" aria-label="Shrine relic choice mockup: three relic rows, Hydra Heart selected" style="display: block; width: 1280px; height: 720px; image-rendering: pixelated"></canvas>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1280,"height":720}}'>
+//@@LIB@@
+function shrTex(g,x,y,t,n){if(t<0.25){R(g,x,y,3,1,'#24243A');}else if(t<0.35){let px=x,py=y;for(let k=0;k<4;k++){R(g,px,py,1,1,'#1A1A2C');px+=1;py+=(hs(n,k)<0.5?1:0);}}else if(t<0.45){R(g,x,y,2,1,'#3E6A3A');R(g,x+1,y-1,1,1,'#5A8A4A');}else R(g,x,y,1,1,t<0.75?'#3A3A52':'#5A5A78');}
+function pedestal(g,x,y,rune){g.globalAlpha=0.35;ell(g,x+3,y+1,10,'#000');g.globalAlpha=1;blk(g,x,y,4,'#6A6A8A','#4A4A62','#3A3A50','#8A8AAA');blk(g,x,y-4,8,'#7A7A9A','#54546E','#42425A','#9A9ABA');for(let u=0;u<4;u++)R(g,x-6+u,y-8+(u>>1),1,1,rune);R(g,x+3,y-7,1,3,rune);}
+function world(g){
+  const o={ox:160,oy:-22,W:34,D:34,seed:9,wh:30,fl:['#3A3A52','#36364C','#40405A'],dens:2.2,ftex:shrTex,door:(i,j)=>j===-1&&(i===0||i===1),
+    wp:{a:'#5A5A78',b:'#52526E',c:'#626282',hi:'#7A7A9C',lo:'#44445C',m:'#26263A',top:'#4A4A64',tophi:'#6A6A88'}};
+  o.tile=(i,j)=>(Math.abs(i-j)<=1)?((i+j)%2?'#7A2A3A':'#6A2232'):(Math.abs(i-j)===2?'#C9963A':null);
+  o.wdec=(g,x,y,i,j)=>{if((j===-1&&i%3===1)||(i===-1&&j%3===1)){const vx=j===-1?x-4:x+4;for(let r=4;r<22;r++)R(g,vx+((r>>2)&1),y-o.wh+8+r,1,1,r%3?'#3E7A34':'#5A9A44');R(g,vx-1,y-o.wh+18,1,1,'#E879A6');R(g,vx+1,y-o.wh+24,1,1,'#F7F0E0');}};
+  room2(g,o);
+  const objs=[];const add=(y,f)=>objs.push([y,f]);
+  const pil=[[24,122],[296,122],[36,176],[284,176]];
+  for(const[x,y]of pil)add(y,()=>{pillar(g,x,y,40,o.wp);R(g,x-5,y-44,11,4,'#2A2A30');R(g,x-4,y-44,9,1,'#5A5A68');});
+  const cand=[[62,96],[258,96],[20,64],[300,64],[90,70],[230,70],[60,150],[260,150]];
+  for(const[x,y]of cand)add(y,()=>{candle(g,x,y);candle(g,x+3,y+1);candle(g,x-2,y+2);});
+  for(const[x,y]of[[112,150],[208,150]])add(y,()=>pedestal(g,x,y,'#C9B6FF'));
+  objs.sort((a,b)=>a[0]-b[0]).forEach((e)=>e[1]());
+  const L=[];
+  for(const[x,y]of pil)L.push({x:x,y:y-46,r:60,i:1,c:[0.7,0.55,1.25]});
+  for(const[x,y]of cand)L.push({x:x,y:y-8,r:30,i:0.85,c:[1.2,0.85,0.5]});
+  for(const[x,y]of[[112,150],[208,150]])L.push({x:x,y:y-16,r:40,i:0.9,c:[0.8,0.6,1.3]});
+  lit(g,320,180,[0.32,0.3,0.46],L);
+  for(const[x,y]of cand){candleGlow(g,x,y);candleGlow(g,x+3,y+1);candleGlow(g,x-2,y+2);}
+  for(const[x,y]of pil){glo(g,x,y-48,12,'#8E6CF0',0.45);for(let n=0;n<6;n++)R(g,x-3+hs(n,x)*7,y-50+hs(n,y)*5,1,1,n%2?'#E6DCFF':'#B08CFF');}
+  for(const[x,y]of[[112,150],[208,150]]){glo(g,x,y-18,10,'#B08CFF',0.4);spr(g,SP.echo.r,SP.echo.p,x,y-14,1);}
+}
+function ribbon(g,cx,y,w,text){
+  const x0=cx-w/2,x1=cx+w/2;
+  for(const s of[-1,1]){const tx0=s<0?x0-12:x1-2;R(g,tx0,y+4,14,11,O);R(g,tx0+1,y+5,12,9,'#1E1240');R(g,tx0+1,y+5,12,1,'#4A2E9A');const ex=s<0?tx0:tx0+13;tri(g,[ex,y+4],[ex,y+15],[ex-s*6,y+9.5],O);}
+  R(g,x0,y,w,15,O);R(g,x0+1,y+1,w-2,13,'#4A2E9A');R(g,x0+1,y+1,w-2,1,'#8E6CF0');R(g,x0+1,y+13,w-2,1,'#1E1240');
+  for(let i=0;i<w-6;i+=2){R(g,x0+3+i,y+3,1,1,'#6B4FC0');R(g,x0+3+i,y+11,1,1,'#6B4FC0');}
+  txc(g,text,cx,y+5,'#FFF3C4',O);
+}
+function ui(g){
+  dim(g,0.35);
+  ribbon(g,160,6,150,'SHRINE OF THE DEEP');
+  txc(g,'TAKE ONE RELIC. THE REST SINK BACK INTO THE PIT.',160,26,'#9A93A6',O);
+  const rows=[
+    {icon:SP.boots,name:'EMBER BOOTS',rar:'RARE',col:'#4FA3FF',rim:['#2A5AA8','#BFE0FF','#102040'],desc:'DODGING LEAVES A TRAIL OF FIRE THAT BURNS ENEMIES FOR 3 SECONDS.',tags:'FIRE · DODGE',syn:'COMPLETES FIRE 3/3',synCol:'#F7D27A'},
+    {icon:SP.hydra,name:'HYDRA HEART',rar:'LEGENDARY',col:'#F7D27A',rim:['#E0A040','#FFF3C4','#A8661E'],desc:'EVERY PROJECTILE YOU FIRE ALSO FIRES 2 MORE AT RANDOM ANGLES.',tags:'PROJECTILE · HEART',syn:'HEART 3/4',synCol:'#9A93A6',sel:1},
+    {icon:SP.clock,name:'CLOCKWORK HEART',rar:'EPIC',col:'#C9B6FF',rim:['#4A2E9A','#C9B6FF','#1E1240'],desc:'EVERY 10 SECONDS, TIME STOPS FOR 1 SECOND.',tags:'TIME · HEART',syn:'HEART 3/4',synCol:'#9A93A6'}
+  ];
+  rows.forEach((r,n)=>{
+    const y=38+n*42,x=r.sel?48:54,w=r.sel?224:212,h=38;
+    frame(g,x,y,w,h,r.sel?ST.brass:ST.iron);
+    sock(g,x+3,y+2,34,r.rim,'#0C0E16');
+    spr(g,r.icon.r,r.icon.p,x+20,y+19+r.icon.r.length,2);
+    const t0=x+40;
+    tx(g,r.name,t0,y+6,r.col,O);txr(g,r.rar,x+w-6,y+6,r.col,O);
+    wrap(r.desc,w-48).forEach((l,k)=>tx(g,l,t0,y+14+k*7,'#EDE4D3',O));
+    tx(g,r.tags,t0,y+29,'#6B7590');txr(g,r.syn,x+w-6,y+29,r.synCol,O);
+    if(!r.sel){g.globalAlpha=0.28;R(g,x,y,w,h,O);g.globalAlpha=1;}
+    else{glo(g,38,y+19,10,'#F2B65A',0.4);spr(g,SP.lantern.r,SP.lantern.p,38,y+22,1);}
+  });
+  let kx=8;kx+=key(g,kx,166,'A')+2;kx+=key(g,kx,166,'D')+3;kx=tx(g,'BROWSE',kx,168,'#9A93A6',O)+8;kx+=key(g,kx,166,'F')+3;kx=tx(g,'TAKE',kx,168,'#9A93A6',O)+8;kx+=key(g,kx,166,'ESC')+3;tx(g,'LEAVE',kx,168,'#9A93A6',O);
+  const k=txr(g,'KESTREL IS EYEING HYDRA HEART',316,168,'#3FC1B8',O);R(g,316-tw('KESTREL IS EYEING HYDRA HEART')-6,169,3,3,'#3FC1B8');
+}
+function draw(c){const g=mk(c,320,180);world(g);ui(g);}
+class Component extends DCLogic {
+  renderVals() {
+    this._f = this._f || ((el) => { if (el && !el._d) { el._d = 1; draw(el); } });
+    return { scene: this._f };
+  }
+}
+</script>
+</body>
+</html>

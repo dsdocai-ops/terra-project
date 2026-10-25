@@ -48,8 +48,8 @@ func test_wall_has_collision_and_floor_does_not() -> void:
 	assert_eq(wall.get_collision_polygon_points(0, 0).size(), 4, "wall collision is the tile diamond")
 
 
-func test_atlas_texture_is_three_64x64_cells_wide() -> void:
+func test_atlas_texture_is_three_64x96_cells_wide() -> void:
 	var tex := _source.texture
 	assert_not_null(tex, "atlas texture")
-	assert_eq(tex.get_size(), Vector2(192, 64))
-	assert_eq(_source.texture_region_size, Vector2i(64, 64), "64x64 cells leave room for a wall to rise above its diamond")
+	assert_eq(tex.get_size(), Vector2(192, 96))
+	assert_eq(_source.texture_region_size, Vector2i(64, 96), "v2 64x96 cells (SPEC-art-audio D2) leave room for a 32 px wall above its diamond")

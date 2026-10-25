@@ -1,0 +1,8 @@
+{
+	"id": "lore.dup_one",
+	"title": "Duplicate One",
+	"body": "The first page at biome 2 order 1.",
+	"biome": 2,
+	"act": 1,
+	"order": 1
+}

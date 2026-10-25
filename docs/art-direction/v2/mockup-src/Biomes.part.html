@@ -1,0 +1,83 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Sinkhole biome lighting studies</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+body{margin:0;background:#07080D}
+a{color:#F7D27A}a:hover{color:#FFF3C4}
+</style>
+</helmet>
+<div style="width: 2640px; height: 720px; background: #07080D">
+  <canvas ref="{{scene}}" role="img" aria-label="Biome lighting studies: the same room lit for each of the six biomes" style="display: block; width: 2640px; height: 720px; image-rendering: pixelated"></canvas>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":2640,"height":720}}'>
+//@@LIB@@
+const AMB=[1.2,0.92,0.58];
+function mush(g,x,y,s,cap){R(g,x-1,y-s*2,2,s*2,'#B8C8B0');ell(g,x,y-s*2,s+1,cap);}
+function crystal(g,x,y,h,c1,c2){tri(g,[x-3,y],[x+3,y],[x,y-h],c1);tri(g,[x,y],[x+3,y],[x,y-h],c2);}
+const BIOMES=[
+  {name:'COLLAPSED MINES',floors:'FLOORS 1-5',light:'#F2B65A',lightName:'LANTERN AMBER',note:'TIMBER SHORING, RAILS AND CRATES. WARM POOLS OF LANTERN LIGHT BETWEEN LONG DARK STRETCHES.',
+   o:{fl:['#5B3F2B','#533926','#664730'],hi:'#7A5838',lo:'#3A281C',wall:['#5A4A3E','#3B2C22','#2C2019','#76624F']},a:[0.16,0.15,0.22],
+   pre(g,o,L){let[sx,sy]=P(o,0,3);sx-=4;sy+=2;for(let t=0;t<20;t++){const x=sx+2*t,y=sy+t;if(t%4===0)for(let s=-3;s<=3;s++)R(g,x-2*s,y+s,2,1,'#3E2A1C');}for(let t=0;t<20;t++){const x=sx+2*t,y=sy+t;R(g,x+2,y-2,2,1,'#8E949E');R(g,x-4,y+1,2,1,'#8E949E');}const[cx,cy]=P(o,4,0);blk(g,cx,cy,7,'#8A5A30','#6A421F','#54341A','#A87444');const[lx,ly]=P(o,1,-1);R(g,lx-5,ly-7,3,4,'#3A2A1A');L.push({x:lx-4,y:ly-2,r:40,i:0.9,c:AMB});},
+   post(g,o){const[lx,ly]=P(o,1,-1);R(g,lx-5,ly-6,3,3,'#FFD27A');}},
+  {name:'FUNGAL CAVERNS',floors:'FLOORS 6-10',light:'#7BE0A0',lightName:'SPORE GLOW',note:'MOSSY TEAL STONE. GLOWING CAPS ARE THE LIGHT. MAGENTA MARKS SPORE VENTS AND DANGER.',
+   o:{fl:['#1C3638','#183032','#22403E'],hi:'#2F5A52',lo:'#0E1E20',wall:['#24443E','#16302C','#102422','#346058']},a:[0.1,0.14,0.16],
+   pre(g,o,L){for(const[i,j,s,c]of[[0,4,3,'#7BE0A0'],[1,4,2,'#D46BE0'],[4,1,4,'#7BE0A0'],[3,0,2,'#7BE0A0']]){const[x,y]=P(o,i,j);mush2(g,x,y+4,s,c,'#FFF3E0');L.push({x:x,y:y-s*2,r:30,i:0.8,c:c==='#D46BE0'?[1.0,0.45,1.05]:[0.45,1.05,0.65]});}},
+   post(g,o){for(const[i,j,s,c]of[[0,4,3,'#9FF0C0'],[1,4,2,'#F0A0FF'],[4,1,4,'#9FF0C0'],[3,0,2,'#9FF0C0']]){const[x,y]=P(o,i,j);R(g,x-s,y+4-s*2-1,s*2,1,c);R(g,x-1,y+4-s*2-2,1,1,'#FFFFFF');}for(let n=0;n<10;n++)R(g,15+hs(n,1)*70,15+hs(n,2)*45,1,1,'#9FF0C0');}},
+  {name:'CRYSTAL HOLLOWS',floors:'FLOORS 11-15',light:'#8FE3FF',lightName:'PRISM CYAN',note:'INDIGO ROCK SPLIT BY CRYSTAL SPIRES. PINK AND CYAN REFRACTIONS TELEGRAPH THE LASERS.',
+   o:{fl:['#232A5C','#1E2450','#2A3268'],hi:'#3E50A8',lo:'#12163A',wall:['#2A3266','#1A2048','#141838','#4050A0']},a:[0.1,0.1,0.2],
+   pre(g,o,L){for(const[i,j,h]of[[0,3,16],[1,4,10],[4,0,14],[3,4,8]]){const[x,y]=P(o,i,j);crystal2(g,x,y+4,h,'#3E5AB0','#8FE3FF','#E0F8FF');L.push({x:x,y:y-h/2,r:34,i:0.85,c:i===3?[1.1,0.6,0.95]:[0.55,0.95,1.2]});}},
+   post(g,o){for(const[i,j,h]of[[0,3,16],[1,4,10],[4,0,14],[3,4,8]]){const[x,y]=P(o,i,j);R(g,x,y+4-h+2,1,h-4,i===3?'#FFB0E0':'#DCF6FF');}}},
+  {name:'DROWNED CITY',floors:'FLOORS 16-20',light:'#B8F0E0',lightName:'MOONWATER',note:'SUNKEN STREETS. WATER TILES SLOW YOU AND CATCH PALE CAUSTICS.',
+   o:{fl:['#245E66','#205660','#2A6870'],hi:'#3E8088',lo:'#143440',wall:['#2E6670','#1C4650','#143640','#4A9098']},a:[0.1,0.16,0.2],
+   tile:(i,j)=>(j>=3||i+j>=6)?'#143A4C':null,
+   pre(g,o,L){const[x,y]=P(o,0,1);blk(g,x,y,18,'#5E9E98','#3A6E70','#2C5858','#7AB8B0');const[x2,y2]=P(o,4,0);blk(g,x2,y2,9,'#5E9E98','#3A6E70','#2C5858','#7AB8B0');L.push({x:o.ox,y:o.oy+16,r:70,i:0.55,c:[0.6,1.05,1.0]});},
+   post(g,o){for(let n=0;n<22;n++){const x=10+hs(n,4)*80,y=30+hs(n,5)*36;const i=Math.floor(((x-o.ox)/8+(y-o.oy)/4)/2),j=Math.floor(((y-o.oy)/4-(x-o.ox)/8)/2);if(i>=0&&j>=0&&i<5&&j<5&&(j>=3||i+j>=6))R(g,x,y,2,1,'#B8F0E0');}}},
+  {name:'EMBER FORGE',floors:'FLOORS 21-25',light:'#F06A2A',lightName:'LAVA ORANGE',note:'BLACK IRON AND SLAG. LAVA IS THE BRIGHTEST THING ON SCREEN AND ALWAYS READS AS DO NOT TOUCH.',
+   o:{fl:['#341712','#2E140F','#3C1C16'],hi:'#5A2A1E',lo:'#1A0C08',wall:['#3A2420','#241412','#1A0E0C','#56342C']},a:[0.08,0.06,0.07],
+   tile:(i,j)=>(i===2)?'#F06A2A':null,
+   pre(g,o,L){const[x,y]=P(o,4,3);blk(g,x,y,6,'#4A4A52','#2E2E36','#22222A','#6A6A76');for(let j=0;j<5;j++){const[lx,ly]=P(o,2,j);L.push({x:lx,y:ly+4,r:30,i:0.9,c:[1.3,0.6,0.25]});}},
+   post(g,o){for(let j=0;j<5;j++){const[x,y]=P(o,2,j);dia(g,x,y,'#F06A2A');R(g,x-4,y+3,4,1,'#FFD15C');R(g,x+2,y+5,3,1,'#FFC27A');R(g,x-1,y+1,2,1,'#FFF0B0');}}},
+  {name:'THE HEART',floors:'FLOORS 26-30',light:'#B08CFF',lightName:'ECHO VIOLET',note:'FLESH WALLS AND A BREATHING FLOOR. VIOLET VEINS CARRY ECHO LIGHT TO THE CORE.',
+   o:{fl:['#36101F','#30101C','#3E1426'],hi:'#5A1A34',lo:'#1A0810',wall:['#6A1834','#4A1024','#36101C','#8A2A4A']},a:[0.07,0.04,0.08],
+   pre(g,o,L){const[x,y]=P(o,3,1);ell(g,x,y+3,7,'#5A1030');ell(g,x,y+1,6,'#8A1A40');ell(g,x-1,y,3,'#B8304E');L.push({x:x,y:y,r:52,i:1.0,c:[0.85,0.55,1.3]});},
+   post(g,o){const[x,y]=P(o,3,1);let px=x,py=y+2;for(let n=0;n<40;n++){px-=1+(n%3===0?1:0);py+=(n%2);R(g,px,py,1,1,'#B08CFF');}px=x;py=y+2;for(let n=0;n<24;n++){px+=1;py+=(n%3?1:0);R(g,px,py,1,1,'#9C7CFF');}R(g,x-1,y,2,1,'#F0B0C0');}}
+];
+function vignette(b){
+  const c=document.createElement('canvas');const g=mk(c,100,75);
+  const o=Object.assign({ox:50,oy:22,W:5,D:5,seed:5,wh:16},b.o,{tile:b.tile});
+  const w=b.o.wall;o.wp={a:w[0],b:mix(w[0],w[1],0.4),c:mix(w[0],'#FFFFFF',0.08),hi:w[3],lo:w[1],m:mix(w[2],'#000000',0.35),top:w[2],tophi:w[1]};o.dens=14;o.ftex=(g,x,y,t,n)=>{if(t<0.3)R(g,x,y,2,1,b.o.lo);else if(t<0.38){let px=x,py=y;for(let k=0;k<4;k++){R(g,px,py,1,1,mix(b.o.lo,'#000000',0.3));px++;py+=hs(n,k)<0.5?1:0;}}else if(t<0.5)R(g,x,y,1,1,b.o.hi);else if(t<0.53)R(g,x,y,1,1,b.light);};
+  room2(g,o);const L=[];b.pre(g,o,L);
+  person(g,PW,50,50,0);L.push({x:50,y:40,r:44,i:0.9,c:AMB});
+  lit(g,100,75,b.a.map((v)=>v*4),L);b.post(g,o);spr(g,BODY,{L:'#FFF6D0'},50,51,1);
+  return c;
+}
+function draw(c){
+  const g=mk(c,660,180);
+  tx(g,'BIOME LIGHTING STUDIES',14,10,'#F7D27A',O,2);
+  tx(g,'SAME ROOM, SAME LAMP, SIX WORLDS. AMBIENT DROPS AND THE SIGNATURE LIGHT TAKES OVER AS YOU GO DEEPER.',14,24,'#9A93A6',O);
+  BIOMES.forEach((b,n)=>{
+    const x=14+n*107,y=36,dk=b.o.wall[2];
+    R(g,x-4,y-4,108,140,dk);R(g,x-4,y-4,108,1,b.light);R(g,x-4,y+135,108,1,b.o.lo);
+    R(g,x-1,y-1,102,77,b.light);R(g,x,y,100,75,O);g.drawImage(vignette(b),x,y);
+    tx(g,b.name,x,y+81,'#EDE4D3',O);tx(g,b.floors,x,y+89,'#6B7590');
+    R(g,x,y+97,5,5,O);R(g,x+1,y+98,3,3,b.light);tx(g,b.lightName,x+8,y+97,b.light,O);
+    wrap(b.note,100).forEach((l,k)=>tx(g,l,x,y+107+k*7,'#9A93A6'));
+  });
+}
+class Component extends DCLogic {
+  renderVals() {
+    this._f = this._f || ((el) => { if (el && !el._d) { el._d = 1; draw(el); } });
+    return { scene: this._f };
+  }
+}
+</script>
+</body>
+</html>

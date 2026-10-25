@@ -16,8 +16,8 @@ extends Area2D
 ## on clients.
 
 ## Every hit this hurtbox was asked to receive, in order.
-var received: Array[HitData] = []
+var received: Array[HitInfo] = []
 
 
-func receive(hit: HitData) -> void:
+func receive(hit: HitInfo) -> void:
 	received.append(hit)

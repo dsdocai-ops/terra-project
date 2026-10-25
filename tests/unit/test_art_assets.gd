@@ -6,6 +6,9 @@ extends GutTest
 
 const BIOMES: Array[String] = ["collapsed_mines", "fungal_caverns", "crystal_hollows", "drowned_city", "ember_forge", "the_heart"]
 const ENEMY_DIR := "res://assets/sprites/enemies/"
+## Biomes redrawn in the v2 style (SPEC-art-audio "Art direction v2", D2): 64x96
+## cells so a wall can rise 32 px above its diamond. The rest keep v1 64x64.
+const V2_BIOMES: Array[String] = ["collapsed_mines"]
 
 
 func _tileset_path(biome: String) -> String:
@@ -17,7 +20,8 @@ func test_every_biome_has_a_tileset_with_the_shared_ids() -> void:
 		var tile_set := load(_tileset_path(biome)) as TileSet
 		assert_not_null(tile_set, "%s tileset loads" % biome)
 		var source := tile_set.get_source(Tiles.SOURCE) as TileSetAtlasSource
-		assert_eq(source.texture_region_size, Vector2i(64, 64), "%s cells" % biome)
+		var cell := Vector2i(64, 96) if biome in V2_BIOMES else Vector2i(64, 64)
+		assert_eq(source.texture_region_size, cell, "%s cells" % biome)
 		for coords: Vector2i in [Tiles.FLOOR, Tiles.WALL, Tiles.PIT]:
 			assert_true(source.has_tile(coords), "%s has tile %s" % [biome, coords])
 		assert_true(source.get_tile_data(Tiles.FLOOR, 0).get_custom_data(Tiles.WALKABLE))

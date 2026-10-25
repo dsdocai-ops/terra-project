@@ -34,6 +34,12 @@ extends Node2D
 func _ready() -> void:
 	if debug_test_floor:
 		paint_test_floor(debug_test_floor_size)
+	NetworkManager.floor_layout_ready.connect(_on_floor_layout_ready)
+	NetworkManager.player_joined.connect(_on_player_joined)
+	Events.hit_landed.connect(_on_hit_landed)
+	var existing: FloorLayout = NetworkManager.last_floor_layout as FloorLayout
+	if existing != null:
+		build_floor(existing)
 
 
 ## Clears both layers, paints a `size` x `size` floor from (0, 0) and a one
@@ -58,3 +64,103 @@ func is_walkable(tile: Vector2i) -> bool:
 		return false
 	var data := floor_layer.get_cell_tile_data(tile)
 	return data != null and bool(data.get_custom_data(Tiles.WALKABLE))
+
+
+# --- generated floors (floor-generation) ---------------------------------------
+
+## Players spawn on a ring this far (px) around the Start room anchor.
+const START_RING_RADIUS: float = 40.0
+
+## The live floor, created with the first generated layout.
+var floor_node: Floor = null
+## Peers whose player has not spawned yet when a floor was built.
+var _pending_teleports: Array[int] = []
+
+
+func _on_floor_layout_ready(layout: RefCounted) -> void:
+	var typed: FloorLayout = layout as FloorLayout
+	if typed != null:
+		build_floor(typed)
+
+
+## Paints `layout`, rebuilds rooms and doors, and on the host clears the last
+## floor's entities, runs the populators and moves every player to Start.
+func build_floor(layout: FloorLayout) -> void:
+	debug_test_floor = false
+	if floor_node == null:
+		floor_node = Floor.new()
+		floor_node.name = "FloorRoot"
+		add_child(floor_node)
+	if multiplayer.is_server():
+		_clear_floor_entities()
+	floor_node.paint(layout, BiomeData.for_index(layout.biome_id), self)
+	if multiplayer.is_server():
+		floor_node.populate()
+		for peer_id: int in NetworkManager.players:
+			teleport_to_start(peer_id)
+
+
+## Host. Frees enemies, pickups and interactables of the previous floor; the
+## spawners and drop logic stay.
+func _clear_floor_entities() -> void:
+	for child: Node in entities.get_children():
+		if child is MultiplayerSpawner or child == loot_drops:
+			continue
+		child.queue_free()
+
+
+## Host. Puts a peer's player on the Start room's ring slot, or queues it until
+## the player node exists.
+func teleport_to_start(peer_id: int) -> void:
+	var player: Player = NetworkManager.players.get(peer_id)
+	if player == null or floor_node == null:
+		if not _pending_teleports.has(peer_id):
+			_pending_teleports.append(peer_id)
+		return
+	var index: int = maxi(player.slot, 0)
+	var angle: float = TAU * float(index) / float(NetworkManager.MAX_PLAYERS)
+	var offset: Vector2 = Vector2(START_RING_RADIUS, 0.0).rotated(angle)
+	var target: Vector2 = floor_node.start_position() + Vector2(offset.x, offset.y * 0.5)
+	player.position = target
+	player.synced_position = target
+
+
+func _on_player_joined(peer_id: int) -> void:
+	if multiplayer.is_server() and floor_node != null:
+		_pending_teleports.append(peer_id)
+
+
+func _physics_process(_delta: float) -> void:
+	if _pending_teleports.is_empty() or not multiplayer.is_server():
+		return
+	var still_waiting: Array[int] = []
+	for peer_id: int in _pending_teleports:
+		if NetworkManager.players.has(peer_id):
+			teleport_to_start(peer_id)
+		else:
+			still_waiting.append(peer_id)
+	_pending_teleports = still_waiting
+
+
+# --- hit feedback ----------------------------------------------------------------
+
+## Camera shake strength and length for a hit on a player / a heavy hit.
+const SHAKE_PLAYER_HURT: float = 3.0
+const SHAKE_HEAVY: float = 2.0
+const SHAKE_SECONDS: float = 0.12
+const NUMBER_LIFT_PX: float = 26.0
+
+
+## Damage numbers and camera shake for every landed hit. Hits resolve on the
+## host, so this runs there; replicating the event to clients is networking's
+## follow-up.
+func _on_hit_landed(hit: HitInfo) -> void:
+	var target: Node2D = hit.target as Node2D
+	if target == null or not is_instance_valid(target):
+		return
+	var on_player: bool = target is Player
+	DamageNumber.spawn(fx, target.global_position - Vector2(0.0, NUMBER_LIFT_PX), hit.final_damage, hit.is_crit, on_player)
+	if on_player:
+		camera.shake(SHAKE_PLAYER_HURT, SHAKE_SECONDS)
+	elif hit.is_heavy or hit.is_crit:
+		camera.shake(SHAKE_HEAVY, SHAKE_SECONDS)

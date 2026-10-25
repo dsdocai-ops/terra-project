@@ -70,6 +70,17 @@ Lore pages `data/lore/<page_id>.json`: `{id, title, body, biome, act, order}`.
 
 `DialogueBox` scene (`scenes/dialogue/`): portrait left, name, typewriter text (skippable), choices list, controller-friendly later. Pauses the local player's input, not the game (co-op). In co-op, town dialogue is per player (each talks to NPCs on their own screen); pit dialogue (rescue, lore) shows to all with the triggering player choosing.
 
+#### DialogueBox mock-up — week 6, ready for Dev A feedback (W6-B2, PLAN G5)
+
+`scenes/dialogue/dialogue_box.tscn` + `scripts/dialogue/dialogue_box.gd` are the working mock-up. Layout and behavior, per the spec line above; the visuals are placeholders drawn from `UiPalette` (parchment panel, bronze border, ink text). The W6-B6 theme art (portrait frame, name plate, choice buttons, typewriter blip) replaces the StyleBoxes without touching behavior.
+
+- **Structure** (`CanvasLayer`, layer 20, hidden until a dialogue opens): `Root` (full-rect) → `Dim` (35% black, click-to-skip, consumes world clicks while open) and `Box` (bottom-center PanelContainer, 680 px) → portrait `TextureRect` (96x96, hidden when the dialogue declares no portrait), name plate `Label` (the current line's speaker), text `Label` (typewriter), `Choices` (`VBoxContainer`), hint line.
+- **Typewriter**: 0.05 s per character, delta-driven off `_process` (never `Engine.time_scale`). The advance press (Space / Enter / the player's `interact`) skips to the full line; the next press steps to the next line; after the last line, the entry's choices build, or with no choices the entry finishes.
+- **Choices**: one `Button` per choice, built when the last line finishes typing, emitting `choice_selected(index, choice)`. The box does not navigate: `StoryManager` shows the `goto` target entry or closes on `end`.
+- **Input pause**: while open, the box consumes advance / interact / cancel in `_unhandled_input` and the Dim stops world clicks — the local player's input is paused, the game is not: `get_tree().paused` is never touched, because in co-op the pause would be everyone's. The polled-movement half (the player reads `Input.get_vector` every physics tick) is locked with the town NPC wiring (W6-B4), which is also what opens the box.
+- **Per-player**: one box per local view, stamped with `local_peer`; entries are selected through `StoryManager.select_entry()` with the local player's `EvalContext`, so co-op players talking to the same NPC each see their own flags' lines.
+- **Signals**: `choice_selected(choice_index, choice)`, `dialogue_finished(entry_id)`. `StoryManager.start_dialogue(dialogue_id, npc)` loads `data/dialogue/<id>.json`, selects the entry, opens the box, resolves choices, and applies `on_end.set_flags` when the entry finishes (`on_end.give` is run-economy's payout path, not wired in the mock-up).
+
 ### Acts and beats (locked, design doc section 11)
 
 | Act | Biomes | Key flags set |

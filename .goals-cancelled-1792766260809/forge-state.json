@@ -1,0 +1,107 @@
+{
+  "phase": "work",
+  "running": false,
+  "goal": "Implement W5-B2 rope voting and death/extract currency rules. Code location: `scripts/run/run_state.gd` (vote state), `scripts/autoload/game_state.gd` (request_extract_vote logic), `scripts/run/` (any new vote tally or currency rules). Acceptance: (1) Unit test `tests/unit/test_vote.gd` passes: unanimous living, downed excluded, `no` cancels, solo immediate; (2) Unit test `tests/unit/test_death_rules.gd` passes: every currency (gold, ore, echo, class_xp, story/codex/achievements) behaves per the SPEC-run-economy table for both extract and death (with relics lost on extract, kept on death per the design doc); (3) Headless two-instance smoke step 3 still green (rope mechanics do not break existing hostile tests). Command to verify: `godot --headless --path . -s addons/gut/gut_cmdln.gd -gtest=test_vote.gd -gtest=test_death_rules.gd -gexit` (exit 0) and `tools/smoke_two.sh` (no new FAIL). Constraints: no UI (the vote prompt is week 5 scope); no save schema changes (use existing fields); vote is host-owned and broadcast by GameState; do not touch Rope.interact or NetworkManager.request_vote_rope (they are transport only). Must not change test counts on other tests.",
+  "cwd": "c:\\Users\\Dsedg\\OneDrive\\Documents\\GitHub\\terra-project",
+  "scope": null,
+  "step": 2,
+  "max": 200,
+  "startedAt": 1792643005840,
+  "deadlineAt": 1792652905840,
+  "stepStartedAt": 1792646576010,
+  "remainingMs": 6238792,
+  "reflectedAt": 0,
+  "verifyFails": 0,
+  "external": true,
+  "rejects": 0,
+  "retryPasses": 0,
+  "retryReflect": false,
+  "report": null,
+  "currentGoal": "- [ ] G2: Unit test test_vote.gd covering all voting scenarios",
+  "empties": 0,
+  "verdictMissing": 0,
+  "verdictRetry": false,
+  "rootGoal": "Implement W5-B2 rope voting and death/extract currency rules. Code location: `scripts/run/run_state.gd` (vote state), `scripts/autoload/game_state.gd` (request_extract_vote logic), `scripts/run/` (any new vote tally or currency rules). Acceptance: (1) Unit test `tests/unit/test_vote.gd` passes: unanimous living, downed excluded, `no` cancels, solo immediate; (2) Unit test `tests/unit/test_death_rules.gd` passes: every currency (gold, ore, echo, class_xp, story/codex/achievements) behaves per the SPEC-run-economy table for both extract and death (with relics lost on extract, kept on death per the design doc); (3) Headless two-instance smoke step 3 still green (rope mechanics do not break existing hostile tests). Command to verify: `godot --headless --path . -s addons/gut/gut_cmdln.gd -gtest=test_vote.gd -gtest=test_death_rules.gd -gexit` (exit 0) and `tools/smoke_two.sh` (no new FAIL). Constraints: no UI (the vote prompt is week 5 scope); no save schema changes (use existing fields); vote is host-owned and broadcast by GameState; do not touch Rope.interact or NetworkManager.request_vote_rope (they are transport only). Must not change test counts on other tests.",
+  "subjects": [],
+  "episode": 0,
+  "episodes": [
+    {
+      "n": 0,
+      "subject": "Main goal",
+      "kind": "main",
+      "startedAt": 1792643005840
+    }
+  ],
+  "directFails": 0,
+  "directRetry": false,
+  "stats": {
+    "workSec": 2890,
+    "workN": 1,
+    "judgeSec": 517,
+    "judgeN": 1,
+    "usd": 0.506455956,
+    "usdSec": 3569,
+    "basis": "table"
+  },
+  "cost": {
+    "work": {
+      "usd": 0.121537356,
+      "inTok": 2000795,
+      "outTok": 144343,
+      "cacheTok": 9366186,
+      "n": 1,
+      "sec": 2890
+    },
+    "judge": {
+      "usd": 0.7094699,
+      "inTok": 510,
+      "outTok": 23213,
+      "cacheTok": 2781137,
+      "n": 3,
+      "sec": 679
+    },
+    "basis": "table",
+    "orStart": 18.728515377,
+    "orNow": 18.920817982,
+    "price": {
+      "model": "z-ai/glm-5.3-flash",
+      "inPerM": 0.024,
+      "outPerM": 0.12,
+      "cachedPerM": 0.006
+    },
+    "workerThird": true
+  },
+  "steps": [
+    {
+      "n": 0,
+      "kind": "brief",
+      "seconds": 76
+    },
+    {
+      "n": 0,
+      "kind": "plan",
+      "seconds": 87
+    },
+    {
+      "n": 1,
+      "kind": "work",
+      "seconds": 2890
+    },
+    {
+      "n": 1,
+      "kind": "judge",
+      "seconds": 517
+    }
+  ],
+  "verdicts": [
+    {
+      "n": 1,
+      "phase": "judge",
+      "verdict": "PASS"
+    }
+  ],
+  "activity": "",
+  "note": "Stopped.",
+  "waitingUntil": 0,
+  "queue": []
+}

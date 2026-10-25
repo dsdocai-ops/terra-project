@@ -86,6 +86,10 @@ func _make_player(with_components: bool) -> Player:
 		}
 		player.get_node(STATUS_NODE).set_script(load(STATUS_STUB_SCRIPT_PATH) as Script)
 		player.get_node(HURTBOX_NODE).set_script(load(HURTBOX_STUB_SCRIPT_PATH) as Script)
+	else:
+		# The scene now ships the real StatBlock script; a bare double must
+		# have a plain Node there, or the no-component path is never reached.
+		player.get_node(STAT_BLOCK_NODE).set_script(null)
 	add_child_autofree(player)
 	return player
 
@@ -333,7 +337,7 @@ func test_apply_status_without_a_component_is_a_guarded_no_op() -> void:
 
 func test_deal_damage_increments_the_proc_depth_and_tags_the_hit() -> void:
 	var effect: Effect = _attach()
-	var hit := HitData.new()
+	var hit := HitInfo.new()
 	hit.base_damage = 10.0
 	effect.deal_damage(_player, hit)
 	assert_eq(hit.proc_depth, 1, "a fresh hit from an effect is one link deep")
@@ -343,14 +347,14 @@ func test_deal_damage_increments_the_proc_depth_and_tags_the_hit() -> void:
 func test_deal_damage_produces_a_result_one_link_deeper_than_its_trigger() -> void:
 	var effect: Effect = _attach()
 	effect.trigger_depth = TEST_TRIGGER_DEPTH
-	var hit := HitData.new()
+	var hit := HitInfo.new()
 	effect.deal_damage(_player, hit)
 	assert_eq(hit.proc_depth, TEST_TRIGGER_DEPTH + 1, "proc_depth = trigger.proc_depth + 1")
 
 
 func test_deal_damage_delivers_the_hit_to_the_targets_damage_sink() -> void:
 	var effect: Effect = _attach()
-	var hit := HitData.new()
+	var hit := HitInfo.new()
 	hit.base_damage = 12.0
 	effect.deal_damage(_player, hit)
 	assert_eq(_hurtbox.received.size(), 1, "the hurtbox was asked to receive it")
@@ -359,7 +363,7 @@ func test_deal_damage_delivers_the_hit_to_the_targets_damage_sink() -> void:
 
 func test_deal_damage_does_not_tag_proc_twice() -> void:
 	var effect: Effect = _attach()
-	var hit := HitData.new()
+	var hit := HitInfo.new()
 	hit.tags.append(&"proc")
 	effect.deal_damage(_player, hit)
 	assert_eq(hit.tags.count(&"proc"), 1, "an already-tagged hit keeps one tag")
@@ -368,7 +372,7 @@ func test_deal_damage_does_not_tag_proc_twice() -> void:
 func test_deal_damage_without_a_damage_sink_is_a_guarded_no_op() -> void:
 	var bare: Player = _make_player(false)
 	var effect: Effect = _attach()
-	var hit := HitData.new()
+	var hit := HitInfo.new()
 	effect.deal_damage(bare, hit)
 	assert_eq(hit.proc_depth, 1, "the hit is still stamped")
 	effect.deal_damage(null, hit)
@@ -377,7 +381,7 @@ func test_deal_damage_without_a_damage_sink_is_a_guarded_no_op() -> void:
 
 func test_deal_damage_keeps_other_tags_the_caller_set() -> void:
 	var effect: Effect = _attach()
-	var hit := HitData.new()
+	var hit := HitInfo.new()
 	hit.tags.append(&"fire")
 	effect.deal_damage(_player, hit)
 	assert_eq(hit.tags, [&"fire", &"proc"] as Array[StringName], "the caller's tags survive")

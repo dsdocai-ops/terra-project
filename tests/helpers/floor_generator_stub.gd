@@ -42,6 +42,9 @@ static func stub_hash(run_seed: int, floor_index: int) -> int:
 
 ## The biome id behind a biome resource, or 0 when there is none.
 static func biome_id_of(biome: Resource) -> int:
+	var data: BiomeData = biome as BiomeData
+	if data != null:
+		return data.biome_index
 	var placeholder: BiomePlaceholder = biome as BiomePlaceholder
 	if placeholder != null:
 		return placeholder.id

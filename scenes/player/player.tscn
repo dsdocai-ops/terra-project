@@ -1,11 +1,19 @@
 [gd_scene format=3 uid="uid://c31yrup1dpbpv"]
 
 [ext_resource type="Script" uid="uid://yrn3wwaotd23" path="res://scenes/player/player.gd" id="1_player"]
-[ext_resource type="SpriteFrames" uid="uid://bxb0swmmkrfpo" path="res://assets/sprites/player/placeholder_frames.tres" id="2_frames"]
+[ext_resource type="SpriteFrames" uid="uid://camd64ih5ht83" path="res://assets/sprites/players/wren_frames.tres" id="2_frames"]
 [ext_resource type="Script" uid="uid://bjea7scc16d1c" path="res://scripts/components/state_machine.gd" id="3_machine"]
 [ext_resource type="Script" uid="uid://dqr7re3q06tjd" path="res://scenes/player/states/idle.gd" id="4_idle"]
+[ext_resource type="Script" path="res://scenes/player/states/hit_stun.gd" id="10_hitstun"]
 [ext_resource type="Script" uid="uid://t750fwxr173v" path="res://scenes/player/states/move.gd" id="5_move"]
 [ext_resource type="Script" uid="uid://bx8myavf68dko" path="res://scenes/player/slot_ring.gd" id="6_ring"]
+[ext_resource type="Script" uid="uid://cqgxkxygbnd77" path="res://scripts/components/stat_block.gd" id="9_stats"]
+[ext_resource type="Script" path="res://scripts/components/health.gd" id="7_health"]
+[ext_resource type="Script" path="res://scripts/components/hurtbox.gd" id="8_hurtbox"]
+[ext_resource type="Script" path="res://scenes/player/states/attack.gd" id="11_attack"]
+[ext_resource type="Script" path="res://scenes/player/states/dodge.gd" id="12_dodge"]
+[ext_resource type="Script" path="res://scripts/combat/attack_controller.gd" id="13_attackctl"]
+[ext_resource type="Script" path="res://scripts/weapons/weapon_controller.gd" id="14_weapons"]
 
 [sub_resource type="SceneReplicationConfig" id="SceneReplicationConfig_input"]
 properties/0/path = NodePath(".:move_input")
@@ -37,8 +45,14 @@ properties/4/replication_mode = 1
 properties/5/path = NodePath(".:is_downed")
 properties/5/spawn = true
 properties/5/replication_mode = 2
+properties/6/path = NodePath(".:is_dead")
+properties/6/spawn = true
+properties/6/replication_mode = 2
 
 [sub_resource type="CircleShape2D" id="CircleShape2D_body"]
+radius = 8.0
+
+[sub_resource type="CircleShape2D" id="CircleShape2D_hurt"]
 radius = 8.0
 
 [sub_resource type="CircleShape2D" id="CircleShape2D_interact"]
@@ -54,10 +68,27 @@ script = ExtResource("1_player")
 shape = SubResource("CircleShape2D_body")
 
 [node name="StatBlock" type="Node" parent="."]
+script = ExtResource("9_stats")
+base = {
+0: 100.0,
+1: 100.0,
+2: 0.0,
+3: 120.0,
+4: 1.0,
+5: 0.8,
+6: 0.05,
+7: 0.0,
+8: 100.0
+}
 
 [node name="Health" type="Node" parent="."]
+script = ExtResource("7_health")
 
 [node name="Hurtbox" type="Area2D" parent="."]
+script = ExtResource("8_hurtbox")
+
+[node name="HurtShape" type="CollisionShape2D" parent="Hurtbox"]
+shape = SubResource("CircleShape2D_hurt")
 
 [node name="StatusEffects" type="Node" parent="."]
 
@@ -71,15 +102,30 @@ script = ExtResource("4_idle")
 [node name="Move" type="Node" parent="StateMachine"]
 script = ExtResource("5_move")
 
+[node name="HitStun" type="Node" parent="StateMachine"]
+script = ExtResource("10_hitstun")
+
+[node name="Attack" type="Node" parent="StateMachine"]
+script = ExtResource("11_attack")
+
+[node name="Dodge" type="Node" parent="StateMachine"]
+script = ExtResource("12_dodge")
+
 [node name="SlotRing" type="Node2D" parent="."]
 script = ExtResource("6_ring")
 
 [node name="Sprite" type="AnimatedSprite2D" parent="."]
-position = Vector2(0, -20)
+position = Vector2(0, -44)
 sprite_frames = ExtResource("2_frames")
 animation = &"idle_s"
 
 [node name="WeaponPivot" type="Node2D" parent="."]
+
+[node name="WeaponController" type="Node" parent="."]
+script = ExtResource("14_weapons")
+
+[node name="AttackController" type="Node" parent="."]
+script = ExtResource("13_attackctl")
 
 [node name="InputSync" type="MultiplayerSynchronizer" parent="."]
 root_path = NodePath("..")

@@ -8,6 +8,9 @@ extends Control
 signal solo_pressed()
 signal host_pressed()
 signal join_pressed(ip: String)
+signal settings_pressed()
+signal codex_pressed()
+signal quit_pressed()
 
 const THEME_PATH := "res://assets/ui/theme.tres"
 const PARCHMENT := Color(0.910, 0.847, 0.690)
@@ -17,13 +20,16 @@ const TITLE_SIZE: int = 48
 const ITEM_SIZE: int = 16
 const POINTER_SCALE: int = 2
 ## Left indent per row so the list bows out like the pit wall.
-const INDENTS: Array[int] = [0, 10, 16, 18]
+const INDENTS: Array[int] = [0, 10, 16, 18, 16, 10, 0]
 
 @onready var ip_field: LineEdit = %IpField
 @onready var status_label: Label = %Status
 @onready var solo_button: Button = %Solo
 @onready var host_button: Button = %Host
 @onready var join_button: Button = %Join
+@onready var settings_button: Button = %Settings
+@onready var codex_button: Button = %Codex
+@onready var quit_button: Button = %Quit
 
 var _pointer: Texture2D
 
@@ -35,6 +41,9 @@ func _ready() -> void:
 	solo_button.pressed.connect(func() -> void: solo_pressed.emit())
 	host_button.pressed.connect(func() -> void: host_pressed.emit())
 	join_button.pressed.connect(func() -> void: join_pressed.emit(ip_field.text.strip_edges()))
+	settings_button.pressed.connect(func() -> void: settings_pressed.emit())
+	codex_button.pressed.connect(func() -> void: codex_pressed.emit())
+	quit_button.pressed.connect(func() -> void: quit_pressed.emit())
 	_pointer = _make_pointer()
 	_add_backdrop()
 	_style()
@@ -103,7 +112,7 @@ func _style() -> void:
 	spacer.custom_minimum_size = Vector2(0, 28)
 	rows.add_child(spacer)
 	rows.move_child(spacer, tagline.get_index() + 1)
-	var buttons: Array[Button] = [solo_button, host_button, join_button]
+	var buttons: Array[Button] = [solo_button, host_button, join_button, settings_button, codex_button, quit_button]
 	for index: int in buttons.size():
 		_carve(buttons[index], INDENTS[index + 1])
 	status_label.add_theme_color_override("font_color", Color(0.85, 0.35, 0.3))

@@ -8,6 +8,8 @@
 [ext_resource type="Script" uid="uid://b3iqalpdnbd1j" path="res://scripts/network/projectile_spawner.gd" id="6_pspawn"]
 [ext_resource type="Script" uid="uid://g0ja4gki5qge" path="res://scripts/network/pickup_spawner.gd" id="7_lspawn"]
 [ext_resource type="Script" uid="uid://bijn6tbhxwmrx" path="res://scripts/run/loot_drops.gd" id="8_loot"]
+[ext_resource type="PackedScene" path="res://scenes/enemies/enemy.tscn" id="9_enemy"]
+[ext_resource type="PackedScene" path="res://scenes/projectiles/projectile.tscn" id="10_proj"]
 
 [node name="World" type="Node2D"]
 y_sort_enabled = true
@@ -27,10 +29,12 @@ y_sort_enabled = true
 [node name="EnemySpawner" type="MultiplayerSpawner" parent="Entities"]
 spawn_path = NodePath("..")
 script = ExtResource("5_espawn")
+enemy_scene = ExtResource("9_enemy")
 
 [node name="ProjectileSpawner" type="MultiplayerSpawner" parent="Entities"]
 spawn_path = NodePath("..")
 script = ExtResource("6_pspawn")
+projectile_scene = ExtResource("10_proj")
 
 [node name="PickupSpawner" type="MultiplayerSpawner" parent="Entities"]
 spawn_path = NodePath("..")
