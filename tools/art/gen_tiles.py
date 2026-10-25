@@ -1,8 +1,9 @@
 """Biome tilesets: floor, wall block and pit, 64x64 cells, one atlas per biome.
 
 The ground diamond is 64x32 and sits in rows 16..47 of its cell, so the cell's
-centre is the tile origin and a wall can rise 16px above it. Atlas columns match
-scripts/tiles.gd: FLOOR (0,0), WALL (1,0), PIT (2,0).
+centre is the tile origin and a wall can rise 16px above it. Atlas cells match
+scripts/tiles.gd: FLOOR (0,0), WALL (1,0), PIT (2,0), and the three extra floor
+variants on row 1 at (0,1), (1,1), (2,1).
 
 Every color is a name from the biome's own palette (palette.biome(id).names
 plus the global set): the ground and wall ramps, the two accents and the light.
@@ -35,6 +36,10 @@ HALF_H = 16
 CY = 32  # ground diamond centre row inside the cell
 RISE = 16
 
+# Floor variants, as atlas (column, row) cells: Tiles.FLOOR_VARIANTS in scripts/tiles.gd.
+FLOOR_VARIANT_CELLS: tuple[tuple[int, int], ...] = ((0, 0), (0, 1), (1, 1), (2, 1))
+FLOOR_VARIANTS = len(FLOOR_VARIANT_CELLS)
+
 
 def in_diamond(x: float, y: float, cx: float, cy: float, hw: float, hh: float) -> bool:
     return abs(x + 0.5 - cx) / hw + abs(y + 0.5 - cy) / hh <= 1.0
@@ -51,10 +56,13 @@ def canvas(biome: str) -> Canvas:
 
 # --- floor ------------------------------------------------------------------
 
-def floor_tile(biome: str) -> Canvas:
+def floor_tile(biome: str, variant: int = 0) -> Canvas:
+    """Variant 0 is the base floor; 1..FLOOR_VARIANTS-1 reroll the grain and add
+    one structural pattern each, so a painted room does not read as one stamp.
+    The rim stays identical on every variant so the tiles still seam."""
     c = canvas(biome)
     b = palette.biome(biome)
-    rng = seeded("floor" + biome)
+    rng = seeded("floor" + biome) if variant == 0 else seeded("floor%d%s" % (variant, biome))
     rock = b.ground_ramp
     for y in range(CELL):
         for x in range(CELL):
@@ -70,8 +78,76 @@ def floor_tile(biome: str) -> Canvas:
             if d < 0.10:
                 color = rock[0] if y + 0.5 < CY else rock[3]
             c.put(x, y, color)
+    if variant == 1:
+        worn_patch(c, b, rng)
+    elif variant == 2:
+        long_crack(c, b, rng)
+    elif variant == 3:
+        stones(c, b, rng)
     decorate_floor(c, b, rng)
     return c
+
+
+def inner(x: int, y: int, margin: int = 4) -> bool:
+    """Inside the diamond and clear of the rim band every variant shares."""
+    return in_diamond(x, y, HALF_W, CY, HALF_W - margin, HALF_H - margin // 2)
+
+
+def worn_patch(c: Canvas, b: palette.BiomePalette, rng: Random) -> None:
+    """A dithered patch of darker, packed ground off-centre."""
+    rock = b.ground_ramp
+    cx, cy = rng.randint(22, 42), rng.randint(28, 36)
+    rx, ry = rng.randint(8, 12), rng.randint(4, 6)
+    for y in range(cy - ry, cy + ry + 1):
+        for x in range(cx - rx, cx + rx + 1):
+            r = ((x - cx) / rx) ** 2 + ((y - cy) / ry) ** 2
+            if r > 1.0 or not inner(x, y):
+                continue
+            if r < 0.45 or (x + y) % 2 == 0:
+                c.put(x, y, rock[2])
+    for _ in range(4):
+        x, y = cx + rng.randint(-rx + 2, rx - 2), cy + rng.randint(-ry + 1, ry - 1)
+        if inner(x, y):
+            c.put(x, y, rock[3])
+
+
+def long_crack(c: Canvas, b: palette.BiomePalette, rng: Random) -> None:
+    """One crack across the tile along an iso axis, with a short branch."""
+    rock = b.ground_ramp
+    slope = rng.choice((1, -1))
+    px, py = 10, CY - slope * 5 + rng.randint(-2, 2)
+    branch_at = rng.randint(14, 26)
+    for step in range(44):
+        px += 1
+        if step % 2 == 0:
+            py += slope if rng.random() < 0.7 else rng.choice((-1, 0, 1))
+        if inner(px, py):
+            c.put(px, py, rock[3])
+            if inner(px, py - 1) and rng.random() < 0.3:
+                c.put(px, py - 1, rock[0])
+        if step == branch_at:
+            bx, by = px, py
+            for _ in range(rng.randint(5, 9)):
+                bx += 1
+                by -= slope
+                if inner(bx, by):
+                    c.put(bx, by, rock[3])
+
+
+def stones(c: Canvas, b: palette.BiomePalette, rng: Random) -> None:
+    """A few embedded stones: lit top, shadowed bottom edge."""
+    rock = b.ground_ramp
+    for _ in range(rng.randint(3, 4)):
+        x, y = rng.randint(16, 46), rng.randint(25, 38)
+        w = rng.randint(2, 4)
+        if not (inner(x - 1, y) and inner(x + w, y) and inner(x - 1, y + 2) and inner(x + w, y + 2)):
+            continue
+        for dx in range(w):
+            c.put(x + dx, y, rock[0])
+            c.put(x + dx, y + 1, rock[2])
+        c.put(x - 1, y + 1, rock[3])
+        for dx in range(w + 1):
+            c.put(x + dx, y + 2, rock[3])
 
 
 def scatter(c: Canvas, rng: Random, count: int, box: tuple[int, int, int, int], fn) -> None:
@@ -307,10 +383,13 @@ def pit_tile(biome: str) -> Canvas:
 
 
 def atlas(biome: str) -> Canvas:
-    out = Canvas(CELL * 3, CELL, palette.colors_for(biome))
+    out = Canvas(CELL * 3, CELL * 2, palette.colors_for(biome))
     out.blit(floor_tile(biome), 0, 0)
     out.blit(wall_tile(biome), CELL, 0)
     out.blit(pit_tile(biome), CELL * 2, 0)
+    for variant in range(1, FLOOR_VARIANTS):
+        col, row = FLOOR_VARIANT_CELLS[variant]
+        out.blit(floor_tile(biome, variant), col * CELL, row * CELL)
     return out
 
 

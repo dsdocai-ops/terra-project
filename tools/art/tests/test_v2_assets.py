@@ -31,9 +31,9 @@ def _blocky(img: Image.Image, k: int) -> bool:
 
 
 @pytest.mark.parametrize("biome", gen_tiles_v2.BIOMES)
-def test_tile_atlas_is_three_64x96_cells_matching_tiles_gd(built: Path, biome: str) -> None:
+def test_tile_atlas_is_three_by_two_64x96_cells_matching_tiles_gd(built: Path, biome: str) -> None:
     with Image.open(built / gen_tiles_v2.OUT_DIR / biome / "atlas.png") as img:
-        assert img.size == (64 * 3, 96)
+        assert img.size == (64 * 3, 96 * 2)
         assert _blocky(img, 4)
         rgba = img.convert("RGBA")
         # FLOOR (0,0): the 64x32 diamond fills rows 32..63 and nothing is above it.
@@ -43,6 +43,15 @@ def test_tile_atlas_is_three_64x96_cells_matching_tiles_gd(built: Path, biome: s
         # WALL (1,0): its top face reaches row 0; PIT (2,0): only the footprint.
         assert rgba.getpixel((96, 2))[3] == 255
         assert rgba.crop((128, 0, 192, 32)).getbbox() is None
+        # Floor variants on row 1: same diamond footprint, each a different pattern.
+        floors = []
+        for col, row in gen_tiles_v2.FLOOR_VARIANT_CELLS:
+            cell = rgba.crop((col * 64, row * 96, (col + 1) * 64, (row + 1) * 96))
+            assert cell.getpixel((32, 48))[3] == 255, (col, row)
+            assert cell.crop((0, 0, 64, 32)).getbbox() is None, (col, row)
+            assert cell.crop((0, 64, 64, 96)).getbbox() is None, (col, row)
+            floors.append(cell.tobytes())
+        assert len(set(floors)) == gen_tiles_v2.FLOOR_VARIANTS
 
 
 def test_the_game_tileset_uses_the_v2_cell_size() -> None:

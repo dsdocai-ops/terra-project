@@ -65,7 +65,7 @@ func paint_test_floor(size: int) -> void:
 	walls_layer.clear()
 	for x in size:
 		for y in size:
-			floor_layer.set_cell(Vector2i(x, y), Tiles.SOURCE, Tiles.FLOOR)
+			floor_layer.set_cell(Vector2i(x, y), Tiles.SOURCE, Tiles.floor_at(Vector2i(x, y)))
 	for i in range(-1, size + 1):
 		walls_layer.set_cell(Vector2i(i, -1), Tiles.SOURCE, Tiles.WALL)
 		walls_layer.set_cell(Vector2i(i, size), Tiles.SOURCE, Tiles.WALL)
