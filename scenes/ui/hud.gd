@@ -70,6 +70,11 @@ func _ready() -> void:
 func _unhandled_input(event: InputEvent) -> void:
 	if not visible:
 		return
+	# Esc leaves the relic choice even when the popup has lost keyboard focus.
+	if choice_popup.visible and (event.is_action_pressed(&"pause") or event.is_action_pressed(&"ui_cancel")):
+		choice_popup.dismiss()
+		get_viewport().set_input_as_handled()
+		return
 	if event.is_action_pressed(&"inventory") and not choice_popup.visible and not pause_layer.visible and not death_screen.visible:
 		inventory_screen.toggle(NetworkManager.local_peer_id)
 		get_viewport().set_input_as_handled()
@@ -131,6 +136,7 @@ func _build_modals() -> void:
 	choice_popup.name = "ChoicePopup"
 	choice_popup.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	choice_popup.picked.connect(_on_choice_picked)
+	choice_popup.dismissed.connect(_on_choice_dismissed)
 	root.add_child(choice_popup)
 	rope_vote_prompt = RopeVotePrompt.new()
 	rope_vote_prompt.name = "RopeVotePrompt"
@@ -280,6 +286,15 @@ func _open_choice(ids: Array[StringName]) -> void:
 func _on_choice_picked(index: int) -> void:
 	choice_popup.close()
 	NetworkManager.send_pick_relic_request(index)
+
+
+## The player left the relic choice. The host drops its own offer so the poll
+## does not reopen it; a client's offer lives on the host and is simply not
+## taken (the next offer replaces it).
+func _on_choice_dismissed() -> void:
+	choice_popup.close()
+	if NetworkManager.is_host:
+		RelicFlow.decline(NetworkManager.local_peer_id)
 
 
 func _on_rope_voted(yes: bool) -> void:

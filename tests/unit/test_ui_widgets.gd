@@ -143,6 +143,80 @@ func test_choice_popup_refuses_a_card_with_a_reason() -> void:
 	assert_false(popup.choose(0))
 
 
+var _dismissals: int = 0
+
+
+func _on_dismissed() -> void:
+	_dismissals += 1
+
+
+func _armed_popup(cards: Array[ChoiceOption]) -> ChoicePopup:
+	var popup := ChoicePopup.new()
+	add_child_autofree(popup)
+	popup.size = Vector2(640, 360)
+	popup.open(cards)
+	popup._armed_at_msec = Time.get_ticks_msec() - 1000
+	_dismissals = 0
+	popup.dismissed.connect(_on_dismissed)
+	return popup
+
+
+func _click(at: Vector2, button: MouseButton) -> InputEventMouseButton:
+	var click := InputEventMouseButton.new()
+	click.button_index = button
+	click.pressed = true
+	click.position = at
+	return click
+
+
+func test_a_blocked_only_card_can_still_be_left_with_esc() -> void:
+	var blocked := ChoiceOption.new()
+	blocked.disabled_reason = "Max stacks"
+	var popup := _armed_popup([blocked])
+	var cancel := InputEventAction.new()
+	cancel.action = &"ui_cancel"
+	cancel.pressed = true
+	popup._gui_input(cancel)
+	assert_eq(_dismissals, 1, "Esc leaves even when no card can be taken")
+
+
+func test_a_click_off_the_cards_or_a_right_click_leaves_the_choice() -> void:
+	var popup := _armed_popup([ChoiceOption.new()])
+	popup._gui_input(_click(Vector2(2, 2), MOUSE_BUTTON_LEFT))
+	assert_eq(_dismissals, 1, "a left click off every card leaves")
+	popup._gui_input(_click(popup.tablet_rect(0).get_center(), MOUSE_BUTTON_RIGHT))
+	assert_eq(_dismissals, 2, "a right click leaves")
+
+
+func test_a_click_on_a_card_takes_it_rather_than_leaving() -> void:
+	var popup := _armed_popup([ChoiceOption.new()])
+	_picks.clear()
+	popup.picked.connect(_on_picked)
+	popup._gui_input(_click(popup.tablet_rect(0).get_center(), MOUSE_BUTTON_LEFT))
+	assert_eq(_picks, [0])
+	assert_eq(_dismissals, 0)
+
+
+func test_the_press_that_opened_the_choice_cannot_leave_it() -> void:
+	var popup := _armed_popup([ChoiceOption.new()])
+	popup._armed_at_msec = Time.get_ticks_msec()
+	assert_false(popup.dismiss())
+	assert_eq(_dismissals, 0)
+
+
+func test_declining_an_offer_drops_it_so_nothing_reopens_it() -> void:
+	RelicFlow.reset()
+	var ids: Array[StringName] = [&"some_relic"]
+	var holder := Node.new()
+	add_child_autofree(holder)
+	RelicFlow.record_offer(1, ids, holder, null)
+	assert_true(RelicFlow.has_offer(1))
+	assert_true(RelicFlow.decline(1))
+	assert_false(RelicFlow.has_offer(1))
+	assert_false(RelicFlow.decline(1), "nothing left to decline")
+	RelicFlow.reset()
+
+
 func test_choice_options_are_built_from_relic_data() -> void:
 	var ids: Array[StringName] = [&"ember_boots", &"no_such_relic"]
 	var options := ChoiceOption.from_relic_ids(ids)

@@ -3,10 +3,13 @@ extends Control
 ## The pick-one-of-three screen: up to three arched stone tablets, each with a
 ## carved icon in its rarity colour, a name, a description and its tags. Left and
 ## Right (or the mouse) move the highlight, Accept (or a click) takes the card.
+## Cancel, a right click, or a click off the cards leaves without taking one.
 ## Owned by ui-hud (Dev B). Sync: presentation only. The pick is a request: the
 ## HUD sends it to the host, which validates and applies it (RelicFlow).
 
 signal picked(index: int)
+## The player left without taking a card.
+signal dismissed
 
 ## Seconds after opening before input counts, so the press that opened the
 ## screen cannot also choose a card.
@@ -65,6 +68,22 @@ func choose(index: int) -> bool:
 	return true
 
 
+## Leaves without taking a card. False while unarmed or already closed.
+func dismiss() -> bool:
+	if not is_armed() or options.is_empty():
+		return false
+	dismissed.emit()
+	return true
+
+
+## The card under `point`, or -1 when it is off every card.
+func card_at(point: Vector2) -> int:
+	for index: int in options.size():
+		if tablet_rect(index).has_point(point):
+			return index
+	return -1
+
+
 ## Size of one tablet at the current control size.
 func tablet_size() -> Vector2:
 	var width: float = minf(size.x * 0.2, 190.0)
@@ -106,11 +125,17 @@ func _gui_input(event: InputEvent) -> void:
 				selected = index
 	elif event is InputEventMouseButton:
 		var click := event as InputEventMouseButton
-		if click.pressed and click.button_index == MOUSE_BUTTON_LEFT:
-			for index: int in options.size():
-				if tablet_rect(index).has_point(click.position):
-					selected = index
-					choose(index)
+		if not click.pressed:
+			return
+		var index: int = card_at(click.position)
+		if click.button_index == MOUSE_BUTTON_RIGHT or (click.button_index == MOUSE_BUTTON_LEFT and index < 0):
+			dismiss()
+		elif click.button_index == MOUSE_BUTTON_LEFT:
+			selected = index
+			choose(index)
+	elif event.is_action_pressed(&"ui_cancel"):
+		dismiss()
+		accept_event()
 	elif event.is_action_pressed(&"ui_left"):
 		move_selection(-1)
 		accept_event()
@@ -130,7 +155,7 @@ func _draw() -> void:
 	UiPalette.draw_outlined(self, font, Vector2(0, tablet_rect(0).position.y - 18.0), title_text, 12, UiPalette.GOLD, HORIZONTAL_ALIGNMENT_CENTER, size.x)
 	for index: int in options.size():
 		_draw_tablet(index, font)
-	var hint: String = "Left / Right to look   Enter to take"
+	var hint: String = "Left / Right to look   Enter to take   Esc to leave"
 	if waiting_text != "":
 		hint = waiting_text
 	UiPalette.draw_outlined(self, font, Vector2(0, size.y - 14.0), hint, 8, UiPalette.ROPE, HORIZONTAL_ALIGNMENT_CENTER, size.x)

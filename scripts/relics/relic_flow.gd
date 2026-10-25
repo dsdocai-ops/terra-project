@@ -106,6 +106,12 @@ static func record_offer(peer_id: int, ids: Array[StringName], shrine: Node, pla
 	return true
 
 
+## The player walked away from the offer without taking a relic. Drops it, so
+## nothing reopens the popup. Returns true when there was an offer to drop.
+static func decline(peer_id: int) -> bool:
+	return _pending.erase(peer_id)
+
+
 ## True while `peer_id` still has an unpicked offer from a shrine.
 static func has_offer(peer_id: int) -> bool:
 	return _pending.has(peer_id)
