@@ -95,6 +95,7 @@ func _ready() -> void:
 	SpawnDirector.register_populators()
 	Shrine.register_populator()
 	Chest.register_populator()
+	RoomFurniture.register_populator()
 	Shopkeeper.register_populator()
 	LorePage.register_populator()
 	_start_from_options()

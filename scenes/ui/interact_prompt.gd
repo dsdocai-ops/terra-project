@@ -3,12 +3,15 @@ extends Node2D
 ## The small tooltip beside the nearest interactable ("[F] Open") and the press
 ## that uses it. Owned by ui-hud. Sync: none; the tooltip is local, and a press
 ## just calls the interactable's `interact(player)`, which already forwards to
-## the host on a client. An interactable is any node under World/Entities with
-## `prompt_text` and `interact(player)`.
+## the host on a client. An interactable is any area on physics layer 6
+## ("interactable") with `prompt_text` and `interact(player)`: dungeon furniture
+## in its room and town buildings alike.
 
 ## Screen pixels from the player within which an interactable is offered.
 const REACH: float = 56.0
 const LIFT: Vector2 = Vector2(18.0, -34.0)
+## Physics layer 6, "interactable" (project.godot layer_names).
+const INTERACTABLE_MASK: int = 32
 
 var _label: Label = null
 var _target: Node2D = null
@@ -25,9 +28,11 @@ func _ready() -> void:
 	hide()
 
 
-func _process(_delta: float) -> void:
+func _physics_process(_delta: float) -> void:
 	var player: Player = NetworkManager.players.get(NetworkManager.local_peer_id)
-	_target = _nearest(player) if player != null and is_instance_valid(player) and not player.is_downed else null
+	_target = null
+	if player != null and is_instance_valid(player) and not player.is_downed:
+		_target = nearest(self, player.global_position)
 	if _target == null:
 		hide()
 		return
@@ -69,20 +74,29 @@ static func key_name() -> String:
 	return "F"
 
 
-func _nearest(player: Player) -> Node2D:
-	var world: Node = get_parent()
-	var holder: Node = world.get_node_or_null("Entities") if world != null else null
-	if holder == null:
-		return null
+## True for an area that can be used: it has a prompt and an `interact` method.
+static func is_usable(item: Object) -> bool:
+	return item != null and item.has_method(&"interact") and &"prompt_text" in item \
+			and not String(item.get(&"prompt_text")).is_empty()
+
+
+## The closest usable interactable within REACH of `point`, or null.
+static func nearest(from: Node2D, point: Vector2) -> Node2D:
+	var query := PhysicsShapeQueryParameters2D.new()
+	var circle := CircleShape2D.new()
+	circle.radius = REACH
+	query.shape = circle
+	query.transform = Transform2D(0.0, point)
+	query.collision_mask = INTERACTABLE_MASK
+	query.collide_with_areas = true
+	query.collide_with_bodies = false
 	var best: Node2D = null
-	var best_distance: float = REACH
-	for child: Node in holder.get_children():
-		var item := child as Node2D
-		if item == null or not item.has_method(&"interact") or not (&"prompt_text" in item):
+	var best_distance: float = INF
+	for hit: Dictionary in from.get_world_2d().direct_space_state.intersect_shape(query, 16):
+		var item := hit.get("collider") as Node2D
+		if not is_usable(item):
 			continue
-		if String(item.get(&"prompt_text")).is_empty():
-			continue
-		var distance: float = item.global_position.distance_to(player.global_position)
+		var distance: float = item.global_position.distance_to(point)
 		if distance < best_distance:
 			best_distance = distance
 			best = item

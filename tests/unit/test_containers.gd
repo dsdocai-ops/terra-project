@@ -637,8 +637,8 @@ func test_the_treasure_populator_adds_chests_to_the_room_and_nothing_else() -> v
 	assert_eq(room.get_child_count(), spawned.size(), "and they are the only children it added")
 	for child: Node in room.get_children():
 		assert_not_null(child as Chest, "every child the populator adds is a Chest")
-	for chest: Chest in spawned:
-		assert_eq(chest.position, Vector2.ZERO, "a chest sits at the room origin until the anchor lands")
+	for index: int in spawned.size():
+		assert_eq(spawned[index].position, RoomFurniture.spot(index, spawned.size()), "chests are spread around the room, not stacked on its origin")
 
 
 func test_a_placed_chest_is_ready_to_open() -> void:
