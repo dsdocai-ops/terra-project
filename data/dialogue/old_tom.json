@@ -1,0 +1,114 @@
+{
+	"id": "old_tom",
+	"entries": [
+		{
+			"id": "intro",
+			"priority": 60,
+			"conditions": { "flag_not": "story.met_old_tom" },
+			"lines": [
+				{ "speaker": "Old Tom", "text": "Eh? Speak up. Thirty years of powder charges took most of my hearing and all of my patience.", "emotion": "gruff" },
+				{ "speaker": "Old Tom", "text": "Retired miner. Which means I'm the only man in Hollowmere who's been down and come back more times than he can count.", "emotion": "proud" }
+			],
+			"choices": [
+				{ "text": "Any advice for the mine?", "goto": "intro_ladder" },
+				{ "text": "Rest easy, Tom.", "end": true }
+			]
+		},
+		{
+			"id": "intro_ladder",
+			"priority": 5,
+			"lines": [
+				{ "speaker": "Old Tom", "text": "Advice? Aye. Count your rungs going down, and count them again coming up. If the numbers disagree, believe the second one and climb faster.", "emotion": "gruff" },
+				{ "speaker": "Old Tom", "text": "And if the dark feels like it's leaning on you — that's not the dark. The dark doesn't lean. Move.", "emotion": "grim" }
+			],
+			"choices": [
+				{ "text": "Counted twice. Noted.", "end": true }
+			]
+		},
+		{
+			"id": "act_1",
+			"priority": 10,
+			"conditions": { "flag": "story.foreman_defeated" },
+			"lines": [
+				{ "speaker": "Old Tom", "text": "The Foreman's down, I hear. Hollis. He was a green lad when I last worked beside him, and now he's a story.", "emotion": "distant" },
+				{ "speaker": "Old Tom", "text": "I'll tell you the thing I haven't told the mayor, because she'd worry. I've seen the mine do this before.", "emotion": "grim" }
+			],
+			"choices": [
+				{ "text": "Before? When?", "goto": "act_1_before" },
+				{ "text": "Another time, Tom.", "end": true }
+			]
+		},
+		{
+			"id": "act_1_before",
+			"priority": 5,
+			"lines": [
+				{ "speaker": "Old Tom", "text": "The spring the chapel bell cracked. We lost nine, sealed the level, and the town agreed it was gas. Towns agree to things.", "emotion": "distant" },
+				{ "speaker": "Old Tom", "text": "It wasn't gas. I helped brick that door myself, and the bricks I laid went back in my dreams for twenty years, wet on the outside and dry within. Whatever it is, it's been patient longer than I've been old.", "emotion": "grim" }
+			],
+			"choices": [
+				{ "text": "Then it's old business.", "end": true }
+			]
+		},
+		{
+			"id": "act_1_deep",
+			"priority": 5,
+			"conditions": { "deepest_floor_min": 5 },
+			"lines": [
+				{ "speaker": "Old Tom", "text": "You've reached the fifth level. Nobody who worked the survey with me believed the fifth went anywhere. Looks like the survey was the optimist.", "emotion": "grim" },
+				{ "speaker": "Old Tom", "text": "There's a door down there the charts call a pump room. It isn't. Check the hinges from the outside and keep it that way.", "emotion": "worried" }
+			],
+			"choices": [
+				{ "text": "I'll mind the hinges.", "end": true }
+			]
+		},
+		{
+			"id": "act_1_possessed",
+			"priority": 15,
+			"conditions": { "flag": "story.miners_possessed" },
+			"lines": [
+				{ "speaker": "Old Tom", "text": "Brannoc's crew walking back up. I know those lanterns. I saw the same light the spring the bell cracked, and I told myself it was glowworm.", "emotion": "fearful" },
+				{ "speaker": "Old Tom", "text": "Don't stand between them and the town, and don't let them stand behind you. I've buried enough friends who got those two rules in the wrong order.", "emotion": "grim" }
+			],
+			"choices": [
+				{ "text": "Rules noted, Tom.", "end": true }
+			]
+		},
+		{
+			"id": "act_2_stub",
+			"priority": 8,
+			"conditions": { "act_min": 2 },
+			"lines": [
+				{ "speaker": "Old Tom", "text": "I caught myself talking in my sleep in the old surveyors' code. Haven't used that since the fifth level closed.", "emotion": "worried" }
+			]
+		},
+		{
+			"id": "act_3_stub",
+			"priority": 30,
+			"conditions": { "act_min": 3 },
+			"lines": [
+				{ "speaker": "Old Tom", "text": "I've started leaving my boots by the door at night, pointed at the mine. Silly habit. I'd like to say I don't know who I'm warning off.", "emotion": "grim" }
+			]
+		},
+		{
+			"id": "endings_stub",
+			"priority": 40,
+			"conditions": {
+				"any": [
+					{ "flag": "ending.seal" },
+					{ "flag": "ending.keeper" },
+					{ "flag": "ending.true" }
+				]
+			},
+			"lines": [
+				{ "speaker": "Old Tom", "text": "The mine's gone quiet the way a held breath goes quiet. I've heard it twice in my life. I didn't like it the first time either.", "emotion": "weary" }
+			]
+		},
+		{
+			"id": "default",
+			"priority": 0,
+			"lines": [
+				{ "speaker": "Old Tom", "text": "Still breathing? Good. Sit down before you fall down.", "emotion": "gruff" }
+			]
+		}
+	]
+}

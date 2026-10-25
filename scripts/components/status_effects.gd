@@ -75,7 +75,7 @@ const EFFECT_HOST_NODE: NodePath = ^"EffectHost"
 ## hazards, never MARK/UNRAVEL/FREEZE."
 const PLAYER_FORBIDDEN: Array[int] = [Status.MARK, Status.UNRAVEL, Status.FREEZE]
 
-## Stamped on every tick's `HitData` alongside the status's own name, so a
+## Stamped on every tick's `HitInfo` alongside the status's own name, so a
 ## listener can tell damage over time from a connecting hit. `Effect`'s `proc`
 ## tag is the precedent for a hit tag outside the `Tags` vocabulary: this one
 ## describes the carrier, not the content.
@@ -294,18 +294,17 @@ const STATUS_NAMES: Dictionary[int, StringName] = {
 	Status.UNRAVEL: &"unravel",
 }
 
-## The spec's element column, as `HitData.Element` (stats-status's own enum, the
-## week-2 mirror of combat-core's `HitInfo.Element`). The tick's element is read
+## The spec's element column, as `HitInfo.Element` (combat-core's `HitInfo.Element`). The tick's element is read
 ## from here, and W4-B4's combo rules (G24) key off exactly this table.
 const STATUS_ELEMENT: Dictionary[int, int] = {
-	Status.BURN: HitData.Element.FIRE,
-	Status.CHILL: HitData.Element.FROST,
-	Status.FREEZE: HitData.Element.FROST,
-	Status.SHOCK: HitData.Element.STORM,
-	Status.TOXIN: HitData.Element.POISON,
-	Status.MARK: HitData.Element.SHADOW,
-	Status.BLEED: HitData.Element.BLOOD,
-	Status.UNRAVEL: HitData.Element.VOID,
+	Status.BURN: HitInfo.Element.FIRE,
+	Status.CHILL: HitInfo.Element.FROST,
+	Status.FREEZE: HitInfo.Element.FROST,
+	Status.SHOCK: HitInfo.Element.STORM,
+	Status.TOXIN: HitInfo.Element.POISON,
+	Status.MARK: HitInfo.Element.SHADOW,
+	Status.BLEED: HitInfo.Element.BLOOD,
+	Status.UNRAVEL: HitInfo.Element.VOID,
 }
 
 const STATUS_MAX_STACKS: Dictionary[int, int] = {
@@ -711,7 +710,7 @@ func chain_targets(source: Node = null) -> Array[Node]:
 ## element, the `status` tag, the status's own name) plus `CHAIN_TAG`, so a
 ## listener can tell a shock that travelled from a burn that did not. No proc
 ## depth and no crit: a chain is a status result, not a chain link of effects.
-func chain_hit(amount: int) -> HitData:
+func chain_hit(amount: int) -> HitInfo:
 	var hit := tick_hit(Status.SHOCK, amount)
 	hit.tags.append(CHAIN_TAG)
 	return hit
@@ -751,27 +750,27 @@ func _chain_shock(source: Node, trigger_damage: int) -> void:
 ## every one of them names a different element on each side, so Fire on Fire, a
 ## second Chill and the rest of the re-applies match nothing.
 func _combo_for(applied: Status) -> int:
-	var element: int = STATUS_ELEMENT.get(applied, HitData.Element.NONE)
-	if element == HitData.Element.NONE:
+	var element: int = STATUS_ELEMENT.get(applied, HitInfo.Element.NONE)
+	if element == HitInfo.Element.NONE:
 		return NO_COMBO
-	var frost: bool = _has_element(HitData.Element.FROST, applied)
-	var fire: bool = _has_element(HitData.Element.FIRE, applied)
-	var storm: bool = _has_element(HitData.Element.STORM, applied)
-	if element == HitData.Element.FIRE and frost:
+	var frost: bool = _has_element(HitInfo.Element.FROST, applied)
+	var fire: bool = _has_element(HitInfo.Element.FIRE, applied)
+	var storm: bool = _has_element(HitInfo.Element.STORM, applied)
+	if element == HitInfo.Element.FIRE and frost:
 		return Combo.Kind.SHATTER
-	if element == HitData.Element.FROST and fire:
+	if element == HitInfo.Element.FROST and fire:
 		return Combo.Kind.SHATTER
-	if element == HitData.Element.STORM and is_wet():
+	if element == HitInfo.Element.STORM and is_wet():
 		return Combo.Kind.CONDUCT
-	if element == HitData.Element.FIRE and has(Status.TOXIN):
+	if element == HitInfo.Element.FIRE and has(Status.TOXIN):
 		return Combo.Kind.BLIGHT_EXPLOSION
-	if element == HitData.Element.SHADOW and has(Status.BLEED):
+	if element == HitInfo.Element.SHADOW and has(Status.BLEED):
 		return Combo.Kind.HEMORRHAGE
-	if element == HitData.Element.FROST and storm:
+	if element == HitInfo.Element.FROST and storm:
 		return Combo.Kind.SUPERCONDUCT
-	if element == HitData.Element.STORM and frost:
+	if element == HitInfo.Element.STORM and frost:
 		return Combo.Kind.SUPERCONDUCT
-	if element == HitData.Element.VOID and _has_other_element(applied):
+	if element == HitInfo.Element.VOID and _has_other_element(applied):
 		return Combo.Kind.COLLAPSE
 	return NO_COMBO
 
@@ -783,7 +782,7 @@ func _has_element(element: int, applied: Status) -> bool:
 	for status: int in _active.keys():
 		if status == applied:
 			continue
-		if int(STATUS_ELEMENT.get(status, HitData.Element.NONE)) == element:
+		if int(STATUS_ELEMENT.get(status, HitInfo.Element.NONE)) == element:
 			return true
 	return false
 
@@ -791,11 +790,11 @@ func _has_element(element: int, applied: Status) -> bool:
 ## Whether the entity holds any status whose element differs from `applied`'s —
 ## COLLAPSE's "Void on any other status".
 func _has_other_element(applied: Status) -> bool:
-	var element: int = STATUS_ELEMENT.get(applied, HitData.Element.NONE)
+	var element: int = STATUS_ELEMENT.get(applied, HitInfo.Element.NONE)
 	for status: int in _active.keys():
 		if status == applied:
 			continue
-		if int(STATUS_ELEMENT.get(status, HitData.Element.NONE)) != element:
+		if int(STATUS_ELEMENT.get(status, HitInfo.Element.NONE)) != element:
 			return true
 	return false
 
@@ -821,7 +820,7 @@ func _has_other_element(applied: Status) -> bool:
 func _maybe_trigger_combo(combo_kind: int, applied: Status, source: Node, trigger_damage: int, existing_frost: int = 0) -> bool:
 	if combo_kind == NO_COMBO:
 		return false
-	var element: int = STATUS_ELEMENT.get(applied, HitData.Element.NONE)
+	var element: int = STATUS_ELEMENT.get(applied, HitInfo.Element.NONE)
 	var combo := Combo.new(combo_kind)
 	match combo_kind:
 		Combo.Kind.SHATTER:
@@ -1053,13 +1052,13 @@ func clear_combos() -> void:
 		_expire_combo(kind)
 
 
-## The `HitData` a combo's own damage travels as: the amount as both
+## The `HitInfo` a combo's own damage travels as: the amount as both
 ## `base_damage` and `final_damage` (the combo's damage is an outcome, not a
 ## formula input, so it bypasses `Damage.compute`), the triggering element, and
 ## the `COMBO_TAG` plus the combo's own name. No proc depth and no crit roll: a
 ## reaction is the target's event, not a chain link of the attacker's effects.
-func combo_hit(combo: Combo, element: int) -> HitData:
-	var hit := HitData.new()
+func combo_hit(combo: Combo, element: int) -> HitInfo:
+	var hit := HitInfo.new()
 	hit.base_damage = float(combo.damage)
 	hit.final_damage = combo.damage
 	hit.element = element
@@ -1182,7 +1181,7 @@ func deal_status_damage(status: Status, amount: int, is_crit: bool = false) -> b
 	return _deliver_to(entity(), tick_hit(status, amount, is_crit))
 
 
-## The `HitData` a tick hands over: the amount as both `base_damage` and
+## The `HitInfo` a tick hands over: the amount as both `base_damage` and
 ## `final_damage` (so whichever of the two the real `Health` reads, the number
 ## is the tick's), the status's element, and the `status` tag plus the status's
 ## own name. No proc depth: a tick is not a chain link of effects.
@@ -1192,12 +1191,12 @@ func deal_status_damage(status: Status, amount: int, is_crit: bool = false) -> b
 ## bypasses `Damage.compute`, so there is no roll and no `CRIT_DAMAGE` to read,
 ## and `COMBO_CRIT_MULTIPLIER` is the whole of it. Every other tick is not a
 ## crit and cannot be.
-func tick_hit(status: Status, amount: int, is_crit: bool = false) -> HitData:
-	var hit := HitData.new()
+func tick_hit(status: Status, amount: int, is_crit: bool = false) -> HitInfo:
+	var hit := HitInfo.new()
 	hit.base_damage = float(amount)
 	hit.final_damage = roundi(float(amount) * COMBO_CRIT_MULTIPLIER) if is_crit else amount
 	hit.is_crit = is_crit
-	hit.element = STATUS_ELEMENT.get(status, HitData.Element.NONE)
+	hit.element = STATUS_ELEMENT.get(status, HitInfo.Element.NONE)
 	hit.tags = [STATUS_TAG, status_name(status)]
 	return hit
 
@@ -1227,7 +1226,7 @@ func health_of(target: Node) -> Node:
 ## on whatever the group put in range, and an enemy that carries no health yet is
 ## not this component's problem to report (SPEC-combat-core owns the real
 ## component — **blocked on Dev A (W2-A1)**).
-func _deliver_to(target: Node, hit: HitData) -> bool:
+func _deliver_to(target: Node, hit: HitInfo) -> bool:
 	var sink: Node = health_of(target)
 	if sink == null:
 		return false

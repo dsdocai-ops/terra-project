@@ -1,0 +1,102 @@
+{
+	"id": "moss",
+	"entries": [
+		{
+			"id": "intro",
+			"priority": 60,
+			"conditions": { "flag_not": "story.met_moss" },
+			"lines": [
+				{ "speaker": "Moss", "text": "Careful where you lean. That shelf is third-generation inventory and the bottles do not forgive.", "emotion": "proud" },
+				{ "speaker": "Moss", "text": "Alchemist. Town councilor. Keeper of the formulas Hollowmere forgot it was paying for.", "emotion": "proud" }
+			],
+			"choices": [
+				{ "text": "Formulas?", "goto": "intro_formulas" },
+				{ "text": "Good day, Moss.", "end": true }
+			]
+		},
+		{
+			"id": "intro_formulas",
+			"priority": 5,
+			"lines": [
+				{ "speaker": "Moss", "text": "Restoratives, ward balms, and one tincture the council made me swear to stop brewing. It stopped mattering which shelf it was on.", "emotion": "grim" },
+				{ "speaker": "Moss", "text": "The important thing is this: you will not die of poison in my town if I can help it. Drink nothing you find down there.", "emotion": "worried" }
+			],
+			"choices": [
+				{ "text": "Understood.", "end": true }
+			]
+		},
+		{
+			"id": "act_1",
+			"priority": 10,
+			"conditions": { "flag": "story.foreman_defeated" },
+			"lines": [
+				{ "speaker": "Moss", "text": "The Foreman is down. I have been writing his antidotes for a fortnight for nothing.", "emotion": "distant" },
+				{ "speaker": "Moss", "text": "Do not mistake me — I am glad. Grief is simply the last prescription you cannot fill.", "emotion": "grim" }
+			],
+			"choices": [
+				{ "text": "He's at peace now.", "goto": "act_1_peace" },
+				{ "text": "The shop needs you, Moss.", "end": true }
+			]
+		},
+		{
+			"id": "act_1_peace",
+			"priority": 5,
+			"lines": [
+				{ "speaker": "Moss", "text": "Peace. A strong word for the bottom of a mine. But I will take it.", "emotion": "weary" },
+				{ "speaker": "Moss", "text": "The council will want more than peace eventually. They will want the pit explained. So will I.", "emotion": "worried" }
+			],
+			"choices": [
+				{ "text": "One descent at a time.", "end": true }
+			]
+		},
+		{
+			"id": "act_1_possessed",
+			"priority": 15,
+			"conditions": { "flag": "story.miners_possessed" },
+			"lines": [
+				{ "speaker": "Moss", "text": "The miners are moving. I have treated collapsed lungs, crushed hands, and one very unlucky mule. None of those ever got up and smiled.", "emotion": "worried" },
+				{ "speaker": "Moss", "text": "Whatever moved them is no wound of mine. Bring me a sample of anything from near them — sealed in a jar, not in your pockets.", "emotion": "grim" }
+			],
+			"choices": [
+				{ "text": "No promises on the jar.", "end": true }
+			]
+		},
+		{
+			"id": "act_2_stub",
+			"priority": 8,
+			"conditions": { "act_min": 2 },
+			"lines": [
+				{ "speaker": "Moss", "text": "My reagents are curdling on the shelf, and no, that is not a figure of speech.", "emotion": "worried" }
+			]
+		},
+		{
+			"id": "act_3_stub",
+			"priority": 30,
+			"conditions": { "act_min": 3 },
+			"lines": [
+				{ "speaker": "Moss", "text": "I have started locking the shop at night. I have never locked this shop in thirty years.", "emotion": "distant" }
+			]
+		},
+		{
+			"id": "endings_stub",
+			"priority": 40,
+			"conditions": {
+				"any": [
+					{ "flag": "ending.seal" },
+					{ "flag": "ending.keeper" },
+					{ "flag": "ending.true" }
+				]
+			},
+			"lines": [
+				{ "speaker": "Moss", "text": "Whatever you did down there, the bottles have stopped humming. I had stopped noticing they hummed.", "emotion": "weary" }
+			]
+		},
+		{
+			"id": "default",
+			"priority": 0,
+			"lines": [
+				{ "speaker": "Moss", "text": "The shop is open. Touch nothing with a red label.", "emotion": "proud" }
+			]
+		}
+	]
+}

@@ -5,7 +5,7 @@ extends GutTest
 ## trigger further effects (its hits still damage, but `hit_landed` from it is
 ## emitted with `hit.proc_depth = 3` and `Effect.listen` wrappers skip events
 ## with `proc_depth >= 3`)." That sentence has four parts and this file pins
-## each one separately: the depth travels on `HitData`, the wrapper skips an
+## each one separately: the depth travels on `HitInfo`, the wrapper skips an
 ## event whose depth has reached the limit, the skipped event's hit is still
 ## announced and still dealt, and the chain therefore stops instead of
 ## recursing.
@@ -197,8 +197,8 @@ func _probe(id: StringName = &"chain_relic", display_name: String = "") -> ProcC
 
 
 ## A hit at `depth`, optionally tagged.
-func _hit(depth: int, tags: Array[StringName] = []) -> HitData:
-	var hit := HitData.new()
+func _hit(depth: int, tags: Array[StringName] = []) -> HitInfo:
+	var hit := HitInfo.new()
 	hit.base_damage = BASE_DAMAGE
 	hit.proc_depth = depth
 	hit.tags = tags.duplicate()
@@ -208,7 +208,7 @@ func _hit(depth: int, tags: Array[StringName] = []) -> HitData:
 ## Delivers `hit` the way a weapon does: to the target's hurtbox, which records
 ## it and announces it on `Events.hit_landed`. Nothing here stamps the depth, so
 ## the depth that reaches the handlers is the depth the hit was built with.
-func _deliver(hit: HitData) -> void:
+func _deliver(hit: HitInfo) -> void:
 	_hurtbox.receive(hit)
 
 
@@ -259,7 +259,7 @@ func _projectile_spec() -> ProjectileSpec:
 		load(PLACEHOLDER_PROJECTILE) as PackedScene,
 		PROJECTILE_SPEED,
 		PROJECTILE_DAMAGE,
-		HitData.Element.FIRE,
+		HitInfo.Element.FIRE,
 		1,
 		0,
 	)
@@ -271,7 +271,7 @@ func _fire(host: EffectHost) -> Node:
 
 
 ## Emits one of the bus's hit-carrying signals with `hit` at its own depth.
-func _emit_hit_signal(signal_name: StringName, enemy: Node, hit: HitData) -> void:
+func _emit_hit_signal(signal_name: StringName, enemy: Node, hit: HitInfo) -> void:
 	match signal_name:
 		&"hit_landed":
 			Events.hit_landed.emit(hit)
@@ -291,14 +291,14 @@ func _emit_hit_signal(signal_name: StringName, enemy: Node, hit: HitData) -> voi
 ## "its hits still damage" half of the rule.
 func _dealt_depths() -> Array[int]:
 	var depths: Array[int] = []
-	for hit: HitData in _hurtbox.received:
+	for hit: HitInfo in _hurtbox.received:
 		depths.append(hit.proc_depth)
 	return depths
 
 
 ## The bus listener: a plain named method, never an effect, so it observes the
 ## emission whether or not any effect may react to it.
-func _on_hit_landed(hit: HitData) -> void:
+func _on_hit_landed(hit: HitInfo) -> void:
 	_announced.append(hit.proc_depth)
 
 
@@ -315,7 +315,7 @@ func _const_documented(source: String, const_name: String) -> bool:
 # --- the depth travels on the payload --------------------------------------
 
 func test_a_fresh_hit_is_depth_zero() -> void:
-	var hit := HitData.new()
+	var hit := HitInfo.new()
 	assert_eq(hit.proc_depth, 0, "proc_depth defaults to 0: a weapon hit is the chain's root")
 
 
@@ -424,7 +424,7 @@ func test_each_depth_boundary_is_asserted_separately() -> void:
 	assert_eq(probe.links, 0, "the observe-only probe produced nothing")
 
 
-## Every signal that carries a `HitData` is gated the same way, so the rule
+## Every signal that carries a `HitInfo` is gated the same way, so the rule
 ## cannot hold for `hit_landed` alone while a relic that listens to
 ## `player_damaged` or `enemy_killed` chains forever.
 func test_the_gate_holds_on_every_hit_carrying_signal() -> void:

@@ -7,7 +7,7 @@ extends Node
 ##
 ## blocked on Dev A (W2-A1, combat-core `Health`): SPEC-combat-core's
 ## "Interfaces provided" fixes the signature as `apply_damage(hit: HitInfo)`, so
-## the tick hands over a `HitData` — the week-2 mirror whose damage-relevant
+## the tick hands over a `HitInfo` — the week-2 mirror whose damage-relevant
 ## field names already match `HitInfo` — and the swap-in is a type rename.
 ## Ownership: the real `Health` is host-authoritative and its `current_hp` is
 ## replicated by the entity's `StateSync`; this double is host-side test state.
@@ -25,7 +25,7 @@ var max_hp: int = 100
 var current_hp: int = 100
 
 ## Every hit handed to `apply_damage()`, in order.
-var hits: Array[HitData] = []
+var hits: Array[HitInfo] = []
 
 ## Every amount handed to `heal()`, in order — including a zero. Separate from
 ## `healed_total` so "the heal path was never reached" (no entry) reads
@@ -41,7 +41,7 @@ var healed_total: int = 0
 
 ## Records `hit` and subtracts its `final_damage` from `current_hp`, exactly as
 ## the real `Health` treats a hit whose damage has already been computed.
-func apply_damage(hit: HitData) -> bool:
+func apply_damage(hit: HitInfo) -> bool:
 	if hit == null:
 		return false
 	hits.append(hit)
@@ -77,7 +77,7 @@ func hit_count() -> int:
 
 func total_damage() -> int:
 	var total := 0
-	for hit: HitData in hits:
+	for hit: HitInfo in hits:
 		total += hit.final_damage
 	return total
 
@@ -89,8 +89,8 @@ func last_damage() -> int:
 	return hits[hits.size() - 1].final_damage
 
 
-## The `HitData.Element` of the last hit, or `NONE` when none landed.
+## The `HitInfo.Element` of the last hit, or `NONE` when none landed.
 func last_element() -> int:
 	if hits.is_empty():
-		return HitData.Element.NONE
+		return HitInfo.Element.NONE
 	return hits[hits.size() - 1].element

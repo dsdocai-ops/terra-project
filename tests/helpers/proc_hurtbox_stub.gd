@@ -21,6 +21,6 @@ extends HurtboxStub
 ## on clients; a client re-emits `hit_landed` from replicated state instead.
 
 
-func receive(hit: HitData) -> void:
+func receive(hit: HitInfo) -> void:
 	super(hit)
 	Events.hit_landed.emit(hit)

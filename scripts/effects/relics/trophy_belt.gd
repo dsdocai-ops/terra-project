@@ -17,7 +17,7 @@ extends Effect
 ## `enemy_killed`. A plain kill does not count: the batch's case fires an ordinary
 ## kill at an elite-flagged enemy and asserts the count does not move. The
 ## `elite_killed` payload has the same shape `enemy_killed` does —
-## `(enemy: Node, hit: HitData)` and no `Player` argument — so "which kills count"
+## `(enemy: Node, hit: HitInfo)` and no `Player` argument — so "which kills count"
 ## is the killing hit's `owner_player` here too: **blocked on Dev A (W4-A1)** for
 ## the emitter and the elite it comes from.
 ##
@@ -86,7 +86,7 @@ func damage_bonus() -> float:
 
 ## One of this player's elite kills: count it, and put the new total on the
 ## player's attack.
-func _on_elite_killed(enemy: Node, hit: HitData) -> void:
+func _on_elite_killed(enemy: Node, hit: HitInfo) -> void:
 	if not _is_my_kill(enemy, hit):
 		return
 	_elites_killed += 1
@@ -97,7 +97,7 @@ func _on_elite_killed(enemy: Node, hit: HitData) -> void:
 ## `owner_player` read is the payload's, not a signal argument: `elite_killed`
 ## carries no `Player` for `Effect.listen()` to filter on, exactly as
 ## `enemy_killed` does not.
-func _is_my_kill(enemy: Node, hit: HitData) -> bool:
+func _is_my_kill(enemy: Node, hit: HitInfo) -> bool:
 	if player == null or enemy == null or not is_instance_valid(enemy):
 		return false
 	if hit == null:

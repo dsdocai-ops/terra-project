@@ -58,7 +58,7 @@ func _on_attach() -> void:
 
 ## One of this player's own hits: every enemy near what it landed on is asked to
 ## move toward it.
-func _on_hit_landed(hit: HitData) -> void:
+func _on_hit_landed(hit: HitInfo) -> void:
 	if not _is_my_hit(hit):
 		return
 	_pull_toward_target(hit.target)
@@ -66,7 +66,7 @@ func _on_hit_landed(hit: HitData) -> void:
 
 ## True when `hit` is a hit this effect's own player landed, and not one of the
 ## procs this player's own effects produced.
-func _is_my_hit(hit: HitData) -> bool:
+func _is_my_hit(hit: HitInfo) -> bool:
 	if player == null or hit == null or hit.owner_player != player:
 		return false
 	return hit.proc_depth == 0

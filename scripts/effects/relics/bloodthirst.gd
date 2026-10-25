@@ -109,7 +109,7 @@ func bonus() -> float:
 
 
 ## One of this player's kills: deepen the buff, and restart its clock.
-func _on_enemy_killed(enemy: Node, hit: HitData) -> void:
+func _on_enemy_killed(enemy: Node, hit: HitInfo) -> void:
 	if not _is_my_kill(enemy, hit):
 		return
 	_stacks = mini(_stacks + stacks_per_kill(), MAX_STACKS)
@@ -120,7 +120,7 @@ func _on_enemy_killed(enemy: Node, hit: HitData) -> void:
 ## True when `enemy` is a valid node and `hit` is this player's own kill. The
 ## `owner_player` read is the payload's, not a signal argument: `enemy_killed`
 ## carries no `Player` for `Effect.listen()` to filter on.
-func _is_my_kill(enemy: Node, hit: HitData) -> bool:
+func _is_my_kill(enemy: Node, hit: HitInfo) -> bool:
 	if player == null or enemy == null or not is_instance_valid(enemy):
 		return false
 	if hit == null:

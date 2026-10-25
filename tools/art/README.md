@@ -5,8 +5,9 @@ Python generators for every pixel-art asset. The contract (palettes, sizes, outl
 | File | What it is |
 |---|---|
 | `requirements.txt` | Pillow, numpy, pytest (Python 3.12) |
-| `palette.py` | Master palette: 8 hue ramps x 5 steps, 7 neutrals, 2 accents (`GLOBAL`), the 7 biome palettes (`biome(id)`, each with `ground_ramp`, `wall_ramp` and qualified `"<biome>.<name>"` accents), `MATERIAL` ramps (cloth, iron, timber, ...), `UI`, `RARITY`, `ELEMENT`, and `ALL` (every name a Canvas resolves). Generators take every color from here by name |
-| `pixel.py` | Shared primitives: `Canvas` (indexed-color grid of palette names; `put`, `rect`, `line`, `ellipse`, `ellipse_shaded`, `polygon`, `blit`, `outline`, `save`), `outline`, `shade`, `dither`, `iso_diamond`, `iso_box`, `mirror_h` (symmetric props and UI only), `sheet`, `save_png`, `seeded` |
+| `palette.py` | Master palette: 8 hue ramps x 5 steps, 7 neutrals, 2 accents (`GLOBAL`), the 7 biome palettes (`biome(id)`, each with `ground_ramp`, `wall_ramp` and qualified `"<biome>.<name>"` accents), `MATERIAL` ramps (cloth, iron, timber, ...), `UI`, `RARITY`, `ELEMENT`, and `ALL` (every name a Canvas resolves). Generators take every color from here by name. v2 layer (art direction v2, D5): `V2_RAMPS` (`<ramp>_<n>`, 0 = lightest), `V2_CHARACTERS` + `CHARACTER_SLOTS` (BODY template palettes, `char_<who>_<slot>`), `V2_SETS` with `v2_colors(set_id)` / `v2_rgb(set_id)` for `ui`, `collapsed_mines`, `town` |
+| `pixel.py` | Shared primitives: `Canvas` (indexed-color grid of palette names; `put`, `rect`, `line`, `ellipse`, `ellipse_shaded`, `polygon`, `blit`, `outline`, `save`), `outline`, `shade`, `dither`, `iso_diamond`, `iso_box`, `mirror_h` (symmetric props and UI only), `sheet`, `save_png`, `seeded`. v2: `hash01` (bit-for-bit the mockup hash), `iso_tile`, `iso_block`, `stone_face`, `plank_face`, `brick_base`, `shingle_roof`, `iso_window`, `iso_door`, `iso_house`, `circle`, `tri`, `quad`, `scatter`, `sprite_from_rows`, `oct_socket`, `export_scaled` |
+| `palette_map.py` | Maps every color in `docs/art-direction/v2/mockup-src/` onto the v2 palette (exact, snapped, or deferred to a named task) and writes `docs/art-direction/v2/palette-map.md`; `--check` fails if the report is stale. A report, not a generator |
 | `gen_font.py` | `assets/fonts/sinkhole_pixel.png` + `.fnt`, the 5x7 UI font (own work) |
 | `gen_ui.py` | `assets/ui/icons/`: 8 status icons, 2 weapon icons, pointer, potion flask |
 | `gen_icons.py` | `assets/sprites/icons/relics/` (20 relic icons) and the 5 pickup sprites under `assets/sprites/props/` |
@@ -30,11 +31,12 @@ Python generators for every pixel-art asset. The contract (palettes, sizes, outl
 From the repo root:
 
 ```powershell
-python -m pip install -r tools/art/requirements.txt   # once
-python -m pytest tools/art                             # tests (about 90 s: every generator runs twice)
-python tools/art/build_all.py                          # regenerate every generated asset into assets/
-python tools/art/build_all.py --check                  # exit 1 if a committed file differs or a PNG is off-palette
-python tools/art/gen_enemies.py rock_tick              # one generator, one id (each gen_*.py runs on its own)
+py -m pip install -r tools/art/requirements.txt   # once
+py -m pytest tools/art                             # tests (about 90 s: every generator runs twice)
+py tools/art/build_all.py                          # regenerate every generated asset into assets/
+py tools/art/build_all.py --check                  # exit 1 if a committed file differs or a PNG is off-palette
+py tools/art/gen_enemies.py rock_tick              # one generator, one id (each gen_*.py runs on its own)
+py tools/art/palette_map.py                        # refresh the v2 mockup-to-palette report
 ```
 
 After regenerating sheets or atlases, run `godot --headless --path . --import`; the `SpriteFrames` and `TileSet` resources (`tools/make_sprite_frames.gd`, `tools/make_placeholder_tileset.gd`) only need re-running when the sheet layout changes.

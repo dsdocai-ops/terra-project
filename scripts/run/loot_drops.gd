@@ -98,7 +98,7 @@ func _can_roll() -> bool:
 ## enemy's, not the killer's, so the shared pools move and only the announcement
 ## — which names a player — is skipped. A per-player drop with no killer pays
 ## nobody, because there is nobody to pay.
-func on_enemy_killed(enemy: Node, hit: HitData) -> bool:
+func on_enemy_killed(enemy: Node, hit: HitInfo) -> bool:
 	if not _can_roll():
 		return false
 	var run: RunState = GameState.run
@@ -124,7 +124,7 @@ func on_enemy_killed(enemy: Node, hit: HitData) -> bool:
 ## The table's own drops are deliberately **not** rolled here: the game announces
 ## an elite's death on `enemy_killed` too, and rolling in both places would pay
 ## the table twice.
-func on_elite_killed(enemy: Node, hit: HitData) -> bool:
+func on_elite_killed(enemy: Node, hit: HitInfo) -> bool:
 	if not _can_roll():
 		return false
 	var run: RunState = GameState.run
@@ -155,7 +155,7 @@ func loot_table_of(enemy: Node) -> LootTable:
 
 ## The player a kill is attributed to, or null for a hazard kill. `hit` may be
 ## null on a payload that never reached a player (SPEC-effect-system).
-func killer_of(hit: HitData) -> Player:
+func killer_of(hit: HitInfo) -> Player:
 	if hit == null:
 		return null
 	return hit.owner_player
@@ -206,6 +206,13 @@ func _roll_drop(entry: LootTable.Entry, rng: RandomNumberGenerator) -> Dictionar
 ## Resonance and Heat multipliers); relics, runes and potions are items, not
 ## currency, and pay nothing here.
 ##
+## **The drop is scaled by its biome first.** Every currency credit goes through
+## `CurrencyScaler` on the live run's biome (W6-B5, goal G8), and `drop` is
+## rewritten to the paid amount in place, so a caller that spawns the pickup
+## after crediting — every one of them does — presents exactly what was paid.
+## The rarity field is never touched: depth scaling is an amount rule, and the
+## rarity roll stays `LootTable`'s, Luck and all.
+##
 ## Every shared credit announces `Events.currency_gained` once, under the id of
 ## the pool it moved — which is what the HUD's currency row listens to. A kill
 ## with no killer still moves the shared pools and announces nothing, because
@@ -221,20 +228,26 @@ static func credit(run: RunState, killer: Player, drop: Dictionary) -> void:
 		return
 	match kind:
 		Pickup.KIND_GOLD:
-			run.shared_gold += amount
+			var paid_gold: int = CurrencyScaler.amount_for(CurrencyScaler.GOLD_ID, amount, run.biome_index)
+			drop["amount"] = paid_gold
+			run.shared_gold += paid_gold
 			if killer != null:
-				Events.currency_gained.emit(killer, CURRENCY_GOLD, amount)
+				Events.currency_gained.emit(killer, CURRENCY_GOLD, paid_gold)
 		Pickup.KIND_ORE:
 			var ore_id: StringName = drop.get("id", &"")
 			if ore_id == &"":
 				ore_id = OrePayout.id_for_biome(run.biome_index)
 			if ore_id == &"":
 				return
-			run.shared_ore[ore_id] = int(run.shared_ore.get(ore_id, 0)) + amount
+			var paid_ore: int = CurrencyScaler.amount_for(CurrencyScaler.ORE_ID, amount, run.biome_index)
+			drop["amount"] = paid_ore
+			run.shared_ore[ore_id] = int(run.shared_ore.get(ore_id, 0)) + paid_ore
 			if killer != null:
-				Events.currency_gained.emit(killer, OrePayout.CURRENCY_ID, amount)
+				Events.currency_gained.emit(killer, OrePayout.CURRENCY_ID, paid_ore)
 		Pickup.KIND_ECHO:
-			EchoShards.award(run, killer, amount)
+			var paid_echo: int = EchoShards.award(run, killer, amount)
+			if paid_echo > 0:
+				drop["amount"] = paid_echo
 
 
 ## Spawns the physical pickup for one drop, if there is anywhere to spawn it. A

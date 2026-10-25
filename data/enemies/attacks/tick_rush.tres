@@ -1,0 +1,17 @@
+[gd_resource type="Resource" script_class="AttackPattern" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/data/attack_pattern.gd" id="1_pat"]
+
+[resource]
+script = ExtResource("1_pat")
+id = &"tick_rush"
+kind = 1
+windup_seconds = 0.45
+active_seconds = 0.38
+recovery_seconds = 0.8
+telegraph_shape = 2
+telegraph_size = Vector2(120, 28)
+damage = 10
+knockback = 160
+speed = 280
+trigger_range = 120

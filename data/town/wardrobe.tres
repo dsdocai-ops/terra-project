@@ -1,0 +1,30 @@
+[gd_resource type="Resource" script_class="BuildingData" load_steps=6 format=3]
+
+[ext_resource type="Script" path="res://scripts/data/building_data.gd" id="1_b"]
+[ext_resource type="Script" path="res://scripts/data/building_level.gd" id="2_l"]
+
+[sub_resource type="Resource" id="Level_1"]
+script = ExtResource("2_l")
+ore_id = &"pearl"
+ore_amount = 10
+description = "Skins from bosses"
+
+[sub_resource type="Resource" id="Level_2"]
+script = ExtResource("2_l")
+ore_id = &"ember_ore"
+ore_amount = 25
+description = "Hats from achievements"
+
+[sub_resource type="Resource" id="Level_3"]
+script = ExtResource("2_l")
+ore_id = &"ember_ore"
+ore_amount = 50
+description = "Rat companion and more"
+
+[resource]
+script = ExtResource("1_b")
+id = &"wardrobe"
+display_name = "Wardrobe"
+levels = Array[ExtResource("2_l")]([SubResource("Level_1"), SubResource("Level_2"), SubResource("Level_3")])
+npc_id = &""
+functional_in_v1 = false

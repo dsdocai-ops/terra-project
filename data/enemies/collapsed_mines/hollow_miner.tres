@@ -1,0 +1,27 @@
+[gd_resource type="Resource" script_class="EnemyData" load_steps=5 format=3]
+
+[ext_resource type="Script" path="res://scripts/data/enemy_data.gd" id="1_enemy"]
+[ext_resource type="SpriteFrames" uid="uid://djj4la1qwmloc" path="res://assets/sprites/enemies/hollow_miner_frames.tres" id="9_frames"]
+[ext_resource type="Resource" path="res://data/enemies/attacks/miner_swing.tres" id="2_attack"]
+[ext_resource type="Script" path="res://scripts/data/attack_pattern.gd" id="4_pat"]
+[ext_resource type="Resource" path="res://data/loot/enemy_common.tres" id="3_loot"]
+
+[resource]
+script = ExtResource("1_enemy")
+id = &"hollow_miner"
+poise = 40.0
+sprite_frames = ExtResource("9_frames")
+display_name = "Hollow Miner"
+base_stats = {
+0: 42.0,
+1: 100.0,
+2: 0.0
+}
+attacks = Array[ExtResource("4_pat")]([ExtResource("2_attack")])
+move_speed = 68.0
+aggro_range = 280.0
+keep_distance = 0.0
+color = Color(0.55, 0.42, 0.3, 1)
+radius = 11.0
+loot_table = ExtResource("3_loot")
+echo_shards_on_death = 1

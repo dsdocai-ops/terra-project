@@ -9,6 +9,12 @@ extends CanvasLayer
 ## never resolves gameplay; the two things it sends are requests the host
 ## validates (a relic pick, a rope vote).
 
+## The player chose to leave the run for the town (Quit to Town confirmed, or the
+## death screen's Return to Town). main.gd owns the scene change.
+signal return_to_town_requested()
+## The player chose Leave Co-op from the pause screen.
+signal leave_coop_requested()
+
 const POLL_INTERVAL: float = 0.25
 const WEAPON_DIAMOND_SIZE := Vector2(66, 74)
 const BADGE_SIZE := Vector2(44, 58)
@@ -34,6 +40,15 @@ var rope_vote_prompt: RopeVotePrompt
 var pause_layer: Control
 var pause_menu: CarvedMenu
 var run_summary: RunSummary
+var inventory_screen: InventoryScreen
+var death_screen: DeathScreen
+var pause_items: Array[String] = []
+var _confirming_quit: bool = false
+## What the minimap last drew, so it only redraws when the player moves rooms,
+## explores a new one, or a new floor arrives.
+var _map_room: int = -2
+var _map_visits: int = -1
+var _map_layout: RefCounted = null
 
 var _poll: Timer
 
@@ -53,7 +68,13 @@ func _ready() -> void:
 
 
 func _unhandled_input(event: InputEvent) -> void:
-	if event.is_action_pressed(&"pause") and not choice_popup.visible:
+	if not visible:
+		return
+	if event.is_action_pressed(&"inventory") and not choice_popup.visible and not pause_layer.visible and not death_screen.visible:
+		inventory_screen.toggle(NetworkManager.local_peer_id)
+		get_viewport().set_input_as_handled()
+		return
+	if event.is_action_pressed(&"pause") and not choice_popup.visible and not death_screen.visible:
 		set_paused_view(not pause_layer.visible)
 		get_viewport().set_input_as_handled()
 
@@ -63,6 +84,9 @@ func _unhandled_input(event: InputEvent) -> void:
 func set_paused_view(open: bool) -> void:
 	pause_layer.visible = open
 	if open:
+		_confirming_quit = false
+		_fill_pause_items()
+		inventory_screen.close()
 		_fill_run_summary()
 		pause_menu.grab_focus()
 
@@ -80,6 +104,8 @@ func _wire_events() -> void:
 	Events.currency_gained.connect(_on_currency_gained)
 	Events.rope_vote_updated.connect(_on_rope_vote_updated)
 	GameState.floor_changed.connect(_on_floor_changed)
+	GameState.run_started.connect(_on_run_started)
+	GameState.run_ended.connect(_on_run_ended)
 	# A slow poll catches HP ticks, status changes and the host's own relic
 	# offer (a solo host has no broadcast to hear) between event batches; cheap
 	# reads only, no gameplay.
@@ -128,9 +154,10 @@ func _build_modals() -> void:
 	pause_layer.add_child(dim)
 	pause_menu = CarvedMenu.new()
 	pause_menu.name = "PauseMenu"
-	pause_menu.items = ["Resume", "Quit Game"]
+	pause_items = ScreenModels.pause_items(false, false, false)
+	pause_menu.items = pause_items
 	pause_menu.position = Vector2(70, 120)
-	pause_menu.size = Vector2(200, 80)
+	pause_menu.size = Vector2(200, 140)
 	pause_menu.chosen.connect(_on_pause_chosen)
 	pause_layer.add_child(pause_menu)
 	run_summary = RunSummary.new()
@@ -140,6 +167,13 @@ func _build_modals() -> void:
 	run_summary.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	pause_layer.add_child(run_summary)
 	root.add_child(pause_layer)
+	inventory_screen = InventoryScreen.new()
+	inventory_screen.name = "InventoryScreen"
+	root.add_child(inventory_screen)
+	death_screen = DeathScreen.new()
+	death_screen.name = "DeathScreen"
+	death_screen.return_requested.connect(_on_return_requested)
+	root.add_child(death_screen)
 
 
 # --- events -------------------------------------------------------------------
@@ -197,6 +231,12 @@ func _on_currency_gained(_player: Player, _currency: StringName, _amount: int) -
 	_on_players_changed()
 
 
+## The host's first floor: no floor_changed fires for it, so read it off the run.
+func _on_run_started(_run_seed: int) -> void:
+	if GameState.run != null:
+		_on_floor_changed(GameState.run.floor_index, GameState.biome_for_index(GameState.run.biome_index))
+
+
 func _on_floor_changed(floor_index: int, biome: Resource) -> void:
 	hud_model.biome_label = _biome_text(biome)
 	hud_model.set_floor_label("FLOOR %d" % floor_index)
@@ -209,6 +249,25 @@ func _on_relic_offer_received(peer_id: int, ids: Array[StringName]) -> void:
 
 func _on_rope_vote_updated(votes: Dictionary) -> void:
 	rope_vote_prompt.apply_votes(votes)
+	rope_vote_prompt.total = maxi(living_player_count(), votes.size())
+	# Whoever already answered does not see the question again.
+	if votes.has(NetworkManager.local_peer_id):
+		rope_vote_prompt.visible = false
+
+
+## How many players still stand (not downed): the people the vote waits for.
+func living_player_count() -> int:
+	var count: int = 0
+	if GameState.run != null:
+		for peer_id: int in GameState.run.players:
+			var slice: RunPlayerState = GameState.run.get_player(peer_id)
+			if slice != null and slice.is_standing():
+				count += 1
+		return count
+	for player: Player in NetworkManager.players.values():
+		if not player.is_downed:
+			count += 1
+	return count
 
 
 func _open_choice(ids: Array[StringName]) -> void:
@@ -231,11 +290,46 @@ func _on_rope_voted(yes: bool) -> void:
 		NetworkManager.request_vote_rope.rpc_id(NetworkManager.HOST_PEER_ID, yes)
 
 
+func _fill_pause_items() -> void:
+	pause_items = ScreenModels.pause_items(GameState.run != null, NetworkManager.is_active and NetworkManager.peer_ids.size() > 1, _confirming_quit, NetworkManager.is_host and NetworkManager.peer_ids.size() > 1)
+	pause_menu.items = pause_items
+
+
 func _on_pause_chosen(index: int) -> void:
-	if index == 0:
-		set_paused_view(false)
-	else:
-		get_tree().quit()
+	match ScreenModels.pause_action(pause_items, index):
+		&"resume":
+			set_paused_view(false)
+		&"settings", &"codex":
+			# Settings arrive in week 12 and the Codex in week 10 (SPEC-ui-hud).
+			pass
+		&"quit_to_town":
+			if not _confirming_quit:
+				_confirming_quit = true
+				_fill_pause_items()
+				return
+			set_paused_view(false)
+			if NetworkManager.is_host and GameState.run != null:
+				GameState.end_run(RunEndReason.Reason.ABORT)
+			else:
+				return_to_town_requested.emit()
+		&"leave_coop":
+			set_paused_view(false)
+			leave_coop_requested.emit()
+
+
+## The run ended: show the kept-versus-lost screen for the local player.
+func _on_run_ended(result: RefCounted) -> void:
+	var typed: RunResult = result as RunResult
+	if typed == null:
+		return
+	pause_layer.visible = false
+	rope_vote_prompt.visible = false
+	inventory_screen.close()
+	death_screen.show_result(typed, NetworkManager.local_peer_id)
+
+
+func _on_return_requested() -> void:
+	return_to_town_requested.emit()
 
 
 # --- drawing the model --------------------------------------------------------
@@ -271,7 +365,14 @@ func _apply_layout() -> void:
 		for entry: Variant in raw as Array:
 			if entry is Rect2i:
 				rects.append(entry)
+			elif entry is RoomSpec:
+				rects.append((entry as RoomSpec).rect)
 		lamp_map.rooms = rects
+	var floor_node: Floor = GameState.world.floor_node if GameState.world != null else null
+	if floor_node != null:
+		lamp_map.fog = true
+		lamp_map.visited = floor_node.visited
+		lamp_map.current_room = floor_node.current_room_index
 
 
 func _apply_weapon_slots() -> void:
@@ -331,3 +432,16 @@ func _biome_text(biome: Resource) -> String:
 	if biome_id is int:
 		return "Biome %d" % biome_id
 	return ""
+
+
+func _process(_delta: float) -> void:
+	var floor_node: Floor = GameState.world.floor_node if GameState.world != null else null
+	if floor_node == null:
+		return
+	var layout: RefCounted = NetworkManager.last_floor_layout
+	if layout == _map_layout and floor_node.current_room_index == _map_room and floor_node.visited.size() == _map_visits:
+		return
+	_map_layout = layout
+	_map_room = floor_node.current_room_index
+	_map_visits = floor_node.visited.size()
+	_apply_layout()

@@ -1,0 +1,1 @@
+{ "id": "lore.test_bad_order", "title": "Bad Order", "body": "An order cannot be negative.", "biome": 2, "act": 1, "order": -1 }

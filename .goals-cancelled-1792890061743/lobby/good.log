@@ -1,0 +1,25 @@
+Godot Engine v4.7.2.stable.official.ed1daf0bf - https://godotengine.org
+
+[run] ROPE populator registered with FloorGenerator
+[relics] SHRINE populator registered with FloorGenerator
+[run] TREASURE populator registered with FloorGenerator
+[run] SHOP populator registered with FloorGenerator
+[story] LORE populator registered with FloorGenerator
+[net] joining 127.0.0.1:7790
+[net] connected to host as peer 1080207786
+[net] peer 1 joined (1 total)
+[net] peer 1080207786 joined (2 total)
+[spawn] Player1 spawned at (80.0, 336.0) (local peer 1080207786)
+[spawn] Player1080207786 spawned at (79.45255, 339.6144) (local peer 1080207786)
+[smoke] autowalk armed on Player1080207786
+[smoke] peer 1080207786 sees 2 player(s): Player1=(654.0, 320.0) Player1080207786=(170.0, 340.0)
+[net] peer 1 left (1 total)
+WARNING: [net] host disconnected
+   at: push_warning (core/variant/variant_utility.cpp:1033)
+   GDScript backtrace (most recent call first):
+       [0] _on_server_disconnected (res://scripts/autoload/network_manager.gd:1078)
+[smoke] peer 0 sees 0 player(s): 
+[smoke] peer 0 sees 0 player(s): 
+[smoke] peer 0 sees 0 player(s): 
+[smoke] peer 0 sees 0 player(s): 
+[smoke] done, quitting

@@ -15,7 +15,7 @@ func physics_update(delta: float) -> void:
 			machine.current.physics_update(delta)
 		return
 	var dir := Iso.input_to_world(player.move_input)
-	var target := dir * player.move_speed()
+	var target := dir * player.move_speed() * machine.effective_scale
 	player.velocity = player.velocity.move_toward(target, player.move_accel() * delta)
 	player.set_facing(dir)
 	player.apply_coop_clamp(delta)

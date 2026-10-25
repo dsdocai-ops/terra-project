@@ -31,6 +31,9 @@ func rope_y(t: float) -> float:
 
 
 func _draw() -> void:
+	# An empty rope is just a stray line in the corner: draw it only once a relic hangs on it.
+	if relics.is_empty():
+		return
 	var previous := Vector2(0, rope_y(0.0))
 	for step: int in range(1, 25):
 		var t: float = float(step) / 24.0

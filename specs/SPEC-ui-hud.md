@@ -40,6 +40,27 @@ Every screen in design doc section 16, readable at 960x540 with integer scaling,
 
 One `Theme` resource (`assets/ui/theme.tres`): pixel font (CC0, e.g. m5x7 or similar) at 8 px and 16 px, 9-slice panels in a stone and lantern-light palette, rarity colors (common grey, rare blue, epic purple, legendary gold, cursed red), element colors (fire orange, frost cyan, storm yellow, shadow violet, poison green, earth brown, blood crimson, void magenta). All UI is `Control` under a `CanvasLayer`, anchored for 16:9, tested at 960x540 and 1920x1080.
 
+**v2 theme (decisions 2026-10-24, SPEC-art-audio "Art direction v2").** Replaces the paragraph above once AR-12 lands; reference renders in `docs/art-direction/v2/shots/`, plan in `tasks/plan-art-v2.md`.
+
+- **UI grid (D3).** Every UI piece is drawn on a 320x180 art grid and exported 3x. Scenes keep 960x540 coordinates; positions, sizes and margins are multiples of 3 so every art pixel lands on a whole 3x3 block.
+- **Font (D4).** Own 3x5 capitals-only bitmap font (`assets/fonts/sinkhole_3x5.fnt`, lowercase draws as capitals) at 15 px (1x) and 30 px (2x title), plus `sinkhole_3x5_outline.fnt` for damage numbers, name tags and anything drawn over the world. Resolves this spec's open font question.
+- **9-slice pieces (`gen_ui.py`):**
+  - Panels: iron (default), brass (selected, hover, focus), violet (cursed).
+  - Boards: wood plank with nails (signs, player plate, weapon card, action bar backing), parchment with torn edge (Pip's map, dialogue body).
+  - Labels: ribbon banner with tails (popup titles), tag chip (synergies, floor modifiers), keycap.
+  - Slots: octagonal sockets in 18 and 24 drawn px, with rim sets for ability school, party colour and rarity; relic slots per rarity.
+  - Bars: HP with heart cap and chip layer, class resource, teammate, boss with skull caps and phase ticks.
+  - Small sprites: lantern cursor, chain, advance arrow.
+- **Type variations:** `PlankPanel`, `ParchmentPanel`, `RibbonLabel`, `TagChip`, `KeyCap`, `DamageNumber`, `NameTag`.
+- **Colours:** text uses palette `bone`, secondary text `ash`, accent and selection `lamp`. Party slots are P1 `lamp`, P2 `party_teal`, P3 `party_rose`, P4 `party_lime`. Rarity uses `rarity_v2`. Element colours are unchanged.
+- **HUD layout (AR-13 to AR-16)** follows `docs/art-direction/v2/shots/hud.png`:
+  - Top left: player plate and teammate stack.
+  - Top centre: floor sign on chains, with the modifier tag and enemy count.
+  - Top right: Pip's parchment map, with currencies and the pickup feed below it.
+  - Bottom left: synergy tags and relic strip.
+  - Bottom centre: action bar.
+  - Bottom right: weapon card.
+
 ### Data flow
 
 The HUD never queries gameplay nodes directly. It binds to `RunPlayerState` (replicated), `Player` signals for the local player, and `Events` (client-emitted copies). A `HudModel` adapter exposes typed properties the widgets bind to, so the same HUD works on host and client.
@@ -98,4 +119,4 @@ Sync: none owned; reads replicated state.
 
 ## Open questions
 
-- Pixel font choice (CC0) decided week 2.
+- Pixel font choice (CC0) decided week 2. Superseded 2026-10-24 (D4): own 3x5 bitmap font, see "v2 theme". Still open: whether the v1 5x7 face stays for lore and long text (decided at the AR-10 font review).

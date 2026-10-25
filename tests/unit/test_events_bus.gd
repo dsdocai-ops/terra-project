@@ -31,9 +31,8 @@ const TYPE_MAP: Dictionary[String, String] = {
 	# real classes that already exist in this repo
 	"Player": "Player",
 	"RunResult": "RunResult",
-	# the week-2 mirror of combat-core's `HitInfo`: field names match, so the
-	# swap-in is mechanical when W2-A1 lands
-	"HitInfo": "HitData",
+	# combat-core's payload class
+	"HitInfo": "HitInfo",
 	# `RelicData` is a real class — `relic_picked` and `relic_removed` carry it
 	# and the TODO line that used to pin the swap is gone. `SynergyData` is a
 	# different resource of the same module and keeps its placeholder until the
@@ -253,11 +252,11 @@ func _placeholder_types(spec: Array) -> Array[String]:
 
 func test_the_spec_table_parses_and_names_every_signal_it_documents() -> void:
 	var spec: Array[Dictionary] = _spec_signals()
-	assert_eq(spec.size(), 37, "the spec's Events bus declares 37 signals")
+	assert_eq(spec.size(), 38, "the spec's Events bus declares 38 signals")
 	var names: Array[String] = []
 	for sig: Dictionary in spec:
 		names.append(String(sig["name"]))
-	assert_eq(names.size(), 37)
+	assert_eq(names.size(), 38)
 	assert_true(names.has("hit_landed"))
 	assert_true(names.has("miner_rescued"), "the last signal in the spec block parses too")
 	assert_false(_spec_client_signals().is_empty(), "the client-emitted list parses out of the spec")
@@ -275,7 +274,7 @@ func test_every_signal_has_the_spec_parameter_names_count_and_type() -> void:
 
 func test_real_classes_are_declared_not_their_placeholders() -> void:
 	var runtime: Dictionary = _runtime_signals()
-	# `RunResult` and `HitData` both exist in this repo, so their signals must
+	# `RunResult` and `HitInfo` both exist in this repo, so their signals must
 	# name them rather than the `RefCounted` / `Node` base.
 	for sig_name: String in ["run_ended"]:
 		assert_true(runtime.has(sig_name), sig_name)
@@ -285,7 +284,7 @@ func test_real_classes_are_declared_not_their_placeholders() -> void:
 		assert_true(runtime.has(sig_name), sig_name)
 		var args: Array = runtime[sig_name]
 		var hit_index: int = 0 if sig_name in ["hit_landed", "crit_landed"] else 1
-		assert_eq(String(args[hit_index]["type_name"]), "HitData", "%s carries the hit payload class" % sig_name)
+		assert_eq(String(args[hit_index]["type_name"]), "HitInfo", "%s carries the hit payload class" % sig_name)
 
 
 func test_the_specs_client_emitted_signals_are_all_present() -> void:
@@ -360,7 +359,6 @@ func test_every_placeholder_type_is_pinned_to_a_todo_with_its_owner() -> void:
 
 func test_the_placeholder_pins_are_specific_about_who_unblocks_them() -> void:
 	var expected_owners: Dictionary[String, String] = {
-		"HitInfo": "combat-core",
 		"Projectile": "combat-core",
 		"Enemy": "enemies-ai",
 		"Room": "floor-generation",

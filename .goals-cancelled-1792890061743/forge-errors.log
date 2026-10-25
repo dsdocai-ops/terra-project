@@ -1,0 +1,30 @@
+[2026-10-23T16:15:09.093Z] step 1 work
+exit 1 (no result): Step stopped by the watchdog: ran over 90 minutes.
+[claude-code:unrecognized_model] {"model":"z-ai/glm-5.3-flash:floor","query_source":"generate_session_title"}
+⚠ claude.ai connectors are disabled because ANTHROPIC_API_KEY or another auth source is set and takes precedence over your claude.ai login · Unset it to load your organization's connectors
+
+[2026-10-23T18:53:02.328Z] step 4 work
+exit 1 (no result): Step stopped by the watchdog: ran over 90 minutes.
+[claude-code:unrecognized_model] {"model":"z-ai/glm-5.3-flash:floor","query_source":"generate_session_title"}
+⚠ claude.ai connectors are disabled because ANTHROPIC_API_KEY or another auth source is set and takes precedence over your claude.ai login · Unset it to load your organization's connectors
+
+[2026-10-23T20:24:06.063Z] step 4 work
+exit 1 (no result): Step stopped by the watchdog: ran over 90 minutes.
+[claude-code:unrecognized_model] {"model":"z-ai/glm-5.3-flash:floor","query_source":"generate_session_title"}
+⚠ claude.ai connectors are disabled because ANTHROPIC_API_KEY or another auth source is set and takes precedence over your claude.ai login · Unset it to load your organization's connectors
+
+[2026-10-23T21:59:09.675Z] step 4 work
+exit 1 (no result): Step stopped by the watchdog: ran over 90 minutes.
+[claude-code:unrecognized_model] {"model":"z-ai/glm-5.3-flash:floor","query_source":"generate_session_title"}
+⚠ claude.ai connectors are disabled because ANTHROPIC_API_KEY or another auth source is set and takes precedence over your claude.ai login · Unset it to load your organization's connectors
+
+[2026-10-24T00:10:42.464Z] step 5 work
+exit 1 (error result): API Error: stream closed before completion
+[claude-code:unrecognized_model] {"model":"z-ai/glm-5.3-flash:floor","query_source":"generate_session_title"}
+⚠ claude.ai connectors are disabled because ANTHROPIC_API_KEY or another auth source is set and takes precedence over your claude.ai login · Unset it to load your organization's connectors
+
+[2026-10-24T04:47:26.994Z] step 10 work
+exit 1 (no result): Step stopped by the watchdog: ran over 90 minutes.
+[claude-code:unrecognized_model] {"model":"z-ai/glm-5.3-flash:floor","query_source":"generate_session_title"}
+⚠ claude.ai connectors are disabled because ANTHROPIC_API_KEY or another auth source is set and takes precedence over your claude.ai login · Unset it to load your organization's connectors
+

@@ -1,0 +1,13 @@
+[gd_resource type="Resource" script_class="BiomeData" format=3]
+
+[ext_resource type="Script" path="res://scripts/data/biome_data.gd" id="1_biome"]
+
+[resource]
+script = ExtResource("1_biome")
+biome_index = 1
+room_size_min = Vector2i(12, 10)
+room_size_max = Vector2i(22, 16)
+lore_floor = 4
+tint = Color(1, 0.92, 0.8, 1)
+id = &"collapsed_mines"
+display_name = "Collapsed Mines"

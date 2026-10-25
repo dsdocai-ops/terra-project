@@ -59,10 +59,9 @@ func _reset_autoloads() -> void:
 
 
 func _on_floor_changed(floor_index: int, biome: Resource) -> void:
-	var placeholder: BiomePlaceholder = biome as BiomePlaceholder
 	_floors.append({
 		"floor_index": floor_index,
-		"biome_id": placeholder.id if placeholder != null else 0,
+		"biome_id": FloorGeneratorStub.biome_id_of(biome),
 	})
 
 
@@ -121,7 +120,7 @@ func test_the_host_generates_the_floor_from_its_own_broadcast() -> void:
 	assert_eq(NetworkManager.floor_seed, 4242)
 	assert_not_null(NetworkManager.last_floor_layout, "the host generated the floor too")
 	assert_eq(FloorGeneratorSeam.layout_hash_of(NetworkManager.last_floor_layout),
-		FloorLayoutPlaceholder.for_floor(4242, 2, 1, [] as Array[int]).layout_hash,
+		FloorGeneratorSeam.layout_hash_of(FloorGeneratorSeam.generate(4242, 2, 1, [] as Array[int])),
 		"same inputs, same layout hash")
 	assert_eq(_floors.size(), 0, "the host already emitted floor_changed from its own run state")
 
@@ -132,7 +131,7 @@ func test_a_client_generates_locally_and_follows_the_hosts_floor() -> void:
 	assert_not_null(layout, "the client generated a layout locally")
 	assert_eq(NetworkManager.floor_seed, 777)
 	assert_eq(FloorGeneratorSeam.layout_hash_of(layout),
-		FloorLayoutPlaceholder.for_floor(777, 4, 2, [3] as Array[int]).layout_hash)
+		FloorGeneratorSeam.layout_hash_of(FloorGeneratorSeam.generate(777, 4, 2, [3] as Array[int])))
 	assert_eq(GameState.remote_floor_index, 4, "the client recorded the host's floor")
 	assert_eq(GameState.remote_floor_modifiers, [3] as Array[int])
 	assert_eq(_floors.size(), 1, "and told GameState, so the HUD follows")
@@ -182,7 +181,7 @@ func test_the_launch_arg_seed_reaches_the_broadcast() -> void:
 	assert_eq(GameState.run.seed, FORCED_SEED, "start_run used the launch-arg seed")
 	assert_eq(NetworkManager.floor_seed, FORCED_SEED, "and that is the seed floor_ready carried")
 	assert_eq(FloorGeneratorSeam.layout_hash_of(NetworkManager.last_floor_layout),
-		FloorLayoutPlaceholder.for_floor(FORCED_SEED, 1, 1, [] as Array[int]).layout_hash,
+		FloorGeneratorSeam.layout_hash_of(FloorGeneratorSeam.generate(FORCED_SEED, 1, 1, [] as Array[int])),
 		"both peers would hash the same floor from it")
 
 
@@ -199,7 +198,7 @@ func test_next_floor_broadcasts_the_new_floor() -> void:
 	GameState.start_run(0, 1, _party([HOST_PEER]))
 	assert_eq(NetworkManager.floor_seed, FORCED_SEED)
 	GameState.next_floor()
-	var layout: FloorLayoutPlaceholder = NetworkManager.last_floor_layout as FloorLayoutPlaceholder
+	var layout: FloorLayout = NetworkManager.last_floor_layout as FloorLayout
 	assert_not_null(layout, "floor 2 was generated locally")
 	assert_eq(layout.floor_index, 2, "floor 2 went out on the same run seed")
 	assert_eq(NetworkManager.floor_seed, FORCED_SEED, "the run seed did not change")
@@ -211,7 +210,7 @@ func test_the_broadcast_carries_the_floors_biome() -> void:
 	GameState.start_run(0, 6, _party([HOST_PEER]))
 	assert_eq(GameState.run.biome_index, 2, "floor 6 is biome 2")
 	assert_eq(FloorGeneratorSeam.layout_hash_of(NetworkManager.last_floor_layout),
-		FloorLayoutPlaceholder.for_floor(FORCED_SEED, 6, 2, [] as Array[int]).layout_hash,
+		FloorGeneratorSeam.layout_hash_of(FloorGeneratorSeam.generate(FORCED_SEED, 6, 2, [] as Array[int])),
 		"generation used the biome the broadcast named")
 
 
@@ -270,7 +269,7 @@ func test_the_host_hashes_the_layout_it_asserts() -> void:
 	NetworkManager.broadcast_floor_ready(4242, 2, 1, [] as Array[int])
 	assert_eq(NetworkManager.last_floor_index, 2, "the asserted hash names its floor")
 	assert_eq(NetworkManager.last_floor_hash,
-		FloorLayoutPlaceholder.for_floor(4242, 2, 1, [] as Array[int]).layout_hash,
+		FloorGeneratorSeam.layout_hash_of(FloorGeneratorSeam.generate(4242, 2, 1, [] as Array[int])),
 		"the host asserts the hash of the layout it generated")
 
 
@@ -308,22 +307,22 @@ func test_the_hosts_layout_replaces_the_clients_own_after_a_mismatch() -> void:
 	_become_client()
 	var local: RefCounted = NetworkManager.apply_floor_ready(777, 4, 2, [] as Array[int])
 	var local_hash: int = FloorGeneratorSeam.layout_hash_of(local)
-	var host_hash: int = local_hash + 7
+	var host_layout: FloorLayout = FloorGenerator.generate(778, 4, BiomeData.for_index(2), [] as Array[int])
+	var host_hash: int = host_layout.layout_hash
+	assert_ne(host_hash, local_hash, "the two floors differ")
 	# The host answers with its own layout, so nothing may be generated here.
 	var stub := FloorGeneratorStub.new()
 	FloorGeneratorSeam.set_injected_generator(stub)
-	var host_wire: Dictionary = FloorGeneratorSeam.serialize_layout(local)
-	host_wire["layout_hash"] = host_hash
-	host_wire["room_count"] = 1
-	host_wire["rooms"] = PackedInt32Array([5, 6, 7, 8])
+	var host_wire: Dictionary = FloorGeneratorSeam.serialize_layout(host_layout)
 	var applied: RefCounted = NetworkManager.apply_host_layout(4, host_hash, host_wire)
 	assert_not_null(applied, "the client applied the host's layout")
 	assert_eq(stub.calls.size(), 0, "the fallback applies what the host sent instead of regenerating")
 	assert_eq(NetworkManager.last_floor_hash, host_hash, "the client now holds the host's hash")
 	assert_eq(FloorGeneratorSeam.layout_hash_of(NetworkManager.last_floor_layout), host_hash)
-	var placeholder: FloorLayoutPlaceholder = NetworkManager.last_floor_layout as FloorLayoutPlaceholder
-	assert_not_null(placeholder, "the host's layout replaced the client's")
-	assert_eq(placeholder.rooms, [Rect2i(5, 6, 7, 8)] as Array[Rect2i], "the host's rooms, not the client's")
+	var held: FloorLayout = NetworkManager.last_floor_layout as FloorLayout
+	assert_not_null(held, "the host's layout replaced the client's")
+	assert_eq(held.rooms.size(), host_layout.rooms.size(), "the host's rooms, not the client's")
+	assert_eq(held.rooms[0].rect, host_layout.rooms[0].rect)
 	assert_eq(NetworkManager.last_floor_index, 4, "the fallback names the floor it corrected")
 	assert_eq(NetworkManager.floor_seed, 777, "the run seed is untouched")
 	assert_eq(_floors.size(), 1, "applying the fallback does not re-announce the floor")
@@ -353,16 +352,15 @@ func test_an_unusable_layout_reply_leaves_the_client_where_it_was() -> void:
 # --- the layout wire form (the fallback's payload) --------------------------
 
 func test_a_wire_round_trip_preserves_a_layout() -> void:
-	var layout := FloorLayoutPlaceholder.for_floor(4242, 3, 2, [5] as Array[int])
+	var layout: FloorLayout = FloorGenerator.generate(4242, 3, BiomeData.for_index(2), [5] as Array[int])
 	var wire: Dictionary = FloorGeneratorSeam.serialize_layout(layout)
 	assert_false(wire.is_empty(), "the placeholder has a wire form")
 	var rebuilt: RefCounted = FloorGeneratorSeam.deserialize_layout(wire)
 	assert_not_null(rebuilt, "and rebuilds from it")
 	assert_eq(FloorGeneratorSeam.layout_hash_of(rebuilt), layout.layout_hash, "the hash travels with it")
-	var placeholder: FloorLayoutPlaceholder = rebuilt as FloorLayoutPlaceholder
+	var placeholder: FloorLayout = rebuilt as FloorLayout
 	assert_not_null(placeholder)
-	assert_eq(placeholder.rooms, layout.rooms, "so do the rooms")
-	assert_eq(placeholder.room_count, layout.room_count)
+	assert_eq(placeholder.rooms.size(), layout.rooms.size(), "so do the rooms")
 	assert_eq(placeholder.modifiers, layout.modifiers)
 	assert_eq(placeholder.seed, 4242)
 	assert_eq(placeholder.floor_index, 3)
@@ -383,21 +381,19 @@ func test_the_seam_calls_dev_as_generator_when_one_is_injected() -> void:
 	assert_eq(stub.calls.size(), 1, "the seam called the injected generator once")
 	assert_eq(stub.calls[0]["run_seed"], 11)
 	assert_eq(stub.calls[0]["floor_index"], 3)
-	var biome: BiomePlaceholder = stub.calls[0]["biome"] as BiomePlaceholder
-	assert_not_null(biome, "the seam passed a biome resource, as the spec's generate() takes")
-	assert_eq(biome.id, 2)
+	assert_eq(FloorGeneratorStub.biome_id_of(stub.calls[0]["biome"]), 2, "the seam passed a biome resource, as the spec's generate() takes")
 	assert_eq(FloorGeneratorSeam.layout_hash_of(layout), FloorGeneratorStub.stub_hash(11, 3),
 		"the seam returned the generator's layout, not a stand-in")
 	assert_eq(FloorGeneratorSeam.source_of(layout), FloorGeneratorStub.SOURCE)
 
 
-func test_without_a_generator_the_seam_uses_the_lane_b_placeholder() -> void:
+func test_without_an_injected_generator_the_seam_uses_floor_generation() -> void:
 	FloorGeneratorSeam.clear_injected_generator()
 	var layout: RefCounted = FloorGeneratorSeam.generate(11, 3, 2, [] as Array[int])
 	assert_not_null(layout)
-	assert_eq(FloorGeneratorSeam.source_of(layout), FloorLayoutPlaceholder.SOURCE)
+	assert_eq(FloorGeneratorSeam.source_of(layout), FloorLayout.SOURCE)
 	assert_eq(FloorGeneratorSeam.layout_hash_of(layout),
-		FloorLayoutPlaceholder.for_floor(11, 3, 2, [] as Array[int]).layout_hash)
+		FloorGeneratorSeam.layout_hash_of(FloorGeneratorSeam.generate(11, 3, 2, [] as Array[int])))
 
 
 func test_the_placeholder_layout_is_deterministic_and_seed_sensitive() -> void:
@@ -412,9 +408,9 @@ func test_the_placeholder_layout_is_deterministic_and_seed_sensitive() -> void:
 	assert_between(one.room_count, FloorLayoutPlaceholder.MIN_ROOMS, FloorLayoutPlaceholder.MAX_ROOMS)
 
 
-func test_modifiers_carry_no_roll_until_floor_generation_lands() -> void:
-	assert_eq(FloorGeneratorSeam.roll_modifiers(4242, 2), [] as Array[int],
-		"the modifier roll is Dev A's (blocked on Dev A W3-A1); the field still travels")
+func test_the_modifier_roll_is_deterministic_and_capped() -> void:
+	assert_eq(FloorGeneratorSeam.roll_modifiers(4242, 20), FloorGeneratorSeam.roll_modifiers(4242, 20))
+	assert_lte(FloorGeneratorSeam.roll_modifiers(4242, 20).size(), FloorGenerator.MAX_MODIFIERS)
 
 
 # --- helpers ----------------------------------------------------------------

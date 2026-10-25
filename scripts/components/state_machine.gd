@@ -7,8 +7,12 @@ extends Node
 ##
 ## Children of type State are the states, looked up by node name. Set
 ## `initial_state` to enter one on ready. States may refuse transitions with
-## can_exit() / can_enter(). `time_scale` scales the delta passed to the
-## current state so TimeManager can slow or stop an entity (week 2).
+## can_exit() / can_enter(). The delta passed to the current state is scaled by
+## `time_scale` and by `TimeManager.scale_for(get_parent())`, so slows, time stops and
+## hit-stop (combat-core, C1) reach every state without each one asking. At a
+## scale of 0 the state is not stepped at all, which freezes anything that moves
+## itself with `move_and_slide`. States that set `velocity` directly multiply it
+## by `effective_scale` so a partial slow slows the motion too.
 ##
 ## The machine steps itself in _physics_process and forwards unhandled input
 ## to the current state. The owner decides whether that should happen on
@@ -22,6 +26,8 @@ signal state_changed(from: StringName, to: StringName)
 
 ## Multiplier applied to delta before it reaches the current state.
 var time_scale: float = 1.0
+## `time_scale` times the actor's TimeManager scale, as of the last step.
+var effective_scale: float = 1.0
 var current: State = null
 
 var _states: Dictionary[StringName, State] = {}
@@ -60,8 +66,9 @@ func _unhandled_input(event: InputEvent) -> void:
 
 ## Drives the current state. Public so tests and owners can step manually.
 func physics_update(delta: float) -> void:
-	if current != null:
-		current.physics_update(delta * time_scale)
+	effective_scale = time_scale * TimeManager.scale_for(get_parent() if get_parent() != null else self)
+	if current != null and effective_scale > 0.0:
+		current.physics_update(delta * effective_scale)
 
 
 ## Returns true when the transition happened. Refused when the state is

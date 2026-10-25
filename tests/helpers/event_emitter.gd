@@ -63,6 +63,7 @@ const SIGNAL_NAMES: Array[StringName] = [
 	&"enemy_spawned",
 	&"enemy_killed",
 	&"elite_killed",
+	&"enemy_staggered",
 	&"boss_defeated",
 	# status (stats-status)
 	&"status_applied",
@@ -219,6 +220,12 @@ func emit_elite_killed() -> void:
 	var enemy: EnemyBaseStub = _enemy()
 	enemy.elite = true
 	Events.elite_killed.emit(enemy, _hit())
+
+
+func emit_enemy_staggered() -> void:
+	var hit: HitInfo = _hit()
+	hit.staggered = true
+	Events.enemy_staggered.emit(_enemy(), hit)
 
 
 func emit_boss_defeated() -> void:
@@ -388,8 +395,8 @@ func _relic() -> RelicData:
 	return relic
 
 
-func _hit() -> HitData:
-	var hit: HitData = HitData.new()
+func _hit() -> HitInfo:
+	var hit: HitInfo = HitInfo.new()
 	hit.base_damage = FAKE_HIT_BASE_DAMAGE
 	hit.tags = [&"emitter"] as Array[StringName]
 	return hit

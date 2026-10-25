@@ -29,8 +29,8 @@ var scene: PackedScene = null
 var speed: float = 0.0
 ## Base damage before `Damage.compute` scaling.
 var damage: float = 0.0
-## Drives status application and VFX colour (`HitData.Element`).
-var element: HitData.Element = HitData.Element.NONE
+## Drives status application and VFX colour (`HitInfo.Element`).
+var element: HitInfo.Element = HitInfo.Element.NONE
 ## How many targets the projectile passes through before it stops.
 var pierce: int = 0
 ## How many times it ricochets off a wall or target.
@@ -41,7 +41,7 @@ func _init(
 	p_scene: PackedScene = null,
 	p_speed: float = 0.0,
 	p_damage: float = 0.0,
-	p_element: HitData.Element = HitData.Element.NONE,
+	p_element: HitInfo.Element = HitInfo.Element.NONE,
 	p_pierce: int = 0,
 	p_bounce: int = 0,
 ) -> void:
@@ -82,7 +82,7 @@ static func from_dict(data: Dictionary) -> ProjectileSpec:
 			spec.scene = loaded
 	spec.speed = float(data.get(KEY_SPEED, 0.0))
 	spec.damage = float(data.get(KEY_DAMAGE, 0.0))
-	spec.element = _element_from(data.get(KEY_ELEMENT, int(HitData.Element.NONE)))
+	spec.element = _element_from(data.get(KEY_ELEMENT, int(HitInfo.Element.NONE)))
 	spec.pierce = int(data.get(KEY_PIERCE, 0))
 	spec.bounce = int(data.get(KEY_BOUNCE, 0))
 	return spec
@@ -91,23 +91,23 @@ static func from_dict(data: Dictionary) -> ProjectileSpec:
 ## Written as a `match` rather than an int cast so an out-of-range value can
 ## never become a valid element by accident (and so the conversion raises no
 ## int-to-enum warning).
-static func _element_from(raw: Variant) -> HitData.Element:
+static func _element_from(raw: Variant) -> HitInfo.Element:
 	match int(raw):
-		HitData.Element.FIRE:
-			return HitData.Element.FIRE
-		HitData.Element.FROST:
-			return HitData.Element.FROST
-		HitData.Element.STORM:
-			return HitData.Element.STORM
-		HitData.Element.SHADOW:
-			return HitData.Element.SHADOW
-		HitData.Element.POISON:
-			return HitData.Element.POISON
-		HitData.Element.EARTH:
-			return HitData.Element.EARTH
-		HitData.Element.BLOOD:
-			return HitData.Element.BLOOD
-		HitData.Element.VOID:
-			return HitData.Element.VOID
+		HitInfo.Element.FIRE:
+			return HitInfo.Element.FIRE
+		HitInfo.Element.FROST:
+			return HitInfo.Element.FROST
+		HitInfo.Element.STORM:
+			return HitInfo.Element.STORM
+		HitInfo.Element.SHADOW:
+			return HitInfo.Element.SHADOW
+		HitInfo.Element.POISON:
+			return HitInfo.Element.POISON
+		HitInfo.Element.EARTH:
+			return HitInfo.Element.EARTH
+		HitInfo.Element.BLOOD:
+			return HitInfo.Element.BLOOD
+		HitInfo.Element.VOID:
+			return HitInfo.Element.VOID
 		_:
-			return HitData.Element.NONE
+			return HitInfo.Element.NONE

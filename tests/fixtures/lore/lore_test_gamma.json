@@ -1,0 +1,8 @@
+{
+	"id": "lore.test_gamma",
+	"title": "Deeper Still",
+	"body": "The gamma page: biome 3, never chosen when the populator asks for biome 2.",
+	"biome": 3,
+	"act": 2,
+	"order": 1
+}

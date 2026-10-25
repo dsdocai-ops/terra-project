@@ -84,7 +84,7 @@ class TrackedEffect:
 	func _on_timer() -> void:
 		timer_calls += 1
 
-	func _on_enemy_killed(_enemy: Node, _hit: HitData) -> void:
+	func _on_enemy_killed(_enemy: Node, _hit: HitInfo) -> void:
 		kills_seen += 1
 
 	func _on_room_cleared(_room: Node) -> void:
@@ -130,6 +130,15 @@ func _make_player(with_stat_block: bool) -> Player:
 			StatBlock.Stat.ATTACK: 100.0,
 			StatBlock.Stat.MOVE_SPEED: 120.0,
 		}
+	else:
+		# The scene ships the StatBlock component; a bare player swaps it for a
+		# plain Node so the guarded no-op path runs.
+		var scene_block: Node = player.get_node(STAT_BLOCK_NODE)
+		player.remove_child(scene_block)
+		scene_block.free()
+		var plain := Node.new()
+		plain.name = str(STAT_BLOCK_NODE)
+		player.add_child(plain)
 	add_child_autofree(player)
 	return player
 
@@ -144,8 +153,8 @@ func _attach(effect: Effect, source: ContentData = null, stacks: int = 1) -> Eff
 
 ## A hit payload at `depth`, for the proc-gate case: the only thing that makes
 ## an event a link in a proc chain.
-func _hit_at_depth(depth: int) -> HitData:
-	var hit := HitData.new()
+func _hit_at_depth(depth: int) -> HitInfo:
+	var hit := HitInfo.new()
 	hit.proc_depth = depth
 	return hit
 

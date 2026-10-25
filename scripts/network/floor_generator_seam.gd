@@ -133,6 +133,8 @@ static func deserialize_layout(data: Dictionary) -> RefCounted:
 	if data.is_empty():
 		return null
 	var source: StringName = StringName(str(data.get("source", "")))
+	if source == FloorLayout.SOURCE:
+		return FloorLayout.from_wire(data)
 	if source != FloorLayoutPlaceholder.SOURCE:
 		return null
 	return FloorLayoutPlaceholder.from_wire(data)

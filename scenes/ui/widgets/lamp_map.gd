@@ -16,6 +16,14 @@ var grid_tiles: int = 96:
 	set(value):
 		grid_tiles = maxi(value, 1)
 		queue_redraw()
+## Off until a floor reports visits: every room shows. On, only rooms the player has
+## entered (`visited`) show; everything else is black.
+var fog: bool = false
+## Room indices the local player has entered.
+var visited: Dictionary = {}:
+	set(value):
+		visited = value
+		queue_redraw()
 ## Index into `rooms` of the room the local player is in; -1 for none.
 var current_room: int = 0:
 	set(value):
@@ -49,8 +57,11 @@ func _draw() -> void:
 	for index: int in rooms.size():
 		points.append(center + room_offset(index) * diameter * 1.1)
 	for index: int in range(1, points.size()):
-		UiPalette.line(self, points[index - 1], points[index], Color(0.42, 0.31, 0.19), 2)
+		if is_revealed(index) and is_revealed(index - 1):
+			UiPalette.line(self, points[index - 1], points[index], Color(0.42, 0.31, 0.19), 2)
 	for index: int in points.size():
+		if not is_revealed(index):
+			continue
 		var point: Vector2 = points[index]
 		if point.distance_to(center) > glass_radius:
 			point = center + (point - center).normalized() * glass_radius
@@ -64,3 +75,13 @@ func _draw() -> void:
 		UiPalette.ring(self, point, room_radius, 2.0, tint)
 		if index == current_room:
 			UiPalette.fill_circle(self, point, room_radius * 0.5, Color.WHITE)
+
+
+## True when the room has been entered (or fog is off).
+func is_explored(index: int) -> bool:
+	return not fog or visited.has(index)
+
+
+## True when the room is drawn at all: only rooms the player has entered.
+func is_revealed(index: int) -> bool:
+	return is_explored(index)

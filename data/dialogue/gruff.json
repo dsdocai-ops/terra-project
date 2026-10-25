@@ -1,0 +1,123 @@
+{
+	"id": "gruff",
+	"entries": [
+		{
+			"id": "intro",
+			"priority": 60,
+			"conditions": { "flag_not": "story.met_gruff" },
+			"lines": [
+				{ "speaker": "Gruff", "text": "Mind the sparks, warden. Or don't — it's your face.", "emotion": "gruff" },
+				{ "speaker": "Gruff", "text": "Blacksmith. Thirty years at this anvil, and the mine still finds ways to surprise me.", "emotion": "grim" }
+			],
+			"choices": [
+				{ "text": "What do you smith, with the mine sealed?", "goto": "intro_sealed" },
+				{ "text": "Good luck with the anvil.", "end": true }
+			]
+		},
+		{
+			"id": "intro_sealed",
+			"priority": 5,
+			"lines": [
+				{ "speaker": "Gruff", "text": "Hoes. Hinges. Hopes. A town doesn't stop needing iron because its source stopped cooperating.", "emotion": "gruff" },
+				{ "speaker": "Gruff", "text": "Bring ore up from a shallow level and I'll tell you what it's good for. Nothing fancy.", "emotion": "proud" }
+			],
+			"choices": [
+				{ "text": "Noted.", "end": true }
+			]
+		},
+		{
+			"id": "act_1",
+			"priority": 10,
+			"conditions": { "flag": "story.foreman_defeated" },
+			"lines": [
+				{ "speaker": "Gruff", "text": "I heard the hammer through three floors of rock. You finally put the big shadow down.", "emotion": "grim" },
+				{ "speaker": "Gruff", "text": "Foreman Hollis carried the mine on his back for twenty years. Shame what it made of him.", "emotion": "distant" }
+			],
+			"choices": [
+				{ "text": "You knew him well?", "goto": "act_1_hollis" },
+				{ "text": "Rest well, Gruff.", "end": true }
+			]
+		},
+		{
+			"id": "act_1_hollis",
+			"priority": 5,
+			"lines": [
+				{ "speaker": "Gruff", "text": "Knew him? I was his witness when he married. He owed me a crowbar until the end.", "emotion": "gruff" },
+				{ "speaker": "Gruff", "text": "Now there's an old joke I can finally stop carrying. Feels worse than I thought it would.", "emotion": "distant" }
+			],
+			"choices": [
+				{ "text": "Understood.", "end": true }
+			]
+		},
+		{
+			"id": "act_1_possessed",
+			"priority": 15,
+			"conditions": { "flag": "story.miners_possessed" },
+			"lines": [
+				{ "speaker": "Gruff", "text": "The miners are walking again. I've hammered ore from that vein for thirty years — never heard it scream before.", "emotion": "grim" },
+				{ "speaker": "Gruff", "text": "If any of them come to my forge with that smile, send them to me. I know how to hold a heavy thing still.", "emotion": "resolute" }
+			],
+			"choices": [
+				{ "text": "You won't have to, Gruff.", "end": true }
+			]
+		},
+		{
+			"id": "act_1_copper",
+			"priority": 5,
+			"conditions": { "ore_min": { "ore": "copper", "min": 1 } },
+			"lines": [
+				{ "speaker": "Gruff", "text": "You've been swinging a pick, then. I can smell copper on a person from across the square.", "emotion": "proud" }
+			]
+		},
+		{
+			"id": "act_1_brann",
+			"priority": 5,
+			"conditions": {
+				"all": [
+					{ "flag": "char.brann_unlocked" },
+					{ "character": "brann" }
+				]
+			},
+			"lines": [
+				{ "speaker": "Gruff", "text": "Brann. Your brother would have liked the warden's answer to things. Swing first, ask after.", "emotion": "distant" }
+			]
+		},
+		{
+			"id": "act_2_stub",
+			"priority": 8,
+			"conditions": { "act_min": 2 },
+			"lines": [
+				{ "speaker": "Gruff", "text": "The ore that comes up now sings when I quench it. Don't ask what that means. I don't know yet.", "emotion": "grim" }
+			]
+		},
+		{
+			"id": "act_3_stub",
+			"priority": 30,
+			"conditions": { "act_min": 3 },
+			"lines": [
+				{ "speaker": "Gruff", "text": "Whatever you're carrying back from the deep, don't leave it lying about my forge. Last time it walked.", "emotion": "worried" }
+			]
+		},
+		{
+			"id": "endings_stub",
+			"priority": 40,
+			"conditions": {
+				"any": [
+					{ "flag": "ending.seal" },
+					{ "flag": "ending.keeper" },
+					{ "flag": "ending.true" }
+				]
+			},
+			"lines": [
+				{ "speaker": "Gruff", "text": "The anvil's cold for the first time in thirty years. Strange, that quiet.", "emotion": "distant" }
+			]
+		},
+		{
+			"id": "default",
+			"priority": 0,
+			"lines": [
+				{ "speaker": "Gruff", "text": "Anvil's hot. Say what you came to say.", "emotion": "gruff" }
+			]
+		}
+	]
+}

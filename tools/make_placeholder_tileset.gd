@@ -1,5 +1,5 @@
 extends SceneTree
-## Builds assets/tilesets/placeholder_iso.tres (the path scenes load) from the Collapsed Mines atlas that tools/art/gen_tiles.py draws: 64x64 cells, a 64x32 ground diamond centred in each, so a wall can rise above it.
+## Builds assets/tilesets/placeholder_iso.tres (the path scenes load) from the Collapsed Mines atlas that tools/art/gen_tiles_v2.py draws (64x96 cells), or a <biome>_iso.tres from a gen_tiles.py atlas (64x64 cells). The cell size comes from the atlas; each cell centres a 64x32 ground diamond so a wall can rise above it.
 ## Owned by foundation. Sync: none.
 ##
 ## Run after tools/make_placeholders.gd and a `--import` (the atlas PNG must be
@@ -18,6 +18,9 @@ var _out_path: String = ""
 ## Collision diamond in tile-local space (origin at tile center).
 const DIAMOND: Array[Vector2] = [Vector2(0, -16), Vector2(32, 0), Vector2(0, 16), Vector2(-32, 0)]
 const TILE_COORDS: Array[Vector2i] = [Tiles.WALL, Tiles.PIT]
+## Atlas grid: FLOOR, WALL, PIT on row 0, the extra floor variants on row 1.
+const ATLAS_COLUMNS := 3
+const ATLAS_ROWS := 2
 
 
 func _init() -> void:
@@ -41,7 +44,8 @@ func _init() -> void:
 
 	var source := TileSetAtlasSource.new()
 	source.texture = texture
-	source.texture_region_size = Vector2i(64, 64)
+	# 3 columns x 2 rows: v1 biomes ship 64x64 cells, v2 biomes 64x96.
+	source.texture_region_size = Vector2i(texture.get_width() / ATLAS_COLUMNS, texture.get_height() / ATLAS_ROWS)
 	tile_set.add_source(source, Tiles.SOURCE)
 
 	for coords: Vector2i in Tiles.FLOOR_VARIANTS:

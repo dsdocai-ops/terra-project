@@ -345,7 +345,7 @@ static func place_in(room: Node, count: int = 1) -> Array[Chest]:
 		# TODO(floor-generation, W3-A2): sit on RoomSpec's interactable anchor
 		# once Room exposes it; the room's origin is the stand-in, as it is for
 		# the rope and the shrine.
-		chest.position = Vector2.ZERO
+		chest.position = RoomFurniture.spot(chest_index, count)
 		room.add_child(chest)
 		spawned.append(chest)
 	return spawned

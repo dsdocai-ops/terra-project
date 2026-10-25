@@ -1,0 +1,73 @@
+{
+	"_doc": "Reserved story flag names, grouped by namespace (SPEC-story-dialogue, week 6). Every flag a dialogue condition or progression hook can set or check must be declared here; the names are the contract between content and code. \"persist\": true marks an UNLOCK_FLAGS flag - set_flag writes it straight to the profile the moment it is set; everything else lives for the run and merges at run end through PlayerProfile.merge_run_gains. Authored by story-dialogue, week 6 Dev B.",
+	"flags": {
+		"story": {
+			"foreman_defeated": { "persist": true, "note": "Act 1 gate: The Foreman falls (SINKHOLE_SPEC section 11). Unlocks Brann and the Abyss tree." },
+			"miners_possessed": { "persist": true, "note": "Act 1 beat: the miners are not dead, they are possessed." },
+			"pit_calls": { "persist": true, "note": "Act 1 beat: the pit calls to people." },
+			"act2_started": { "persist": true, "note": "Act 2 has begun (SPEC example flag)." },
+			"vulkar_journals": { "persist": true, "note": "Act 2 gate: Old Vulkar's journals found." },
+			"drowned_city_found": { "persist": true, "note": "Act 2 beat: the drowned city is found." },
+			"pit_has_done_this_before": { "persist": true, "note": "Act 2 beat: the pit has done this before." },
+			"pit_feeds_on_loss": { "persist": true, "note": "Act 3 beat: the pit feeds on what people lose." },
+			"keeper_offer": { "persist": true, "note": "Act 3 beat: the pit wants a new keeper." },
+			"met_hilde": { "persist": false, "note": "First talk with Mayor Hilde done (SPEC dialogue example)." },
+			"met_gruff": { "persist": false, "note": "First talk with Gruff the blacksmith done (Act 1 intro)." },
+			"met_moss": { "persist": false, "note": "First talk with Moss the alchemist done (Act 1 intro)." },
+			"met_pip": { "persist": false, "note": "First talk with Pip the map maker done (Act 1 intro)." },
+			"met_sister_ash": { "persist": false, "note": "First talk with Sister Ash done (Act 1 intro)." },
+			"met_old_tom": { "persist": false, "note": "First talk with Old Tom done (Act 1 intro)." },
+			"met_vesper": { "persist": false, "note": "First talk with Vesper done (Act 1 intro)." },
+			"met_rescued": { "persist": false, "note": "First talk with the rescued miner done (Act 1 intro)." }
+		},
+		"rescue": {
+			"sly_nettie": { "persist": true, "note": "Sly Nettie rescued; unlocks the Rogue (SPEC example flag, section 4.2)." },
+			"cogsworth": { "persist": true, "note": "Cogsworth rescued; unlocks the Engineer (section 4.2)." },
+			"mortimer": { "persist": true, "note": "Mortimer rescued; unlocks the Necromancer (section 4.2)." },
+			"elian": { "persist": true, "note": "Elian rescued; unlocks the Lightbearer (section 4.2)." },
+			"mission_active": { "persist": false, "note": "A rescue escort is running this run." },
+			"miner_sighted": { "persist": false, "note": "A trapped miner was spotted on this run's floor." }
+		},
+		"char": {
+			"brann_unlocked": { "persist": true, "note": "Brann is playable (defeat The Foreman, section 4.1)." },
+			"ivy_unlocked": { "persist": true, "note": "Ivy is playable (all 5 Lost Lanterns, SPEC example flag)." },
+			"kestrel_unlocked": { "persist": true, "note": "Kestrel is playable (reach Biome 4, section 4.1)." },
+			"wren_father": { "persist": false, "note": "Wren's thread: her father's fate spoken of." },
+			"brann_brother": { "persist": false, "note": "Brann's thread: the Foreman was his brother." },
+			"ivy_lanterns": { "persist": false, "note": "Ivy's thread: a Lost Lantern found." },
+			"kestrel_drift": { "persist": false, "note": "Kestrel's thread: why she drifts." }
+		},
+		"ending": {
+			"seal": { "persist": true, "note": "Seal the Pit ending seen (section 11)." },
+			"keeper": { "persist": true, "note": "Become the Keeper ending seen; unlocks Deep Mode." },
+			"true": { "persist": true, "note": "True ending seen (needs the Watcher and all lore)." }
+		},
+		"lore": {
+			"vulkar_journal_1_read": { "persist": true, "note": "Vulkar's first journal read (SPEC example namespace)." },
+			"vulkar_journal_2_read": { "persist": true, "note": "Vulkar's second journal read." },
+			"vulkar_journal_3_read": { "persist": true, "note": "Vulkar's third journal read (SPEC example flag)." },
+			"page_survey": { "persist": false, "note": "A miner's survey page read this run." },
+			"page_letter": { "persist": false, "note": "A miner's letter home read this run." },
+			"page_heart": { "persist": false, "note": "A page about the heart read this run." }
+		},
+		"town": {
+			"blacksmith_2": { "persist": false, "note": "Blacksmith at level 2 (SPEC example flag; level source of truth is profile.town)." },
+			"alchemist_2": { "persist": false, "note": "Alchemist at level 2." },
+			"map_room_2": { "persist": false, "note": "Map Room at level 2." },
+			"shrine_2": { "persist": false, "note": "Shrine of Echoes at level 2." },
+			"tavern_2": { "persist": false, "note": "Tavern at level 2." }
+		},
+		"secret": {
+			"rat_king": { "persist": true, "note": "The Rat King's hidden wall found (SPEC example flag, section 11 triggers)." },
+			"watcher": { "persist": true, "note": "The eye in the town well seen (section 11 triggers)." },
+			"watcher_defeated": { "persist": true, "note": "The Watcher beaten; gates the true ending (section 11)." }
+		},
+		"boss": {
+			"foreman": { "persist": false, "note": "The Foreman faced this run (per-run reaction twin of story.foreman_defeated)." },
+			"tide_king": { "persist": false, "note": "The Tide King faced this run (SPEC example flag)." },
+			"rat_king": { "persist": false, "note": "The Rat King faced this run." },
+			"watcher": { "persist": false, "note": "The Watcher faced this run." },
+			"sinkhole": { "persist": false, "note": "The Sinkhole reached phase 3 this run." }
+		}
+	}
+}

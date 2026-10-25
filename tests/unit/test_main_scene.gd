@@ -52,5 +52,9 @@ func test_apply_options_menu_mode_keeps_menu() -> void:
 	assert_true(_main.menu.visible)
 
 
-func test_menu_ip_field_defaults_to_localhost() -> void:
-	assert_eq(_main.menu.ip_field.text, "127.0.0.1")
+func test_menu_has_one_coop_entry_that_opens_the_lobby() -> void:
+	assert_null(_main.menu.find_child("Host", true, false), "no separate Host entry")
+	assert_null(_main.menu.find_child("IpField", true, false), "no address field on the menu")
+	_main.menu.coop_button.pressed.emit()
+	assert_false(_main.menu.visible)
+	assert_true(_main.lobby.visible)

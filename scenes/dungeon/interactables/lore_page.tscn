@@ -1,0 +1,19 @@
+[gd_scene load_steps=3 format=3]
+
+[ext_resource type="Script" path="res://scripts/world/lore_page.gd" id="1_lore"]
+[ext_resource type="Texture2D" path="res://assets/sprites/props/lore_page.png" id="tex_body"]
+
+[sub_resource type="CircleShape2D" id="CircleShape2D_pickup"]
+radius = 20.0
+
+[node name="LorePage" type="Area2D"]
+collision_layer = 32
+collision_mask = 0
+script = ExtResource("1_lore")
+
+[node name="PickupShape" type="CollisionShape2D" parent="."]
+shape = SubResource("CircleShape2D_pickup")
+
+[node name="Body" type="Sprite2D" parent="."]
+texture = ExtResource("tex_body")
+offset = Vector2(0, -10)
