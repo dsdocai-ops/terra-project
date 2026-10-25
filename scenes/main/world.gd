@@ -156,3 +156,15 @@ func _physics_process(_delta: float) -> void:
 		else:
 			still_waiting.append(peer_id)
 	_pending_teleports = still_waiting
+
+
+## Empties the pit floor: tiles, rooms, doors, furniture and enemies. The next
+## `build_floor` makes a fresh `Floor`. Called when the party goes back to town.
+func clear_floor() -> void:
+	floor_layer.clear()
+	walls_layer.clear()
+	if floor_node != null:
+		floor_node.queue_free()
+		floor_node = null
+	if multiplayer.is_server():
+		_clear_floor_entities()
