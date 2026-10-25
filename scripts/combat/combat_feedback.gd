@@ -19,6 +19,7 @@ signal feedback_played(payload: Dictionary)
 const BOSS_GROUP: StringName = &"bosses"
 ## WeaponController tags the last step of a light combo with this.
 const FINISHER_TAG: StringName = &"finisher"
+const STAGGER_TEXT: String = "STAGGER"
 
 ## Where numbers and sparks are parented (World/FX).
 var fx_root: Node = null
@@ -51,7 +52,7 @@ func _on_hit_landed(hit: HitInfo) -> void:
 	if target == null or not is_instance_valid(target):
 		return
 	var boss_kill: bool = _is_boss_kill(target)
-	var frames: int = CombatFeedbackConstants.hit_stop_frames(is_heavy_hit(hit), hit.is_crit, target is Player, boss_kill)
+	var frames: int = CombatFeedbackConstants.hit_stop_frames(is_heavy_hit(hit), hit.is_crit, target is Player, boss_kill, hit.staggered)
 	apply_hit_stop(hit, target, frames)
 	var payload: Dictionary = make_payload(hit, target, boss_kill)
 	if multiplayer.get_peers().is_empty():
@@ -77,7 +78,7 @@ func make_payload(hit: HitInfo, target: Node2D, boss_kill: bool = false) -> Dict
 		"final_damage": hit.final_damage,
 		"is_crit": hit.is_crit,
 		"is_heavy": is_heavy_hit(hit),
-		"staggered": false,
+		"staggered": hit.staggered,
 		"point": target.global_position,
 		"boss_kill": boss_kill,
 	}
@@ -107,14 +108,17 @@ func play_feedback(payload: Dictionary) -> void:
 	var crit: bool = payload.get("is_crit", false)
 	var heavy: bool = payload.get("is_heavy", false)
 	var boss_kill: bool = payload.get("boss_kill", false)
+	var staggered: bool = payload.get("staggered", false)
 	var on_player: bool = target is Player
 	if fx_root != null:
 		DamageNumber.spawn(fx_root, target.global_position - Vector2(0.0, CombatFeedbackConstants.NUMBER_LIFT_PX), payload.get("final_damage", 0), crit, on_player)
-		HitSpark.spawn(fx_root, payload.get("point", target.global_position), heavy)
+		HitSpark.spawn(fx_root, payload.get("point", target.global_position), heavy or staggered)
+		if staggered:
+			DamageNumber.spawn_text(fx_root, target.global_position - Vector2(0.0, CombatFeedbackConstants.NUMBER_LIFT_PX * 1.8), STAGGER_TEXT)
 	var flash: HitFlash = target.get_node_or_null("HitFlash") as HitFlash
 	if flash != null:
-		flash.flash(_flash_color(crit, on_player), CombatFeedbackConstants.FLASH_FRAMES)
-	_shake(target, heavy, crit, boss_kill)
+		flash.flash(_flash_color(crit, on_player), CombatFeedbackConstants.FLASH_STAGGER_FRAMES if staggered else CombatFeedbackConstants.FLASH_FRAMES)
+	_shake(target, heavy, crit, boss_kill, staggered)
 	feedback_played.emit(payload)
 
 
@@ -125,12 +129,12 @@ static func _flash_color(crit: bool, on_player: bool) -> Color:
 
 
 ## Shake is local: a hit on another player never shakes this camera.
-func _shake(target: Node, heavy: bool, crit: bool, boss_kill: bool) -> void:
+func _shake(target: Node, heavy: bool, crit: bool, boss_kill: bool, staggered: bool = false) -> void:
 	if camera == null:
 		return
 	var player: Player = target as Player
 	if player != null and not player.is_local:
 		return
-	var px: float = CombatFeedbackConstants.shake_px(heavy, crit, player != null, boss_kill)
+	var px: float = CombatFeedbackConstants.shake_px(heavy, crit, player != null, boss_kill, staggered)
 	if px > 0.0:
 		camera.shake(px, CombatFeedbackConstants.SHAKE_SECONDS)

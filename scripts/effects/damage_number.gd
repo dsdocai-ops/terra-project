@@ -8,6 +8,7 @@ const RISE_PX: float = 26.0
 const LIFETIME_SECONDS: float = 0.7
 const NORMAL_COLOR: Color = Color(1.0, 1.0, 1.0, 1.0)
 const CRIT_COLOR: Color = Color(1.0, 0.85, 0.2, 1.0)
+const STAGGER_COLOR: Color = Color(1.0, 0.75, 0.2, 1.0)
 const PLAYER_HURT_COLOR: Color = Color(1.0, 0.35, 0.3, 1.0)
 
 
@@ -20,6 +21,18 @@ static func spawn(parent: Node, at: Vector2, amount: int, crit: bool, on_player:
 	var color: Color = CRIT_COLOR if crit else (PLAYER_HURT_COLOR if on_player else NORMAL_COLOR)
 	number.add_theme_color_override(&"font_color", color)
 	number.add_theme_font_size_override(&"font_size", 16 if crit else 11)
+	parent.add_child(number)
+	return number
+
+
+## Spawns a short word (the "STAGGER" pop) at world position `at`.
+static func spawn_text(parent: Node, at: Vector2, word: String, color: Color = STAGGER_COLOR) -> DamageNumber:
+	var number := DamageNumber.new()
+	number.text = word
+	number.z_index = 100
+	number.position = at - Vector2(float(word.length()) * 3.0, 0.0)
+	number.add_theme_color_override(&"font_color", color)
+	number.add_theme_font_size_override(&"font_size", 13)
 	parent.add_child(number)
 	return number
 

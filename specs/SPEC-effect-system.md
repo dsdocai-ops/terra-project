@@ -37,6 +37,7 @@ signal player_died(player: Player)
 signal enemy_spawned(enemy: Enemy)
 signal enemy_killed(enemy: Enemy, hit: HitInfo)         # hit.owner_player is the killer, may be null (hazard)
 signal elite_killed(enemy: Enemy, hit: HitInfo)
+signal enemy_staggered(enemy: Enemy, hit: HitInfo)         # poise broke (or a 0-poise enemy was hit); hit.staggered is true
 signal boss_defeated(boss_id: StringName)
 # status (stats-status)
 signal status_applied(target: Node, status: StatusEffects.Status, stacks: int, source: Node)

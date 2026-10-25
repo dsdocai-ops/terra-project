@@ -16,6 +16,12 @@ const DATA_DIR: String = "res://data/enemies"
 @export var aggro_range: float = 260.0
 ## Ranged enemies back away inside this distance (0 = never).
 @export var keep_distance: float = 0.0
+## Poise pool (combat v2): hits drain it by their poise damage and breaking it
+## staggers the enemy. 0 means fodder that staggers on every hit.
+@export var poise: float = 0.0
+## How long a poise break (or any hit on a 0-poise enemy) staggers it.
+@export var stagger_seconds: float = 0.8
+## Scales poise damage taken: 0 takes it all, 1 is immune.
 @export var stagger_resist: float = 0.0
 @export var knockback_resist: float = 0.0
 @export var can_be_elite: bool = true

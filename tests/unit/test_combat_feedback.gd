@@ -418,3 +418,44 @@ func test_only_the_last_light_step_is_tagged_a_finisher() -> void:
 	assert_false(weapons.build_hit(combo[0], Vector2.RIGHT, 0.0, false).tags.has(CombatFeedback.FINISHER_TAG))
 	assert_true(weapons.build_hit(combo[combo.size() - 1], Vector2.RIGHT, 0.0, false).tags.has(CombatFeedback.FINISHER_TAG))
 	assert_false(weapons.build_hit(weapons.take_heavy(), Vector2.RIGHT, 0.0, true).tags.has(CombatFeedback.FINISHER_TAG), "a heavy is not a finisher, it is already heavy")
+
+
+# --- stagger (combat v2 C2) ---------------------------------------------------------------------
+
+func test_a_stagger_has_its_own_tier() -> void:
+	assert_eq(CombatFeedbackConstants.hit_stop_frames(false, false, false, false, true), 8)
+	assert_eq(CombatFeedbackConstants.hit_stop_frames(true, true, false, false, true), 8, "fixed, no crit bonus")
+	assert_eq(CombatFeedbackConstants.shake_px(false, false, false, false, true), 4.0)
+	assert_eq(CombatFeedbackConstants.hit_stop_frames(true, false, false, true, true), 10, "a boss kill still wins")
+
+
+func test_a_staggering_hit_freezes_eight_frames_and_puts_the_flag_in_the_payload() -> void:
+	var player: Player = _player()
+	var enemy: Enemy = _enemy()
+	var hit: HitInfo = _hit(player, enemy)
+	hit.staggered = true
+	Events.hit_landed.emit(hit)
+	assert_eq(_stop_frames(enemy), 8)
+	assert_true(_feedback.make_payload(hit, enemy)["staggered"])
+
+
+func test_a_stagger_pops_the_word_flashes_six_frames_and_shakes_four() -> void:
+	var camera := GameCamera.new()
+	add_child_autofree(camera)
+	_feedback.setup(_fx, camera)
+	var enemy: Enemy = _enemy()
+	var hit: HitInfo = _hit(null, enemy)
+	hit.staggered = true
+	_feedback.play_feedback(_feedback.make_payload(hit, enemy))
+	var words: Array[String] = []
+	for child: Node in _fx.get_children():
+		if child is DamageNumber:
+			words.append((child as DamageNumber).text)
+	assert_has(words, "STAGGER")
+	assert_almost_eq(camera.trauma, 4.0 / GameCamera.MAX_SHAKE_PX, 0.001)
+	var flash: HitFlash = enemy.get_node("HitFlash") as HitFlash
+	for _frame in 5:
+		flash.step()
+	assert_true(flash.is_flashing(), "still flashing after five frames")
+	flash.step()
+	assert_false(flash.is_flashing(), "over after six")

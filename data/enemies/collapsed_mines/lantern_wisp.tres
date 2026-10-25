@@ -9,6 +9,7 @@
 [resource]
 script = ExtResource("1_enemy")
 id = &"lantern_wisp"
+poise = 20.0
 sprite_frames = ExtResource("9_frames")
 display_name = "Lantern Wisp"
 base_stats = {

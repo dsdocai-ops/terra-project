@@ -16,9 +16,13 @@ const STAT_BLOCK_NODE: NodePath = ^"../StatBlock"
 const SOURCE_STAT_BLOCK_NODE: NodePath = ^"StatBlock"
 const STATUS_NODE: NodePath = ^"../StatusEffects"
 ## The entity method that applies knockback and hit-stun, when it has one:
-## `apply_knockback(impulse: Vector2, stun_seconds: float)`. HitStun (W2-A3)
+## `apply_knockback(impulse: Vector2, stun_seconds: float)`, with the hit as an
+## optional third argument when the method declares it. HitStun (W2-A3)
 ## provides it on players and enemies.
 const KNOCKBACK_METHOD: StringName = &"apply_knockback"
+## The entity method that drains poise before `hit_landed` fires, when it has one:
+## `absorb_hit_poise(hit: HitInfo)` sets `hit.staggered` when the hit broke it.
+const POISE_METHOD: StringName = &"absorb_hit_poise"
 ## Neutral stats for a source or target with no `StatBlock` (a hazard, a
 ## destructible): attack 100 is the formula's reference, defense 0.
 const NEUTRAL_ATTACK: float = 100.0
@@ -34,6 +38,11 @@ var invulnerable: bool = false
 ## `blocked_during_dodge` instead of silently vanishing.
 var dodge_invulnerable: bool = false
 
+## Damage-taken factors by source (staggered enemies take x1.25). Their product
+## scales every hit after Damage.compute; it is a Hurtbox-side multiplier, never
+## an edit to the target's base stats.
+var _damage_taken_factors: Dictionary[StringName, float] = {}
+
 
 func _ready() -> void:
 	_apply_layer()
@@ -43,6 +52,23 @@ func _ready() -> void:
 func _apply_layer() -> void:
 	collision_layer = Hitbox.LAYER_ENEMY_BODY if team != Team.Kind.PLAYER else Hitbox.LAYER_PLAYER_BODY
 	collision_mask = 0
+
+
+## Sets (or replaces) one source's damage-taken factor; 1.25 means +25%.
+func set_damage_taken_factor(source: StringName, factor: float) -> void:
+	_damage_taken_factors[source] = factor
+
+
+func clear_damage_taken_factor(source: StringName) -> void:
+	_damage_taken_factors.erase(source)
+
+
+## The product of every source's factor; 1.0 with none.
+func damage_taken_factor() -> float:
+	var product: float = 1.0
+	for factor: float in _damage_taken_factors.values():
+		product *= factor
+	return product
 
 
 ## Resolves `hit` against this entity. Returns whether it connected: false on a
@@ -64,6 +90,8 @@ func receive(hit: HitInfo) -> bool:
 	_compute_damage(hit, statuses)
 	if not health.apply_damage(hit):
 		return false
+	if not health.is_dead and entity.has_method(POISE_METHOD):
+		entity.call(POISE_METHOD, hit)
 	Events.hit_landed.emit(hit)
 	if hit.is_crit:
 		Events.crit_landed.emit(hit)
@@ -89,6 +117,9 @@ func _compute_damage(hit: HitInfo, statuses: StatusEffects) -> void:
 		target = StatBlock.new()
 		temporary.append(target)
 	Damage.compute(attacker, target, hit, null, statuses)
+	var factor: float = damage_taken_factor()
+	if not is_equal_approx(factor, 1.0):
+		hit.final_damage = maxi(roundi(float(hit.final_damage) * factor), Damage.MIN_DAMAGE)
 	for block: StatBlock in temporary:
 		block.free()
 
@@ -97,7 +128,10 @@ func _compute_damage(hit: HitInfo, statuses: StatusEffects) -> void:
 ## target.
 func _apply_reactions(entity: Node, hit: HitInfo, statuses: StatusEffects) -> void:
 	if entity.has_method(KNOCKBACK_METHOD):
-		entity.call(KNOCKBACK_METHOD, hit.knockback, hit.hit_stun_seconds)
+		if entity.get_method_argument_count(KNOCKBACK_METHOD) >= 3:
+			entity.call(KNOCKBACK_METHOD, hit.knockback, hit.hit_stun_seconds, hit)
+		else:
+			entity.call(KNOCKBACK_METHOD, hit.knockback, hit.hit_stun_seconds)
 	if statuses == null:
 		return
 	for application: StatusApplication in hit.statuses:

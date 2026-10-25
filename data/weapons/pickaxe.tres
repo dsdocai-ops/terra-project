@@ -14,6 +14,7 @@ reach = 56.0
 arc_degrees = 110.0
 base_damage = 18.0
 knockback = 130.0
+poise_damage = 10.0
 
 [sub_resource type="Resource" id="Light2"]
 script = ExtResource("2_spec")
@@ -26,6 +27,7 @@ reach = 58.0
 arc_degrees = 120.0
 base_damage = 18.0
 knockback = 130.0
+poise_damage = 10.0
 
 [sub_resource type="Resource" id="Light3"]
 script = ExtResource("2_spec")
@@ -37,6 +39,7 @@ recovery_seconds = 0.26
 reach = 62.0
 base_damage = 28.0
 knockback = 220.0
+poise_damage = 20.0
 
 [sub_resource type="Resource" id="Heavy"]
 script = ExtResource("2_spec")
@@ -48,6 +51,7 @@ recovery_seconds = 0.34
 reach = 78.0
 base_damage = 48.0
 knockback = 320.0
+poise_damage = 30.0
 hit_stun_seconds = 0.3
 move_speed_factor = 0.3
 

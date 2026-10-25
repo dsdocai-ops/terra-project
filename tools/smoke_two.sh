@@ -100,6 +100,7 @@ check "$OUT/client3.log" '\[smoke3\] client sees Enemy[0-9]+ hp=7'       "client
 check "$OUT/host3.log"   '\[smoke3\] host sees Enemy[0-9]+ hp=7'         "host3 still sees HP 7 after the hit"
 check "$OUT/host3.log"   '\[smoke3\] feedback played on peer 1 dmg=77'    "host3 played the hit feedback (call_local)"
 check "$OUT/client3.log" '\[smoke3\] feedback played on peer [0-9]+ dmg=77' "client3 played the hit feedback from the host RPC"
+check "$OUT/client3.log" '\[smoke3\] client sees Enemy[0-9]+ staggered \(StateSync\)' "client3 saw the staggered flag over StateSync"
 check "$OUT/client3.log" '\[smoke3\] client requested kill'              "client3 asked the host to kill the enemy"
 check "$OUT/host3.log"   '\[console\] kill .* -> killed 1 enem'         "host3 ran the kill through the console"
 check "$OUT/host3.log"   '\[smoke3\] enemy_killed emitted 1 time'        "host3 registered the kill exactly once"

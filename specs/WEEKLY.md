@@ -176,3 +176,5 @@ Source: `docs/proposals/combat-v2.md`. One row per step PR. The automated gates 
 Checklist
 - [x] C1 `feat/combat-core-hit-feedback`: `--import` 0 errors; full GUT suite 1710 tests / 1709 passing / 1 pending (the pending test was already pending before C1), exit 0; two-instance smoke `tools/smoke_two.sh` 37 `ok`, 0 FAIL, including the two new lines that prove the host's feedback RPC reached the client.
 - [ ] C1 manual feel pass (hit-stop weight, flash read, slash arc vs real hitbox, co-op numbers on the client): not yet played by a human.
+- [x] C2 `feat/combat-core-poise`: `--import` 0 errors; full GUT suite 1735 tests / 1734 passing / 1 pending (the one already pending before C1), exit 0, after the hard-coded signal count in `test_events_bus.gd` (37 to 38) was updated for the new `enemy_staggered` row; two-instance smoke 38 `ok`, 0 FAIL, including the new line proving the `staggered` flag reaches the client over StateSync.
+- [ ] C2 manual feel pass (flinch vs stagger read on Hollow Miner and Lantern Wisp, the x1.25 window, the "STAGGER" pop and 8-frame hit-stop): not yet played by a human.

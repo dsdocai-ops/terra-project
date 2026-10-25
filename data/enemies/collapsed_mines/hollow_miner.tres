@@ -9,6 +9,7 @@
 [resource]
 script = ExtResource("1_enemy")
 id = &"hollow_miner"
+poise = 40.0
 sprite_frames = ExtResource("9_frames")
 display_name = "Hollow Miner"
 base_stats = {

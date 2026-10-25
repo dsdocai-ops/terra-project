@@ -18,6 +18,10 @@ const DEATH_FADE_SECONDS: float = 0.6
 const GROUP: StringName = &"enemies"
 ## Stand-in for an unknown kind (debug `spawn grub`).
 const FALLBACK_KIND: StringName = &"hollow_miner"
+## Poise refills at this share of its maximum per second, starting this long
+## after the last hit (combat v2).
+const POISE_REFILL_DELAY_SECONDS: float = 1.5
+const POISE_REFILL_PER_SECOND: float = 0.5
 
 var data: EnemyData = null
 var kind: StringName = &""
@@ -35,10 +39,21 @@ var attack_cooldown_left: float = 0.0
 var hit_stun_left: float = 0.0
 var knockback_velocity: Vector2 = Vector2.ZERO
 var next_attack: AttackPattern = null
+## Poise pool (host only, never replicated): drained by `HitInfo.poise_damage`,
+## broken at 0. `poise_max` 0 means fodder that staggers on every hit.
+var poise: float = 0.0
+var poise_max: float = 0.0
+## True while in the Stagger state. Replicated by StateSync so every peer can
+## show the dazed marker; set and cleared by the Stagger state on the host.
+var staggered: bool = false:
+	set(value):
+		staggered = value
+		queue_redraw()
 
 var _path: PackedVector2Array = PackedVector2Array()
 var _path_timer: float = 0.0
 var _knockback_decel: float = 0.0
+var _seconds_since_hit: float = POISE_REFILL_DELAY_SECONDS
 var _facing: int = 0
 var _last_position: Vector2 = Vector2.ZERO
 ## Height of one sprite frame, 0 while the placeholder polygon is shown.
@@ -76,6 +91,8 @@ func setup(p_kind: StringName, p_elite: bool = false) -> bool:
 	if elite:
 		max_hp = Scaling.elite_hp(max_hp)
 	stats.base[StatBlock.Stat.MAX_HP] = max_hp
+	poise_max = maxf(data.poise, 0.0)
+	poise = poise_max
 	var poly: Polygon2D = get_node("Body") as Polygon2D
 	var r: float = data.radius * (1.3 if elite else 1.0)
 	poly.polygon = PackedVector2Array([Vector2(-r, -r * 1.6), Vector2(r, -r * 1.6), Vector2(r, r * 0.5), Vector2(-r, r * 0.5)])
@@ -147,9 +164,13 @@ func _physics_process(delta: float) -> void:
 	var scaled: float = delta * _time_scale()
 	attack_cooldown_left = maxf(attack_cooldown_left - scaled, 0.0)
 	_path_timer = maxf(_path_timer - scaled, 0.0)
+	_refill_poise(scaled)
+	_shove(scaled)
 
 
 func _process(delta: float) -> void:
+	if staggered:
+		queue_redraw()
 	if sprite.visible:
 		_animate_sprite()
 	telegraph.progress = telegraph_progress
@@ -177,6 +198,8 @@ var current_hp: int:
 ## A thin HP bar over a hurt enemy (placeholder; the real one arrives with the
 ## HUD pass). Drawn locally from the replicated Health.
 func _draw() -> void:
+	if staggered and data != null:
+		_draw_stagger_marker()
 	if health == null or data == null or health.max_hp <= 0 or health.current_hp >= health.max_hp or health.is_dead:
 		return
 	var width: float = data.radius * 2.6
@@ -267,16 +290,83 @@ func _separation() -> Vector2:
 # --- hit reactions and death ---------------------------------------------------
 
 
-## Hurtbox calls this on the host when a hit connects.
-func apply_knockback(impulse: Vector2, stun_seconds: float) -> void:
+## Hurtbox calls this on the host before `hit_landed` fires: drains poise by the
+## hit's poise damage (scaled by `stagger_resist`) and marks `hit.staggered`
+## when it broke. A 0-poise enemy staggers on every hit that carries poise
+## damage. A hit on an already staggered enemy drains nothing and does not
+## stagger it again, so stagger can not be chained forever.
+func absorb_hit_poise(hit: HitInfo) -> void:
+	_seconds_since_hit = 0.0
+	if staggered:
+		return
+	var resist: float = clampf(data.stagger_resist if data != null else 0.0, 0.0, 1.0)
+	var drain: float = hit.poise_damage * (1.0 - resist)
+	if drain <= 0.0:
+		return
+	if poise_max <= 0.0:
+		hit.staggered = true
+		return
+	poise = maxf(poise - drain, 0.0)
+	hit.staggered = poise <= 0.0
+
+
+## Hurtbox calls this on the host when a hit connects, after `absorb_hit_poise`.
+## With the hit: a broken poise enters Stagger (cancelling the attack and its
+## telegraph); otherwise it is a flinch, a knockback shove with no state change,
+## so a windup keeps winding up. Without a hit (the older two-argument callers)
+## it is the old full stun.
+func apply_knockback(impulse: Vector2, stun_seconds: float, hit: HitInfo = null) -> void:
 	var resist: float = clampf(data.knockback_resist if data != null else 0.0, 0.0, 1.0)
-	var stun_resist: float = clampf(data.stagger_resist if data != null else 0.0, 0.0, 1.0)
 	knockback_velocity = impulse * (1.0 - resist)
 	_knockback_decel = knockback_velocity.length() / 0.2 if knockback_velocity.length() > 0.0 else 0.0
-	hit_stun_left = stun_seconds * (1.0 - stun_resist)
-	if hit_stun_left > 0.0 and machine != null:
-		telegraph_progress = -1.0
-		machine.change_to(&"HitStun")
+	if hit == null:
+		var stun_resist: float = clampf(data.stagger_resist if data != null else 0.0, 0.0, 1.0)
+		hit_stun_left = stun_seconds * (1.0 - stun_resist)
+		if hit_stun_left > 0.0 and machine != null:
+			telegraph_progress = -1.0
+			machine.change_to(&"HitStun")
+		return
+	if hit.staggered:
+		enter_stagger(hit)
+
+
+## Cancels whatever the enemy was doing and enters Stagger; announces it.
+func enter_stagger(hit: HitInfo) -> void:
+	telegraph_progress = -1.0
+	hitbox.active = false
+	if machine != null and machine.change_to(&"Stagger"):
+		Events.enemy_staggered.emit(self, hit)
+
+
+## Back to a full pool; the Stagger state calls this on the way out.
+func refill_poise() -> void:
+	poise = poise_max
+	_seconds_since_hit = 0.0
+
+
+## After a quiet spell the pool refills at half its size per second, in
+## TimeManager-scaled time so a time stop holds it too. Not while staggered.
+func _refill_poise(scaled_delta: float) -> void:
+	if poise_max <= 0.0 or staggered or poise >= poise_max:
+		return
+	_seconds_since_hit += scaled_delta
+	if _seconds_since_hit >= POISE_REFILL_DELAY_SECONDS:
+		poise = minf(poise + poise_max * POISE_REFILL_PER_SECOND * scaled_delta, poise_max)
+
+
+## A flinch moves the enemy without changing its state. HitStun and Stagger move
+## themselves from the same impulse.
+func _shove(scaled_delta: float) -> void:
+	if knockback_velocity.is_zero_approx() or machine == null:
+		return
+	var current: StringName = machine.current_name()
+	if current == &"HitStun" or current == &"Stagger":
+		return
+	decay_knockback(scaled_delta)
+	velocity = knockback_velocity
+	move_and_slide()
+	if is_on_wall():
+		knockback_velocity = Vector2.ZERO
 
 
 func decay_knockback(delta: float) -> void:
@@ -301,3 +391,14 @@ func _on_died(hit: HitInfo) -> void:
 	await get_tree().create_timer(DEATH_FADE_SECONDS).timeout
 	if is_inside_tree():
 		queue_free()
+
+
+## Three gold dots circling above the head while staggered (placeholder art).
+func _draw_stagger_marker() -> void:
+	var top: float = -data.radius * 2.0 - 14.0
+	if _sprite_height > 0.0:
+		top = -(_sprite_height - 4.0) - 14.0
+	var phase: float = float(Time.get_ticks_msec()) / 220.0
+	for index: int in 3:
+		var angle: float = phase + TAU * float(index) / 3.0
+		draw_circle(Vector2(cos(angle) * 9.0, top + sin(angle) * 3.0), 2.0, Color(1.0, 0.85, 0.2, 1.0))

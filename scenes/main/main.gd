@@ -23,6 +23,7 @@ var _smoke3_poll: Timer
 var _smoke3_spawn_requested: bool = false
 var _smoke3_kill_requested: bool = false
 var _smoke3_hit_applied: bool = false
+var _smoke3_stagger_logged: bool = false
 var _smoke3_hit_refusal_logged: bool = false
 var _smoke3_death_logged: bool = false
 var _smoke3_kill_logged: bool = false
@@ -204,7 +205,9 @@ func _smoke3_host_tick() -> void:
 			var landed := HitInfo.new()
 			landed.target = enemy
 			landed.final_damage = 77
+			landed.staggered = true
 			world.combat_feedback._on_hit_landed(landed)
+			enemy.call("enter_stagger", landed)
 			print("[smoke3] host sent feedback for %s" % enemy.name)
 	if hp == 0 and not _smoke3_kill_logged:
 		_smoke3_kill_logged = true
@@ -233,6 +236,9 @@ func _smoke3_client_tick() -> void:
 		_smoke3_kill_requested = true
 		NetworkManager.rpc_id(NetworkManager.HOST_PEER_ID, "request_debug", "kill", NetworkManager.local_peer_id)
 		print("[smoke3] client requested kill")
+	if bool(enemy.get("staggered")) and not _smoke3_stagger_logged:
+		_smoke3_stagger_logged = true
+		print("[smoke3] client sees %s staggered (StateSync)" % enemy.name)
 	if hp == 0 and not _smoke3_death_logged:
 		_smoke3_death_logged = true
 		print("[smoke3] client sees %s hp=0 (dead)" % enemy.name)

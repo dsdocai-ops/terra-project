@@ -252,11 +252,11 @@ func _placeholder_types(spec: Array) -> Array[String]:
 
 func test_the_spec_table_parses_and_names_every_signal_it_documents() -> void:
 	var spec: Array[Dictionary] = _spec_signals()
-	assert_eq(spec.size(), 37, "the spec's Events bus declares 37 signals")
+	assert_eq(spec.size(), 38, "the spec's Events bus declares 38 signals")
 	var names: Array[String] = []
 	for sig: Dictionary in spec:
 		names.append(String(sig["name"]))
-	assert_eq(names.size(), 37)
+	assert_eq(names.size(), 38)
 	assert_true(names.has("hit_landed"))
 	assert_true(names.has("miner_rescued"), "the last signal in the spec block parses too")
 	assert_false(_spec_client_signals().is_empty(), "the client-emitted list parses out of the spec")

@@ -30,6 +30,12 @@ var multiplier: float = 1.0
 var bonus_crit_chance: float = 0.0
 var element: Element = Element.NONE
 var is_heavy: bool = false
+## Poise drained from the target, filled by whoever builds the hit (the weapon
+## controller from `AttackSpec.poise_damage`, enemy attacks from their pattern).
+var poise_damage: float = 0.0
+## Set by the target's poise logic before `hit_landed` when this hit broke its
+## poise (or hit a 0-poise enemy), so feedback can give the stagger its tier.
+var staggered: bool = false
 ## Set by Hurtbox's from-behind check; Rogue, Backstab, Geode Turtle and Heart
 ## Guard read it.
 var from_behind: bool = false
@@ -120,6 +126,8 @@ func copy() -> HitInfo:
 	clone.knockback = knockback
 	clone.hit_stun_seconds = hit_stun_seconds
 	clone.is_heavy = is_heavy
+	clone.poise_damage = poise_damage
+	clone.staggered = staggered
 	clone.is_projectile = is_projectile
 	clone.is_crit = is_crit
 	clone.from_behind = from_behind

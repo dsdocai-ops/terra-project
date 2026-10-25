@@ -38,6 +38,8 @@ var statuses: Array[StatusApplication]   # status + stacks to apply on hit
 var knockback: Vector2
 var hit_stun_seconds: float = 0.15
 var is_heavy: bool
+var poise_damage: float          # drained from the target's poise (light 10, finisher 20, heavy 30+)
+var staggered: bool              # set by the target's poise logic before hit_landed
 var is_projectile: bool
 var is_crit: bool                # filled by Damage.compute
 var from_behind: bool            # filled by Hurtbox
@@ -60,7 +62,13 @@ Decision 2026-10-21 (Dev A and Dev B): **`HitInfo` replaces `HitData`.** `script
 
 ### Hit reactions
 
-- **Hit-stun**: target enters `HitStun` state for `hit.hit_stun_seconds` (enemies with `stagger_resist` reduce it; bosses mostly immune outside stagger windows).
+- **Poise and stagger (enemies, combat v2 C2)**: every enemy has a poise pool (`EnemyData.poise`: 0 for fodder like Rock Tick, 40 Hollow Miner, 20 Lantern Wisp, 300+ for bosses). A hit drains `HitInfo.poise_damage * (1 - stagger_resist)` (light 10, finisher 20, heavy 30 + 30 x charge; `AttackSpec.poise_damage`). `Hurtbox` calls the target's `absorb_hit_poise(hit)` before `hit_landed`, which sets `hit.staggered` when the hit broke the pool.
+  - **Poise above 0 after the hit: flinch.** Knockback (scaled by `knockback_resist`), flash and hit-stop only. No state change, so a windup keeps winding up and its telegraph stays.
+  - **Poise broke, or the enemy has 0 poise: `Stagger`** (`scenes/enemies/states/stagger.gd`) for `EnemyData.stagger_seconds` (default 0.8 s). It cancels the attack and clears the telegraph, the enemy takes **+25% damage** (a `Hurtbox` damage-taken factor, never a base-stat edit), poise refills to full on exit, and `Events.enemy_staggered(enemy, hit)` fires. A hit on an already staggered enemy drains nothing and does not restart the stagger. A hit with 0 poise damage never staggers fodder.
+  - **Refill**: 1.5 s after the last hit, 50% of the pool per second, in `TimeManager`-scaled time.
+  - **Sync**: poise is host only. The `staggered` flag rides the enemy's StateSync so every peer can draw the dazed marker. Stagger feedback: 8 frames of hit-stop, shake 4, a 6-frame flash and a "STAGGER" pop (see Hit feedback).
+  - The older two-argument `apply_knockback(impulse, stun_seconds)` (no hit) still gives a plain `HitStun`; `Hurtbox` passes the hit as a third argument to any entity whose method declares it.
+- **Hit-stun (players)**: the target enters `HitStun` for `hit.hit_stun_seconds`. Enemy `stagger_resist` no longer shortens a stun; it scales poise damage.
 - **Knockback**: impulse along hit direction scaled by `hit.knockback.length()`, decays over 0.2 s, blocked by walls. Enemies with `knockback_resist`. Stone Skin and Battle Cry grant immunity.
 - **Post-hit i-frames**: players get 0.4 s `invulnerable` after any damage (design doc: brief invincibility). Enemies do not.
 
@@ -103,7 +111,7 @@ recovery : enemy vulnerable, cannot act, duration >= 0.3 s
 
 ## Interfaces provided
 
-`Health`, `Hitbox`, `Hurtbox`, `HitInfo`, `StatusApplication`, `Team`, `AttackController`, `AttackPattern`, `Telegraph`, `Projectile`, `ProjectilePool`, `DamageNumberPool`. Events emitted here: `hit_landed`, `crit_landed`, `player_damaged`, `heavy_attack_released(player, charge)`, `weapon_swapped(player, index)`. Signal definitions live in `SPEC-effect-system.md`.
+`Health`, `Hitbox`, `Hurtbox`, `HitInfo`, `StatusApplication`, `Team`, `AttackController`, `AttackPattern`, `Telegraph`, `Projectile`, `ProjectilePool`, `DamageNumberPool`. Events emitted here: `hit_landed`, `crit_landed`, `player_damaged`, `heavy_attack_released(player, charge)`, `weapon_swapped(player, index)`, `enemy_staggered(enemy, hit)`. Signal definitions live in `SPEC-effect-system.md`.
 
 ## Interfaces consumed
 

@@ -11,6 +11,7 @@
 [ext_resource type="Script" path="res://scenes/enemies/states/chase.gd" id="9_chase"]
 [ext_resource type="Script" path="res://scenes/enemies/states/attack.gd" id="10_attack"]
 [ext_resource type="Script" path="res://scenes/enemies/states/hit_stun.gd" id="11_hitstun"]
+[ext_resource type="Script" path="res://scenes/enemies/states/stagger.gd" id="12_stagger"]
 
 [sub_resource type="SceneReplicationConfig" id="SceneReplicationConfig_state"]
 properties/0/path = NodePath(".:synced_position")
@@ -28,6 +29,9 @@ properties/3/replication_mode = 1
 properties/4/path = NodePath(".:aim_dir")
 properties/4/spawn = false
 properties/4/replication_mode = 1
+properties/5/path = NodePath(".:staggered")
+properties/5/spawn = false
+properties/5/replication_mode = 2
 
 [sub_resource type="CircleShape2D" id="CircleShape2D_body"]
 radius = 10.0
@@ -90,6 +94,9 @@ script = ExtResource("10_attack")
 
 [node name="HitStun" type="Node" parent="StateMachine"]
 script = ExtResource("11_hitstun")
+
+[node name="Stagger" type="Node" parent="StateMachine"]
+script = ExtResource("12_stagger")
 
 [node name="StateSync" type="MultiplayerSynchronizer" parent="."]
 root_path = NodePath("..")

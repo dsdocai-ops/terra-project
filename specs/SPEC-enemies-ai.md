@@ -96,7 +96,9 @@ base_stats: Dictionary          Stat -> float
 attacks: Array[AttackPattern]
 move_type: enum GROUND, FLYING, STATIC
 aggro_range, attack_range: float
-stagger_resist, knockback_resist: float
+stagger_resist, knockback_resist: float   stagger_resist scales poise damage taken
+poise: float                    poise pool; 0 = fodder that staggers on every hit, ~40 mid, 300+ bosses
+stagger_seconds: float          how long a poise break staggers (default 0.8)
 can_be_elite: bool
 tags: Array[StringName]         "drowned" (wet), "undead", "mechanical", "fungal"
 loot_table: LootTable           defined in run-economy

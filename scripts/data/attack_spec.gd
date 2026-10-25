@@ -19,6 +19,9 @@ enum Shape { ARC, CIRCLE, PROJECTILE }
 @export var arc_degrees: float = 110.0
 @export var base_damage: float = 20.0
 @export var knockback: float = 140.0
+## Poise drained from the target (combat v2): light 10, finisher 20, heavy 30.
+## A charged heavy adds more on top (WeaponController.HEAVY_POISE_CHARGE_BONUS).
+@export var poise_damage: float = 10.0
 @export var hit_stun_seconds: float = 0.15
 @export var element: HitInfo.Element = HitInfo.Element.NONE
 @export var projectile_speed: float = 360.0

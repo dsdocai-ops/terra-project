@@ -15,6 +15,8 @@ const SWAP_LOCKOUT_SECONDS: float = 0.2
 const COMBO_RESET_SECONDS: float = 0.6
 ## Full charge adds this much to a heavy's damage multiplier.
 const HEAVY_CHARGE_BONUS: float = 0.8
+## A full charge adds this much poise damage to a heavy (scaled by the charge).
+const HEAVY_POISE_CHARGE_BONUS: float = 30.0
 const ARC_SEGMENTS: int = 6
 const DEFAULT_WEAPON_PATHS: Array[String] = [
 	"res://data/weapons/pickaxe.tres",
@@ -136,6 +138,7 @@ func build_hit(spec: AttackSpec, dir: Vector2, charge: float, heavy: bool) -> Hi
 	hit.base_damage = spec.base_damage * scale
 	hit.element = spec.element
 	hit.is_heavy = heavy
+	hit.poise_damage = spec.poise_damage + (HEAVY_POISE_CHARGE_BONUS * charge if heavy else 0.0)
 	hit.knockback = dir * spec.knockback
 	hit.hit_stun_seconds = spec.hit_stun_seconds
 	hit.is_projectile = spec.shape == AttackSpec.Shape.PROJECTILE
@@ -143,7 +146,7 @@ func build_hit(spec: AttackSpec, dir: Vector2, charge: float, heavy: bool) -> Hi
 	if weapon != null:
 		hit.tags.append(weapon.id)
 	hit.tags.append(&"ranged" if hit.is_projectile else &"melee")
-	if not heavy and weapon != null and not weapon.light_combo.is_empty() and weapon.light_combo.back() == spec:
+	if not heavy and weapon != null and weapon.light_combo.size() > 1 and weapon.light_combo.back() == spec:
 		hit.tags.append(CombatFeedback.FINISHER_TAG)
 	return hit
 
