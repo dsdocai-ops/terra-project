@@ -57,6 +57,13 @@ var _last_join: Dictionary = {}
 ## The in-game HUD; hidden whenever a menu is up or no session is running.
 var _hud: CanvasLayer = null
 
+## Hollowmere, while the party is between runs; null during a dive.
+var town: Town = null
+
+const TOWN_SCENE: String = "res://scenes/town/town.tscn"
+## Where the party stands in town, below the pit.
+const TOWN_SPAWN: Vector2 = Vector2(0.0, 230.0)
+
 @onready var menu: PlaceholderMenu = $UI/PlaceholderMenu
 
 
@@ -82,6 +89,7 @@ func _ready() -> void:
 	menu.codex_pressed.connect(_on_menu_stub.bind("The Codex fills as you play"))
 	menu.quit_pressed.connect(_on_quit)
 	GameState.run_ended.connect(_on_run_ended)
+	GameState.run_started.connect(_leave_town)
 	NetworkManager.connection_failed.connect(_on_connection_failed)
 	NetworkManager.host_disconnected.connect(_on_host_disconnected)
 
@@ -493,16 +501,43 @@ func _on_run_ended(result: RefCounted) -> void:
 	bank_last_run()
 
 
-## Banks what this machine kept (SPEC-run-economy "Banking") and saves, then goes
-## back to town. blocked on Dev A (W5-A1): the walkable town needs the Player to
-## spawn there, so until it does this stops after banking.
+## Banks what this machine kept (SPEC-run-economy "Banking") and saves, then walks
+## back into Hollowmere. The Tavern's Dive starts the next run.
 func _on_return_to_town() -> void:
 	bank_last_run()
-	print("[run] back in Hollowmere (the walkable town is not wired yet, so a new dive starts)")
 	if NetworkManager.is_host:
-		for player: Player in NetworkManager.players.values():
-			player.reset_for_run()
-		_begin_dive()
+		_enter_town()
+
+
+## Host and solo. Clears the pit floor, stands everyone up in town and shows the
+## town scene. The run is already over (or aborted) by the time this runs.
+func _enter_town() -> void:
+	if town != null:
+		return
+	world.clear_floor()
+	NetworkManager.last_floor_layout = null
+	town = (load(TOWN_SCENE) as PackedScene).instantiate() as Town
+	town.name = "Town"
+	add_child(town)
+	move_child(town, 1)
+	# The world's co-op camera follows the players; the town's own would fight it.
+	var town_camera: Node = town.get_node_or_null("Camera")
+	if town_camera != null:
+		town_camera.queue_free()
+	for player: Player in NetworkManager.players.values():
+		player.reset_for_run()
+		var spot: Vector2 = TOWN_SPAWN + Vector2(float(maxi(player.slot, 0)) * 48.0, 0.0)
+		player.position = spot
+		player.synced_position = spot
+	print("[run] back in Hollowmere")
+
+
+## A run started (the Tavern's Dive, or a straight dive): the town steps aside.
+func _leave_town(_run_seed: int = 0) -> void:
+	if town == null:
+		return
+	town.queue_free()
+	town = null
 
 
 ## Merges the local player's kept row into their profile and saves. Idempotent:
