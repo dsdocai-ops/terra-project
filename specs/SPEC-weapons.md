@@ -39,6 +39,7 @@ enum Type { BLADE, HEAVY, RANGED, MAGIC, EXOTIC }
 @export var light_combo: Array[AttackSpec]       # 2 to 4 steps
 @export var heavy: AttackSpec
 @export var heavy_charge_seconds: float = 0.8
+@export var charge_move_factor: float = 0.3       # share of move speed while holding a heavy (combat v2 C3)
 @export var weapon_skill: PackedScene             # WeaponSkill node, instanced on equip
 @export var weapon_skill_cooldown: float = 6.0
 @export var mutations: Array[MutationData]        # exactly 6
@@ -48,7 +49,7 @@ enum Type { BLADE, HEAVY, RANGED, MAGIC, EXOTIC }
 @export var attack_scene: PackedScene             # the per-weapon node that implements attacks
 ```
 
-`AttackSpec` (Resource): `animation`, `active_frames`, `hitbox_shape`, `base_damage`, `knockback`, `element`, `statuses`, `is_projectile`, `projectile: ProjectileSpec`, `hit_stop_frames`, `sfx`.
+`AttackSpec` (Resource): `animation`, `active_frames`, `hitbox_shape`, `base_damage`, `knockback`, `element`, `statuses`, `is_projectile`, `projectile: ProjectileSpec`, `hit_stop_frames`, `sfx`. Combat v2 adds `poise_damage` (light 10, finisher 20, heavy 30, a heavy adds 30 x charge on top), `combo_cancel_at` (fraction of recovery, default 0.4) and `dodge_cancel_at` (fraction of recovery, default 0.0, the end of active). Hit-stop frames come from the one tier table in `CombatFeedbackConstants`, not from the spec.
 
 ### WeaponController
 

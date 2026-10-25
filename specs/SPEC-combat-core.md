@@ -53,12 +53,19 @@ Decision 2026-10-21 (Dev A and Dev B): **`HitInfo` replaces `HitData`.** `script
 
 ### Attack input layer (`AttackController` on player)
 
-- `attack_light` press: advance the current weapon's light combo (step index resets after 0.6 s idle). Buffer one input during active frames so mashing feels responsive.
-- `attack_heavy` hold: enter `AttackHeavyCharge`, charge 0 to 1 over the weapon's `heavy_charge_seconds` (Warrior affinity 25% faster, Heavy Hands node). Release fires `AttackHeavyRelease` with `charge` passed to the weapon. Tap (<0.15 s) fires uncharged heavy.
-- Weapon skill trigger: `attack_heavy` pressed while `Player.is_perfect_dodge_window()` fires `WeaponController.weapon_skill()` instead, if off cooldown (details in `SPEC-weapons.md`).
+Combat v2 C3 (`docs/proposals/combat-v2.md` 3.2 and 3.3).
+
+- **Unified input buffer**: one slot, last press wins, 0.2 s. It holds `LIGHT | HEAVY_PRESS | DODGE | SKILL` and fires at the first frame that is legal for that action. The owner and the host each run their own buffer. A press that is legal now runs at once and never touches the buffer.
+- **What is legal when**: a fresh attack, heavy or skill starts from Idle or Move, or from an Attack that has passed its combo-cancel window. A dodge starts from anywhere but Dodge and HitStun; from an Attack it waits for the dodge-cancel window; it cancels a heavy charge at any time. The Attack state reports both windows (`can_combo_cancel()`, `can_dodge_cancel()`).
+- **Cancel windows** (`AttackSpec`): `combo_cancel_at` (fraction of recovery, default 0.4) is when the next combo step or a heavy may start; the rest of recovery is skipped. `dodge_cancel_at` (fraction of recovery, default 0.0, the end of the active window) is when a dodge may cancel. Starting the next attack from inside an attack restarts the Attack state in place.
+- **Combo**: the light combo steps through `light_combo`; the 0.6 s reset timer starts when an attack **ends** (the Attack state's exit, including a cancel), not when the button is pressed, and stops while the next attack plays.
+- **Heavy** (`attack_heavy`): pressing it enters the `HeavyCharge` state (or buffers the press). Move speed is `WeaponData.charge_move_factor` (default 0.3). A ring around the player fills over `heavy_charge_seconds` and flashes at full charge, with an SFX hook. Charge tiers: under 0.15 s is a tap (an uncharged heavy); then linear 0..1. A release within 0.15 s **after** full charge is a **perfect release**: +20% damage and +20% poise damage (`HitInfo.tags` carries `perfect_release`). Holding longer keeps the full charge and loses the bonus. Releasing fires `Events.heavy_attack_released(player, charge)` on the host.
+- **A heavy released while busy** is not dropped: the release is stored with the buffered press and the heavy fires at the first legal frame. A charge interrupted by a hit or a dodge has no heavy to release.
+- **Weapon skill trigger**: `attack_heavy` pressed while `Player.is_perfect_dodge_window()` fires `WeaponController.weapon_skill()` instead, if off cooldown (details in `SPEC-weapons.md`).
 - `swap_weapon`, `weapon_1`, `weapon_2`: swap, 0.2 s lockout; Dual Wielder node triggers a free heavy on swap.
-- Attack speed: animation `speed_scale = StatBlock.ATTACK_SPEED`.
-- Movement during attacks: light attacks allow 50% move speed; heavy charge allows 30%; this is a weapon-type parameter.
+- Attack speed: animation `speed_scale = StatBlock.ATTACK_SPEED`; the attack clock (and with it the cancel windows) runs at that speed.
+- Movement during attacks: light attacks allow 50% move speed (`AttackSpec.move_speed_factor`); heavy charge allows 30%; this is a weapon-type parameter.
+- **Sync**: the owning client predicts and sends each action to the host (`AttackController.send` / `_request`). A heavy sends HEAVY_PRESS when the button goes down, so the host slows the charging player the same way and positions agree, and HEAVY on release with the charge. The host clamps that charge to what it saw the player hold plus 0.3 s of latency allowance and only accepts a perfect release for a full charge.
 
 ### Hit reactions
 

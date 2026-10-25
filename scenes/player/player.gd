@@ -119,6 +119,8 @@ const PERFECT_DODGE_SECONDS: float = 0.5
 const MIN_DODGE_COOLDOWN: float = 0.1
 const REVIVE_IFRAME_SECONDS: float = 1.5
 var pending_attack: Dictionary = {}
+## Seconds of hold already banked when HeavyCharge starts from a buffered press.
+var pending_charge_credit: float = 0.0
 var pending_dodge_dir: Vector2 = Vector2.DOWN
 ## Dead for the floor: no longer simulating, replicated so every copy greys out.
 var is_dead: bool = false:

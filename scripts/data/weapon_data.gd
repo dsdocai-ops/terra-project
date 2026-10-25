@@ -12,6 +12,8 @@ enum Type { BLADE, HEAVY, RANGED, MAGIC, EXOTIC }
 @export var heavy: AttackSpec = null
 ## Seconds of holding `attack_heavy` for a full charge.
 @export var heavy_charge_seconds: float = 0.8
+## Share of full move speed while holding a heavy charge (combat v2 C3).
+@export_range(0.0, 1.0) var charge_move_factor: float = 0.3
 @export var unlocked_at_start: bool = true
 ## Placeholder swing / held-sprite colour.
 @export var color: Color = Color(0.9, 0.9, 0.9, 1.0)

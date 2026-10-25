@@ -30,7 +30,25 @@ enum Shape { ARC, CIRCLE, PROJECTILE }
 @export var pierce: int = 0
 ## Share of full move speed while this attack plays.
 @export var move_speed_factor: float = 0.5
+## Cancel windows, as a fraction of `recovery_seconds` after the active window
+## (combat v2 C3). The next combo step, or a heavy, may start once this share of
+## recovery has passed; the rest of recovery is skipped.
+@export_range(0.0, 1.0) var combo_cancel_at: float = 0.4
+## A dodge may cancel once this share of recovery has passed. 0.0, the default,
+## is the end of the active window.
+@export_range(0.0, 1.0) var dodge_cancel_at: float = 0.0
 
 
 func total_seconds() -> float:
 	return windup_seconds + active_seconds + recovery_seconds
+
+
+## Attack-clock time (seconds since the attack began) at which the next combo
+## step or a heavy may cancel the rest of recovery.
+func combo_cancel_seconds() -> float:
+	return windup_seconds + active_seconds + combo_cancel_at * recovery_seconds
+
+
+## Attack-clock time at which a dodge may cancel.
+func dodge_cancel_seconds() -> float:
+	return windup_seconds + active_seconds + dodge_cancel_at * recovery_seconds

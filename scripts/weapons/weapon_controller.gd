@@ -17,6 +17,9 @@ const COMBO_RESET_SECONDS: float = 0.6
 const HEAVY_CHARGE_BONUS: float = 0.8
 ## A full charge adds this much poise damage to a heavy (scaled by the charge).
 const HEAVY_POISE_CHARGE_BONUS: float = 30.0
+## A perfect release (within 0.15 s after full charge) adds this share to the
+## heavy's damage and poise damage.
+const PERFECT_RELEASE_BONUS: float = 0.2
 const ARC_SEGMENTS: int = 6
 const DEFAULT_WEAPON_PATHS: Array[String] = [
 	"res://data/weapons/pickaxe.tres",
@@ -107,20 +110,39 @@ func swap() -> bool:
 	return true
 
 
-## The next light attack spec; advances the combo and restarts its reset timer.
+## The next light attack spec; advances the combo. The reset timer does not run
+## while an attack is playing: the Attack state starts it when the attack ends
+## (`attack_finished`).
 func take_light() -> AttackSpec:
 	var weapon: WeaponData = active_weapon()
 	if weapon == null or weapon.light_combo.is_empty():
 		return null
 	var spec: AttackSpec = weapon.light_combo[combo_step % weapon.light_combo.size()]
 	combo_step = weapon.next_step(combo_step)
-	_combo_timer = COMBO_RESET_SECONDS
+	_combo_timer = 0.0
 	return spec
 
 
 func take_heavy() -> AttackSpec:
 	var weapon: WeaponData = active_weapon()
 	return weapon.heavy if weapon != null else null
+
+
+## An attack began: the combo reset timer stops until it ends.
+func attack_started() -> void:
+	_combo_timer = 0.0
+
+
+## An attack ended (its recovery ran out, or it was cancelled): the 0.6 s combo
+## reset timer starts now, not when the button was pressed.
+func attack_finished() -> void:
+	_combo_timer = COMBO_RESET_SECONDS
+
+
+## Share of full move speed while charging a heavy.
+func charge_move_factor() -> float:
+	var weapon: WeaponData = active_weapon()
+	return weapon.charge_move_factor if weapon != null else 0.3
 
 
 func heavy_charge_seconds() -> float:
@@ -130,15 +152,16 @@ func heavy_charge_seconds() -> float:
 
 ## The hit payload for one swing or shot. `charge` is 0..1 and only scales
 ## heavies.
-func build_hit(spec: AttackSpec, dir: Vector2, charge: float, heavy: bool) -> HitInfo:
+func build_hit(spec: AttackSpec, dir: Vector2, charge: float, heavy: bool, perfect: bool = false) -> HitInfo:
 	var hit := HitInfo.new()
 	hit.source = _player
 	hit.owner_player = _player
 	var scale: float = 1.0 + (charge * HEAVY_CHARGE_BONUS if heavy else 0.0)
-	hit.base_damage = spec.base_damage * scale
+	var perfect_scale: float = 1.0 + (PERFECT_RELEASE_BONUS if heavy and perfect else 0.0)
+	hit.base_damage = spec.base_damage * scale * perfect_scale
 	hit.element = spec.element
 	hit.is_heavy = heavy
-	hit.poise_damage = spec.poise_damage + (HEAVY_POISE_CHARGE_BONUS * charge if heavy else 0.0)
+	hit.poise_damage = (spec.poise_damage + (HEAVY_POISE_CHARGE_BONUS * charge if heavy else 0.0)) * perfect_scale
 	hit.knockback = dir * spec.knockback
 	hit.hit_stun_seconds = spec.hit_stun_seconds
 	hit.is_projectile = spec.shape == AttackSpec.Shape.PROJECTILE
@@ -146,6 +169,8 @@ func build_hit(spec: AttackSpec, dir: Vector2, charge: float, heavy: bool) -> Hi
 	if weapon != null:
 		hit.tags.append(weapon.id)
 	hit.tags.append(&"ranged" if hit.is_projectile else &"melee")
+	if heavy and perfect:
+		hit.tags.append(&"perfect_release")
 	if not heavy and weapon != null and weapon.light_combo.size() > 1 and weapon.light_combo.back() == spec:
 		hit.tags.append(CombatFeedback.FINISHER_TAG)
 	return hit
@@ -154,8 +179,8 @@ func build_hit(spec: AttackSpec, dir: Vector2, charge: float, heavy: bool) -> Hi
 ## Goes live: a melee hitbox is turned on for the attack's active window, a
 ## projectile is spawned once. The caller (the Attack state) calls `end_swing`
 ## when the window closes.
-func begin_swing(spec: AttackSpec, dir: Vector2, charge: float, heavy: bool) -> void:
-	var hit: HitInfo = build_hit(spec, dir, charge, heavy)
+func begin_swing(spec: AttackSpec, dir: Vector2, charge: float, heavy: bool, perfect: bool = false) -> void:
+	var hit: HitInfo = build_hit(spec, dir, charge, heavy, perfect)
 	if spec.shape == AttackSpec.Shape.PROJECTILE:
 		_fire_projectile(spec, dir, hit)
 		return

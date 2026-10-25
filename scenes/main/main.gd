@@ -24,6 +24,9 @@ var _smoke3_spawn_requested: bool = false
 var _smoke3_kill_requested: bool = false
 var _smoke3_hit_applied: bool = false
 var _smoke3_stagger_logged: bool = false
+var _smoke3_heavy_ticks: int = -1
+var _smoke3_charge_seen: bool = false
+var _smoke3_feedback_repeats: int = 0
 var _smoke3_hit_refusal_logged: bool = false
 var _smoke3_death_logged: bool = false
 var _smoke3_kill_logged: bool = false
@@ -142,6 +145,7 @@ func _log_smoke() -> void:
 func _start_smoke3(seconds: float) -> void:
 	Events.enemy_killed.connect(_on_smoke3_enemy_killed)
 	world.combat_feedback.feedback_played.connect(_on_smoke3_feedback_played)
+	Events.heavy_attack_released.connect(_on_smoke3_heavy_released)
 	_smoke3_poll = Timer.new()
 	_smoke3_poll.wait_time = 0.25
 	_smoke3_poll.autostart = true
@@ -157,6 +161,29 @@ func _start_smoke3(seconds: float) -> void:
 ## unreliable CombatFeedback RPC reached the client.
 func _on_smoke3_feedback_played(payload: Dictionary) -> void:
 	print("[smoke3] feedback played on peer %d dmg=%d" % [NetworkManager.local_peer_id, int(payload.get("final_damage", 0))])
+
+
+## The host logs the heavy a client released, with the charge it validated.
+func _on_smoke3_heavy_released(player: Player, charge: float) -> void:
+	print("[smoke3] heavy_attack_released from peer %d charge=%.2f" % [player.peer_id, charge])
+
+
+## Client: after the kill request, press and hold the heavy button through
+## AttackController (the same messages the real input sends), then release it a
+## second later with a charge. The host must see the player charging (the press
+## RPC) and then the release (the release RPC with the charge).
+func _smoke3_drive_heavy() -> void:
+	var me: Player = NetworkManager.players.get(NetworkManager.local_peer_id) as Player
+	if me == null:
+		return
+	var controller: AttackController = me.get_node("AttackController") as AttackController
+	if _smoke3_heavy_ticks == 0:
+		controller.send(AttackController.Kind.HEAVY_PRESS, 0.0)
+		print("[smoke3] client pressed heavy")
+	elif _smoke3_heavy_ticks == 4:
+		controller.send(AttackController.Kind.HEAVY, 0.9, false)
+		print("[smoke3] client released heavy")
+	_smoke3_heavy_ticks += 1
 
 
 func _on_smoke3_enemy_killed(_enemy: Node, _hit: RefCounted) -> void:
@@ -184,6 +211,12 @@ func _smoke3_find_enemy() -> Node:
 ## of 3 (HP 10 -> 7, replicated to everyone). When the client's kill lands,
 ## log how many times enemy_killed fired — it must be exactly 1.
 func _smoke3_host_tick() -> void:
+	if not _smoke3_charge_seen:
+		for peer_id: int in NetworkManager.players:
+			var other: Player = NetworkManager.players[peer_id] as Player
+			if peer_id != NetworkManager.local_peer_id and other != null and other.state_machine.current_name() == &"HeavyCharge":
+				_smoke3_charge_seen = true
+				print("[smoke3] host sees the client player charging a heavy")
 	var enemy := _smoke3_find_enemy()
 	if enemy == null:
 		return
@@ -209,6 +242,14 @@ func _smoke3_host_tick() -> void:
 			world.combat_feedback._on_hit_landed(landed)
 			enemy.call("enter_stagger", landed)
 			print("[smoke3] host sent feedback for %s" % enemy.name)
+	# The feedback RPC is unreliable by design, so the smoke sends it on two more
+	# ticks: one packet arriving is the proof, and a single drop is not a failure.
+	if _smoke3_hit_applied and _smoke3_feedback_repeats < 2:
+		_smoke3_feedback_repeats += 1
+		var again := HitInfo.new()
+		again.target = enemy
+		again.final_damage = 77
+		world.combat_feedback._on_hit_landed(again)
 	if hp == 0 and not _smoke3_kill_logged:
 		_smoke3_kill_logged = true
 		print("[smoke3] enemy_killed emitted %d time(s)" % _smoke3_kill_emissions)
@@ -221,6 +262,8 @@ func _smoke3_host_tick() -> void:
 func _smoke3_client_tick() -> void:
 	if not NetworkManager.is_active:
 		return
+	if _smoke3_heavy_ticks >= 0 and _smoke3_heavy_ticks <= 4:
+		_smoke3_drive_heavy()
 	if not _smoke3_spawn_requested:
 		_smoke3_spawn_requested = true
 		NetworkManager.rpc_id(NetworkManager.HOST_PEER_ID, "request_debug", "spawn grub 1", NetworkManager.local_peer_id)
@@ -236,6 +279,7 @@ func _smoke3_client_tick() -> void:
 		_smoke3_kill_requested = true
 		NetworkManager.rpc_id(NetworkManager.HOST_PEER_ID, "request_debug", "kill", NetworkManager.local_peer_id)
 		print("[smoke3] client requested kill")
+		_smoke3_heavy_ticks = 0
 	if bool(enemy.get("staggered")) and not _smoke3_stagger_logged:
 		_smoke3_stagger_logged = true
 		print("[smoke3] client sees %s staggered (StateSync)" % enemy.name)

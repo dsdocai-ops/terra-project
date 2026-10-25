@@ -12,6 +12,7 @@
 [ext_resource type="Script" path="res://scripts/components/hurtbox.gd" id="8_hurtbox"]
 [ext_resource type="Script" path="res://scenes/player/states/attack.gd" id="11_attack"]
 [ext_resource type="Script" path="res://scenes/player/states/dodge.gd" id="12_dodge"]
+[ext_resource type="Script" path="res://scenes/player/states/heavy_charge.gd" id="13_heavycharge"]
 [ext_resource type="Script" path="res://scripts/combat/attack_controller.gd" id="13_attackctl"]
 [ext_resource type="Script" path="res://scripts/weapons/weapon_controller.gd" id="14_weapons"]
 
@@ -110,6 +111,9 @@ script = ExtResource("11_attack")
 
 [node name="Dodge" type="Node" parent="StateMachine"]
 script = ExtResource("12_dodge")
+
+[node name="HeavyCharge" type="Node" parent="StateMachine"]
+script = ExtResource("13_heavycharge")
 
 [node name="SlotRing" type="Node2D" parent="."]
 script = ExtResource("6_ring")
