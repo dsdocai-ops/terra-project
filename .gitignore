@@ -11,3 +11,12 @@ __pycache__/
 
 # Exported game builds (published as GitHub Release assets, not committed)
 builds/
+
+# Goal-runner working folders and stray test logs
+.goals*/
+/*.log
+
+# AI assistant context: kept on each machine, not in the repo
+CLAUDE.md
+.claude/
+tools/graphify/
