@@ -26,6 +26,8 @@ signal building_refused(building_id: StringName, reason: StringName)
 
 ## Half-size of the painted ground square, in tiles.
 const GROUND_HALF_SIZE: int = 12
+## Where the always-open way down stands: just below the pit edge.
+const PIT_DESCENT_POSITION: Vector2 = Vector2(0.0, 110.0)
 ## Pit radius in tiles for each story stage; the pit shrinks back as the story
 ## advances (SPEC-town "Pit edge and visuals"). Stage 0 is the largest.
 const PIT_RADIUS_BY_STAGE: Array[int] = [1, 1, 0, 0]
@@ -48,6 +50,7 @@ func _ready() -> void:
 		candidate.build_prompted.connect(_on_build_prompted)
 		candidate.service_opened.connect(_on_service_opened)
 	set_pit_stage(0)
+	_add_pit_descent()
 	menus = TownMenus.new()
 	menus.name = "TownMenus"
 	add_child(menus)
@@ -132,3 +135,11 @@ func _on_service_opened(peer_id: int, building_id: StringName, _level: int) -> v
 			shrine_entered.emit(peer_id)
 		&"blacksmith":
 			blacksmith_opened.emit(peer_id)
+
+
+## The pit edge is always a way down (the Tavern may not be built yet).
+func _add_pit_descent() -> void:
+	var descent := PitDescent.new()
+	descent.position = PIT_DESCENT_POSITION
+	add_child(descent)
+	descent.descend_requested.connect(run_setup_requested.emit)
