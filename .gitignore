@@ -8,3 +8,6 @@ graphify-out/
 # Python asset pipeline (tools/art, tools/audio)
 __pycache__/
 .pytest_cache/
+
+# Exported game builds (published as GitHub Release assets, not committed)
+builds/
