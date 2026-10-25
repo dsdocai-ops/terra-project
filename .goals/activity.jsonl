@@ -38,3 +38,7 @@
 {"v":1,"ts":"2026-10-25T01:12:05.189Z","actor":"ai-agent","role":"worker","phase":"work","step":1,"run":1792890072557,"op":"read","tool":"Read","path":"docs/proposals/combat-v2.md","pathKind":"project","ms":16}
 {"v":1,"ts":"2026-10-25T01:13:16.670Z","actor":"ai-agent","role":"worker","phase":"work","step":1,"run":1792890072557,"op":"read","tool":"Read","path":"docs/proposals/combat-v2.md","pathKind":"project","ms":12}
 {"v":1,"ts":"2026-10-25T01:13:45.333Z","actor":"ai-agent","role":"worker","phase":"work","step":1,"run":1792890072557,"op":"read","tool":"Read","path":"scripts/autoload/time_manager.gd","pathKind":"project","ms":181}
+{"v":1,"ts":"2026-10-25T01:17:43.028Z","actor":"ai-agent","role":"worker","phase":"work","step":1,"run":1792890072557,"op":"read","tool":"Read","path":".goals/BRIEF.md","pathKind":"project","ms":26}
+{"v":1,"ts":"2026-10-25T01:17:43.367Z","actor":"ai-agent","role":"worker","phase":"work","step":1,"run":1792890072557,"op":"read","tool":"Read","path":".goals/PLAN.md","pathKind":"project","ms":16}
+{"v":1,"ts":"2026-10-25T01:17:43.958Z","actor":"ai-agent","role":"worker","phase":"work","step":1,"run":1792890072557,"op":"read","tool":"Read","path":".goals/LOG.md","pathKind":"project","ms":16}
+{"v":1,"ts":"2026-10-25T01:17:43.994Z","actor":"ai-agent","role":"worker","phase":"work","step":1,"run":1792890072557,"op":"read","tool":"Read","path":".goals/LESSONS.md","pathKind":"project","ms":21}
