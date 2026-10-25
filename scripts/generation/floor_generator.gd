@@ -21,7 +21,7 @@ const LOCKING_TYPES: Array[int] = [RoomType.COMBAT, RoomType.ELITE_COMBAT, RoomT
 const GRID: int = 96
 const MIN_ROOMS: int = 8
 const MAX_ROOMS: int = 14
-const ROOM_GAP: int = 2
+const ROOM_GAP: int = 4
 const EDGE_MARGIN: int = 3
 const CORRIDOR_HALF: int = 1
 const MAX_FLOOR_ATTEMPTS: int = 20
@@ -179,7 +179,7 @@ static func _fallback_rooms() -> Array[Rect2i]:
 	var rects: Array[Rect2i] = []
 	for row: int in 3:
 		for col: int in 3:
-			rects.append(Rect2i(8 + col * 28, 8 + row * 28, 9, 7))
+			rects.append(Rect2i(8 + col * 28, 8 + row * 28, 12, 10))
 	return rects
 
 
@@ -359,6 +359,7 @@ static func _carve_corridors(rects: Array[Rect2i], edges: Array[Vector2i]) -> Ar
 			if y == to.y:
 				break
 			y += step_y
+		_carve_corner(cells, Vector2i(to.x, from.y))
 	var ordered: Array[Vector2i] = []
 	for y: int in GRID:
 		for x: int in GRID:
@@ -438,3 +439,13 @@ static func _hash_layout(layout: FloorLayout) -> int:
 	for modifier: int in layout.modifiers:
 		acc = (acc * 43 + modifier) % (HASH_MIX * HASH_MIX)
 	return absi(acc)
+
+
+## Fills the full square where a corridor turns, so the outer corner is not
+## pushed in by one tile (the two slices alone leave that cell out).
+static func _carve_corner(cells: Dictionary[Vector2i, bool], centre: Vector2i) -> void:
+	for dx: int in range(-CORRIDOR_HALF, CORRIDOR_HALF + 1):
+		for dy: int in range(-CORRIDOR_HALF, CORRIDOR_HALF + 1):
+			var cell: Vector2i = centre + Vector2i(dx, dy)
+			if cell.x >= 1 and cell.y >= 1 and cell.x < GRID - 1 and cell.y < GRID - 1:
+				cells[cell] = true

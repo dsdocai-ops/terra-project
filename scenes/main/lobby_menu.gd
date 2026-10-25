@@ -1,7 +1,7 @@
 class_name LobbyMenu
 extends Control
 ## The co-op lobby: a list of servers found on the local network with Join
-## buttons, a join-by-address row, and a host form with a server name and an
+## buttons and a host form with a server name and an
 ## optional password. Owned by ui-hud. Sync: none; it only gathers input and
 ## emits it, `main.gd` talks to NetworkManager.
 ## Built in code (like the other menu screens it matches in look): the node
@@ -26,7 +26,6 @@ var discovery: LobbyDiscovery = null
 var _rows: VBoxContainer = null
 var _empty_label: Label = null
 var _scan_label: Label = null
-var _address_field: LineEdit = null
 var _name_field: LineEdit = null
 var _no_password_box: CheckBox = null
 var _password_field: LineEdit = null
@@ -49,11 +48,9 @@ func _ready() -> void:
 	hide()
 
 
-## Shows the lobby and starts looking for servers. `address` pre-fills the
-## join-by-address field.
+## Shows the lobby and starts looking for servers. `address` is ignored: the
+## lobby has no address entry, servers are picked from the list.
 func open(address: String = "") -> void:
-	if not address.is_empty():
-		_address_field.text = address
 	_status.text = ""
 	_host_error.text = ""
 	_prompt.hide()
@@ -233,7 +230,7 @@ func _build_list_panel() -> Control:
 	_rows = VBoxContainer.new()
 	_rows.add_theme_constant_override("separation", 4)
 	holder.add_child(_rows)
-	_empty_label = _label("No servers found. Host one, or join by address below.", MUTED)
+	_empty_label = _label("No servers found. Host one, or press Refresh.", MUTED)
 	_empty_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	holder.add_child(_empty_label)
 	_status = _label("", DANGER)
@@ -241,11 +238,9 @@ func _build_list_panel() -> Control:
 	var join_row := HBoxContainer.new()
 	join_row.add_theme_constant_override("separation", 6)
 	column.add_child(join_row)
-	_address_field = _field("192.168.1.20")
-	_address_field.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	_address_field.text_submitted.connect(func(_t: String) -> void: _on_join_address())
-	join_row.add_child(_address_field)
-	join_row.add_child(_button("Join address", _on_join_address))
+	var spacer := Control.new()
+	spacer.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	join_row.add_child(spacer)
 	join_row.add_child(_button("Refresh", _on_refresh))
 	join_row.add_child(_button("Back", _on_back))
 	return panel
@@ -349,13 +344,6 @@ func _on_join_server(info: LobbyServerInfo) -> void:
 	join_requested.emit(info.address, info.port, "")
 
 
-func _on_join_address() -> void:
-	var target: Dictionary = parse_address(_address_field.text)
-	if not NetworkManager.looks_like_address(String(target["address"])):
-		_status.text = "Enter the host's address, like 192.168.1.20."
-		return
-	_status.text = ""
-	join_requested.emit(String(target["address"]), int(target["port"]), "")
 
 
 func _on_prompt_join() -> void:

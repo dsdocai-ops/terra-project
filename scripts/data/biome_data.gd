@@ -15,8 +15,8 @@ const COLLAPSED_MINES_PATH: String = "res://data/biomes/collapsed_mines.tres"
 ## 1..6, the same value as RunState.biome_index.
 @export var biome_index: int = 1
 ## Smallest and largest room in tiles (SPEC-floor-generation default 9x7..17x13).
-@export var room_size_min: Vector2i = Vector2i(9, 7)
-@export var room_size_max: Vector2i = Vector2i(17, 13)
+@export var room_size_min: Vector2i = Vector2i(12, 10)
+@export var room_size_max: Vector2i = Vector2i(22, 16)
 ## The floor within this biome (1..5) that holds the LORE room.
 @export var lore_floor: int = 4
 ## EnemyData the spawn director draws from; empty falls back to the code pool.
