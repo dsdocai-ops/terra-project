@@ -34,7 +34,7 @@ func physics_update(delta: float) -> void:
 		player.hurtbox.dodge_invulnerable = false
 		if player.hit_iframes_left <= 0.0:
 			player.hurtbox.invulnerable = false
-	player.velocity = _dir * player.move_speed() * SPEED_MULT * player.dodge_distance_mult
+	player.velocity = _dir * player.move_speed() * SPEED_MULT * player.dodge_distance_mult * machine.effective_scale
 	player.apply_coop_clamp(delta)
 	player.move_and_slide()
 	if _elapsed >= DURATION_SECONDS:

@@ -15,7 +15,6 @@ const SEPARATION_RADIUS: float = 22.0
 const SEPARATION_PUSH: float = 40.0
 const PATH_REFRESH_SECONDS: float = 0.5
 const DEATH_FADE_SECONDS: float = 0.6
-const FLASH_SECONDS: float = 0.08
 const GROUP: StringName = &"enemies"
 ## Stand-in for an unknown kind (debug `spawn grub`).
 const FALLBACK_KIND: StringName = &"hollow_miner"
@@ -39,7 +38,6 @@ var next_attack: AttackPattern = null
 
 var _path: PackedVector2Array = PackedVector2Array()
 var _path_timer: float = 0.0
-var _flash_left: float = 0.0
 var _knockback_decel: float = 0.0
 var _facing: int = 0
 var _last_position: Vector2 = Vector2.ZERO
@@ -134,6 +132,7 @@ func _ready() -> void:
 	_last_position = global_position
 	hurtbox.team = Team.Kind.ENEMY
 	hitbox.team = Team.Kind.ENEMY
+	HitFlash.attach(self, [body, sprite])
 	machine.set_physics_process(multiplayer.is_server())
 	if multiplayer.is_server():
 		health.died.connect(_on_died)
@@ -145,15 +144,12 @@ func _ready() -> void:
 func _physics_process(delta: float) -> void:
 	if not multiplayer.is_server():
 		return
-	attack_cooldown_left = maxf(attack_cooldown_left - delta, 0.0)
-	_path_timer = maxf(_path_timer - delta, 0.0)
+	var scaled: float = delta * _time_scale()
+	attack_cooldown_left = maxf(attack_cooldown_left - scaled, 0.0)
+	_path_timer = maxf(_path_timer - scaled, 0.0)
 
 
 func _process(delta: float) -> void:
-	if _flash_left > 0.0:
-		_flash_left -= delta
-		body.modulate = Color(2.0, 2.0, 2.0, 1.0) if _flash_left > 0.0 else Color.WHITE
-		sprite.self_modulate = body.modulate
 	if sprite.visible:
 		_animate_sprite()
 	telegraph.progress = telegraph_progress
@@ -223,8 +219,9 @@ func stop_moving(delta: float) -> void:
 	move_and_slide()
 
 
+## TimeManager's multiplier for this enemy: slows, time stops and hit-stop.
 func _time_scale() -> float:
-	return 1.0
+	return TimeManager.scale_for(self)
 
 
 func _next_waypoint(point: Vector2) -> Vector2:
@@ -287,7 +284,6 @@ func decay_knockback(delta: float) -> void:
 
 
 func _on_damaged(_hit: HitInfo) -> void:
-	_flash_left = FLASH_SECONDS
 	queue_redraw()
 
 

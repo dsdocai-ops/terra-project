@@ -11,7 +11,7 @@ func enter(_from: StringName) -> void:
 
 func physics_update(delta: float) -> void:
 	player.decay_knockback(delta)
-	player.velocity = player.knockback_velocity
+	player.velocity = player.knockback_velocity * machine.effective_scale
 	player.move_and_slide()
 	if player.is_on_wall():
 		# Walls block the impulse. Stop it here so it does not grind along them.

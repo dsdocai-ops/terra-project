@@ -140,6 +140,7 @@ func _log_smoke() -> void:
 ## request (they refuse to resolve — the W2-B3 host-only rule).
 func _start_smoke3(seconds: float) -> void:
 	Events.enemy_killed.connect(_on_smoke3_enemy_killed)
+	world.combat_feedback.feedback_played.connect(_on_smoke3_feedback_played)
 	_smoke3_poll = Timer.new()
 	_smoke3_poll.wait_time = 0.25
 	_smoke3_poll.autostart = true
@@ -149,6 +150,12 @@ func _start_smoke3(seconds: float) -> void:
 	get_tree().create_timer(seconds).timeout.connect(func() -> void:
 		print("[smoke3] done, quitting")
 		get_tree().quit())
+
+
+## Both peers log each feedback packet they play, so the smoke can prove the host's
+## unreliable CombatFeedback RPC reached the client.
+func _on_smoke3_feedback_played(payload: Dictionary) -> void:
+	print("[smoke3] feedback played on peer %d dmg=%d" % [NetworkManager.local_peer_id, int(payload.get("final_damage", 0))])
 
 
 func _on_smoke3_enemy_killed(_enemy: Node, _hit: RefCounted) -> void:
@@ -191,6 +198,14 @@ func _smoke3_host_tick() -> void:
 			print("[smoke3] host resolved hit on %s hp 10 -> 7 (resolved=%s)" % [enemy.name, resolved])
 			_smoke3_logged_hp_host = int(enemy.get("current_hp"))
 			print("[smoke3] host sees %s hp=%d" % [enemy.name, _smoke3_logged_hp_host])
+			# The same landed hit goes through CombatFeedback: hit-stop on the host, then
+			# the unreliable RPC to every peer. apply_hit above bypasses Hurtbox, so no
+			# hit_landed fires for it; this stands in for that event.
+			var landed := HitInfo.new()
+			landed.target = enemy
+			landed.final_damage = 77
+			world.combat_feedback._on_hit_landed(landed)
+			print("[smoke3] host sent feedback for %s" % enemy.name)
 	if hp == 0 and not _smoke3_kill_logged:
 		_smoke3_kill_logged = true
 		print("[smoke3] enemy_killed emitted %d time(s)" % _smoke3_kill_emissions)

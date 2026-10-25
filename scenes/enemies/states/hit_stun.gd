@@ -12,7 +12,7 @@ func enter(_from: StringName) -> void:
 
 func physics_update(delta: float) -> void:
 	enemy.decay_knockback(delta)
-	enemy.velocity = enemy.knockback_velocity
+	enemy.velocity = enemy.knockback_velocity * machine.effective_scale
 	enemy.move_and_slide()
 	if enemy.is_on_wall():
 		enemy.knockback_velocity = Vector2.ZERO

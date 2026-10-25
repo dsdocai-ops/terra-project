@@ -168,3 +168,11 @@ Next week risks
 - Every Week 4 item that consumes Dev A's lane is still unlanded (W4-A1 affixes, W4-A2 SpawnDirector v2, W4-A3 SHRINE placement, W4-A4 the combat-event emission set, W4-A5 the Blacksmith damage tier, W4-A6 / W4-A7 art and audio), and week 5's W5-A items stack on the same lane. The week-5 economy pass re-tunes the four `data/loot/` tables (decision 99) and can proceed without Dev A.
 - The `week-4` checkpoint's headline claim — a pathological proc build holding 60 FPS — has no scene and no number; if the perf scene lands in week 5 the measurement should be a real windowed run (this machine renders windowed at exit 0) rather than headless-with-a-caveat (BRIEF Assumption 5).
 - `week-2`, `week-3` and `week-4` are all untagged. If Dev A's lanes land later, all three should be tagged retroactively before the mid-project gate, or the milestones explicitly re-scoped with a human.
+
+## Combat v2 (2026-10-24)  steps C1 to C5, no tag
+
+Source: `docs/proposals/combat-v2.md`. One row per step PR. The automated gates are recorded as run on this machine; the manual feel pass needs a person at the keyboard and is **not** recorded as done until one has played it.
+
+Checklist
+- [x] C1 `feat/combat-core-hit-feedback`: `--import` 0 errors; full GUT suite 1710 tests / 1709 passing / 1 pending (the pending test was already pending before C1), exit 0; two-instance smoke `tools/smoke_two.sh` 37 `ok`, 0 FAIL, including the two new lines that prove the host's feedback RPC reached the client.
+- [ ] C1 manual feel pass (hit-stop weight, flash read, slash arc vs real hitbox, co-op numbers on the client): not yet played by a human.

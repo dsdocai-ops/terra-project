@@ -66,11 +66,24 @@ Decision 2026-10-21 (Dev A and Dev B): **`HitInfo` replaces `HitData`.** `script
 
 ### Hit feedback
 
-- Hit flash: shader `hit_flash.gdshader` white overlay 4 frames on the sprite material.
-- Screen shake: `GameCamera.shake()` light 2 / heavy 5 / boss 8.
-- Hit-stop: `TimeManager.hit_stop(attacker, target, frames)` 3 light, 6 heavy, 10 on boss kill.
-- Damage numbers: pooled `DamageNumber` labels in `World/FX`, pool size 128; crits larger, element-colored, pop and drift. Local only, driven by `hit_landed` events replicated to clients.
-- Hit SFX hook: `AudioManager.play_sfx("hit_<weapon_type>")`.
+Every landed hit plays its feedback on every peer (combat v2 C1, `docs/proposals/combat-v2.md` 3.6). The host sees `Events.hit_landed`; a local `CombatFeedback` node (one per peer, created by `World` under the fixed name `CombatFeedback`) applies hit-stop through `TimeManager` and sends one unreliable `call_local` RPC to every peer carrying `{target_path, final_damage, is_crit, is_heavy, staggered}` (plus `point` for the spark and `boss_kill` for the shake tier). Each peer plays the number, flash, shake and spark from that copy. `Events.hit_landed` keeps its signature.
+
+| Event | Hit-stop (frames) | Shake (px) | Flash | Other |
+|---|---|---|---|---|
+| Light hit | 3 | none | 4 frames white | small spark |
+| Finisher or heavy | 6 | 2 | 4 frames white | large spark |
+| Crit | +2 | +1 | 4 frames gold | crit number |
+| Player hurt | 4, on the player only | 3, local player only | 4 frames red | |
+| Boss kill | 10 | 8 | n/a | |
+
+The numbers live in one table, `CombatFeedbackConstants` (`scripts/combat/combat_feedback_constants.gd`). A finisher is the last step of a weapon's light combo (`WeaponController.build_hit` tags it `finisher`).
+
+- **Hit-stop**: `TimeManager.hit_stop(attacker, target, frames)` on the host, which broadcasts it. Projectile hits freeze the target only; a hit on a player freezes the player only. `StateMachine.physics_update` multiplies every state's delta by `TimeManager.scale_for(actor)` and does not step a state at all at scale 0, so players and enemies actually stop; states that set `velocity` directly scale it by `machine.effective_scale`.
+- **Hit flash**: `hit_flash.gdshader` (`flash_amount`, `flash_color`) on the enemy body and sprite and the player sprite, driven by `HitFlash`.
+- **Slash arc**: `SlashArc` draws the attack's real shape (`AttackSpec.shape`, `reach` with the charge bonus, `arc_degrees`) for the active window. `WeaponController.begin_swing` plays it on the owner and the host; the host sends an unreliable RPC to the other clients.
+- **Spark**: `HitSpark` at the hit point, small for a light hit, large for a heavy one.
+- **Damage numbers**: `DamageNumber` labels in `World/FX`; crits larger and gold. Local only, from the RPC above.
+- Hit SFX hook: `AudioManager.play_sfx("hit_<weapon_type>")` (not wired yet).
 
 ### Enemy attack contract
 
@@ -105,7 +118,7 @@ recovery : enemy vulnerable, cannot act, duration >= 0.3 s
 
 ## Multiplayer ownership
 
-Hit detection and damage: host only (`Hurtbox.receive` early-returns on clients). Hit feedback (flash, numbers, shake for the local player, hit-stop) runs on every peer from the replicated `hit_landed` event. Attack animations start on the input-owning client immediately for feel; the host starts them one RTT later and is the source of truth for hitbox timing.
+Hit detection and damage: host only (`Hurtbox.receive` early-returns on clients). Hit feedback (flash, numbers, shake for the local player, sparks) runs on every peer from the `CombatFeedback` RPC the host sends for each `hit_landed`; hit-stop is applied on the host and replicated by `TimeManager`. Attack animations start on the input-owning client immediately for feel; the host starts them one RTT later and is the source of truth for hitbox timing.
 
 Sync: host-authoritative; `Hitbox.active` is not synced (host only); `Health.current_hp` via `StateSync`.
 

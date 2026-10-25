@@ -60,7 +60,7 @@ func physics_update(delta: float) -> void:
 func _steer(delta: float) -> void:
 	var target: Vector2 = Vector2.ZERO
 	if player.move_input != Vector2.ZERO:
-		target = Iso.input_to_world(player.move_input) * player.move_speed() * _spec.move_speed_factor
+		target = Iso.input_to_world(player.move_input) * player.move_speed() * _spec.move_speed_factor * machine.effective_scale
 	player.velocity = player.velocity.move_toward(target, player.move_accel() * delta)
 	player.apply_coop_clamp(delta)
 	player.move_and_slide()

@@ -30,6 +30,7 @@ var _combo_timer: float = 0.0
 var _swap_lockout: float = 0.0
 var _hitbox: Hitbox = null
 var _hitbox_shape: CollisionShape2D = null
+var _slash_arc: SlashArc = null
 var _player: Player = null
 
 
@@ -39,6 +40,7 @@ func _ready() -> void:
 	for index: int in SLOT_COUNT:
 		slots[index] = load(DEFAULT_WEAPON_PATHS[index]) as WeaponData
 	_build_hitbox()
+	_build_slash_arc()
 
 
 func _physics_process(delta: float) -> void:
@@ -60,6 +62,17 @@ func _build_hitbox() -> void:
 		pivot.add_child(_hitbox)
 	else:
 		add_child(_hitbox)
+
+
+## The swing visual sits where the hitbox does, so its wedge is the real hitbox.
+func _build_slash_arc() -> void:
+	_slash_arc = SlashArc.new()
+	_slash_arc.name = "SlashArc"
+	var pivot: Node2D = _player.get_node_or_null("WeaponPivot") as Node2D if _player != null else null
+	if pivot != null:
+		pivot.add_child(_slash_arc)
+	else:
+		add_child(_slash_arc)
 
 
 func equip(slot: int, data: WeaponData) -> void:
@@ -130,6 +143,8 @@ func build_hit(spec: AttackSpec, dir: Vector2, charge: float, heavy: bool) -> Hi
 	if weapon != null:
 		hit.tags.append(weapon.id)
 	hit.tags.append(&"ranged" if hit.is_projectile else &"melee")
+	if not heavy and weapon != null and not weapon.light_combo.is_empty() and weapon.light_combo.back() == spec:
+		hit.tags.append(CombatFeedback.FINISHER_TAG)
 	return hit
 
 
@@ -146,15 +161,55 @@ func begin_swing(spec: AttackSpec, dir: Vector2, charge: float, heavy: bool) -> 
 	_hitbox.template = hit
 	_hitbox.hit_once_per_target = true
 	_hitbox.active = multiplayer.is_server()
+	_show_swing(spec, dir, charge, heavy)
 
 
 func end_swing() -> void:
 	if _hitbox != null:
 		_hitbox.active = false
+	if _slash_arc != null:
+		_slash_arc.stop()
+
+
+## Forward reach of a melee swing in px, including the heavy's charge bonus.
+static func melee_reach(spec: AttackSpec, charge: float, heavy: bool) -> float:
+	return spec.reach * (1.0 + (charge * 0.35 if heavy else 0.0))
+
+
+## Plays the swing visual here, and on the host also on every other peer except
+## the owner (who predicted it and already plays it). Real seconds of the active
+## window, so a slow attack speed stretches it like the Attack state does.
+func _show_swing(spec: AttackSpec, dir: Vector2, charge: float, heavy: bool) -> void:
+	if spec.shape == AttackSpec.Shape.PROJECTILE or _slash_arc == null:
+		return
+	var reach: float = melee_reach(spec, charge, heavy)
+	var seconds: float = spec.active_seconds / _attack_speed()
+	var color: Color = active_weapon().color if active_weapon() != null else Color.WHITE
+	_slash_arc.play(spec.shape, reach, spec.arc_degrees, dir, seconds, color)
+	if not multiplayer.is_server() or _player == null:
+		return
+	for peer_id: int in multiplayer.get_peers():
+		if peer_id != _player.peer_id:
+			_remote_swing.rpc_id(peer_id, spec.shape, reach, spec.arc_degrees, dir, seconds, color)
+
+
+## Host -> other clients: show this player's swing. Presentation only.
+@rpc("any_peer", "call_remote", "unreliable")
+func _remote_swing(shape: int, reach: float, arc_degrees: float, dir: Vector2, seconds: float, color: Color) -> void:
+	if multiplayer.get_remote_sender_id() != NetworkManager.HOST_PEER_ID or _slash_arc == null:
+		return
+	_slash_arc.play(shape as AttackSpec.Shape, reach, arc_degrees, dir, seconds, color)
+
+
+func _attack_speed() -> float:
+	var stats: StatBlock = _player.stat_block as StatBlock if _player != null else null
+	if stats == null:
+		return 1.0
+	return maxf(stats.get_value(StatBlock.Stat.ATTACK_SPEED), StatBlock.ATTACK_SPEED_MIN)
 
 
 func _melee_shape(spec: AttackSpec, charge: float, heavy: bool) -> Shape2D:
-	var reach: float = spec.reach * (1.0 + (charge * 0.35 if heavy else 0.0))
+	var reach: float = melee_reach(spec, charge, heavy)
 	if spec.shape == AttackSpec.Shape.CIRCLE:
 		var circle := CircleShape2D.new()
 		circle.radius = reach

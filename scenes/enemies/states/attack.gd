@@ -47,7 +47,7 @@ func physics_update(delta: float) -> void:
 				_start_active()
 		Phase.ACTIVE:
 			if _pattern.kind == AttackPattern.Kind.RUSH:
-				enemy.velocity = _dir * _pattern.speed
+				enemy.velocity = _dir * _pattern.speed * machine.effective_scale
 				enemy.move_and_slide()
 			else:
 				enemy.stop_moving(delta)

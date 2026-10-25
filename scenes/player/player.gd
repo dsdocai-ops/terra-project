@@ -207,6 +207,8 @@ var _missing_anims: Dictionary[StringName, bool] = {}
 
 func _ready() -> void:
 	refresh_authority()
+	if sprite != null:
+		HitFlash.attach(self, [sprite])
 	_apply_slot_color()
 	if health.has_signal(&"damaged"):
 		health.connect(&"damaged", _on_damaged)
@@ -217,12 +219,10 @@ func _ready() -> void:
 	revived.connect(_on_revived)
 
 
-## Any damage grants the post-hit i-frames.
+## Any damage grants the post-hit i-frames. The red flash is CombatFeedback's,
+## played on every peer from the replicated hit.
 func _on_damaged(_hit: HitInfo) -> void:
 	start_hit_iframes()
-	if sprite != null:
-		sprite.modulate = Color(1.0, 0.5, 0.5, 1.0)
-		create_tween().tween_property(sprite, "modulate", Color.WHITE, 0.2)
 
 
 ## Hurtbox calls this on the host when a hit connects: HitStun for
