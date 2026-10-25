@@ -14,9 +14,8 @@ signal painted(layout: FloorLayout)
 signal room_visited(index: int)
 
 const FLOOR_TILE_TINT_NODE: StringName = &"Floor"
-## Dark veil over a room the local player has not entered yet.
-const SHADE_COLOR := Color(0, 0, 0, 1)
-const SHADE_FADE_SECONDS: float = 0.45
+const FOG_SHADER: String = "res://scenes/dungeon/fog.gdshader"
+const FOG_MAX_ROOMS: int = 16
 
 var layout: FloorLayout = null
 var astar: AStarGrid2D = null
@@ -30,7 +29,7 @@ var visited: Dictionary[int, bool] = {}
 var current_room_index: int = -1
 
 var _world: World = null
-var _shades: Dictionary[int, Polygon2D] = {}
+var _fog: ColorRect = null
 
 
 ## Paints `layout` into `world`'s tile layers and builds rooms, doors and the
@@ -42,6 +41,7 @@ func paint(p_layout: FloorLayout, biome: BiomeData, world: World) -> void:
 	_paint_tiles(world, biome)
 	_build_astar()
 	_build_rooms()
+	_build_fog()
 	painted.emit(layout)
 
 
@@ -52,7 +52,7 @@ func _clear_children() -> void:
 	rooms.clear()
 	doors_by_room.clear()
 	visited.clear()
-	_shades.clear()
+	_fog = null
 	current_room_index = -1
 
 
@@ -97,7 +97,6 @@ func _build_rooms() -> void:
 			add_child(door)
 			doors.append(door)
 		doors_by_room[spec.index] = doors
-		_add_shade(spec)
 
 
 ## Host. Runs every registered populator for every room (chests, shrines,
@@ -151,6 +150,10 @@ func _physics_process(_delta: float) -> void:
 	var player: Player = NetworkManager.players.get(NetworkManager.local_peer_id)
 	if player == null or not is_instance_valid(player):
 		return
+	if _fog != null:
+		var u: float = player.global_position.x / Iso.HALF_W
+		var v: float = player.global_position.y / Iso.HALF_H
+		(_fog.material as ShaderMaterial).set_shader_parameter(&"player_tile", Vector2((u + v) * 0.5 - 1.0, (v - u) * 0.5))
 	var room: Room = room_at(player.position)
 	current_room_index = room.spec.index if room != null else -1
 	if room != null and not visited.has(room.spec.index):
@@ -159,32 +162,42 @@ func _physics_process(_delta: float) -> void:
 
 func _visit(index: int) -> void:
 	visited[index] = true
-	var shade: Polygon2D = _shades.get(index)
-	if shade != null and is_instance_valid(shade):
-		var tween: Tween = shade.create_tween()
-		tween.tween_property(shade, "modulate:a", 0.0, SHADE_FADE_SECONDS)
-		tween.tween_callback(shade.queue_free)
-	_shades.erase(index)
+	_sync_fog()
 	room_visited.emit(index)
 
 
-## A veil over the room (and its wall ring) until the local player walks in.
-func _add_shade(spec: RoomSpec) -> void:
-	var rect: Rect2i = spec.rect.grow(1)
-	var x0: float = float(rect.position.x) - 0.5
-	var y0: float = float(rect.position.y) - 0.5
-	var x1: float = float(rect.end.x) - 0.5
-	var y1: float = float(rect.end.y) - 0.5
-	var shade := Polygon2D.new()
-	shade.name = "Shade%d" % spec.index
-	shade.polygon = PackedVector2Array([
-		_tile_corner(x0, y0), _tile_corner(x1, y0), _tile_corner(x1, y1), _tile_corner(x0, y1)])
-	shade.color = SHADE_COLOR
-	shade.z_index = 40
-	add_child(shade)
-	_shades[spec.index] = shade
+## Solid black over the whole floor; the shader clears entered rooms and a small
+## lamp around the player in hallways. Local presentation only.
+func _build_fog() -> void:
+	var span: float = float(FloorGenerator.GRID) * Iso.HALF_W * 2.0
+	_fog = ColorRect.new()
+	_fog.name = "Fog"
+	_fog.position = Vector2(-span * 0.5 - 200.0, -200.0)
+	_fog.size = Vector2(span + 400.0, span * 0.5 + 400.0)
+	_fog.color = Color.BLACK
+	_fog.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_fog.z_index = 40
+	var material := ShaderMaterial.new()
+	material.shader = load(FOG_SHADER) as Shader
+	var rects := PackedVector4Array()
+	for spec: RoomSpec in layout.rooms:
+		var grown: Rect2i = spec.rect.grow(1)
+		rects.append(Vector4(grown.position.x - 0.5, grown.position.y - 0.5, grown.end.x - 0.5, grown.end.y - 0.5))
+	while rects.size() < FOG_MAX_ROOMS:
+		rects.append(Vector4.ZERO)
+	material.set_shader_parameter(&"rects", rects)
+	material.set_shader_parameter(&"count", mini(layout.rooms.size(), FOG_MAX_ROOMS))
+	_fog.material = material
+	add_child(_fog)
+	_sync_fog()
 
 
-## Screen point of a fractional tile-space position (see Iso.to_screen).
-func _tile_corner(x: float, y: float) -> Vector2:
-	return Vector2((x - y) * Iso.HALF_W + Iso.HALF_W, (x + y) * Iso.HALF_H + Iso.HALF_H)
+func _sync_fog() -> void:
+	if _fog == null:
+		return
+	var lit := PackedFloat32Array()
+	lit.resize(FOG_MAX_ROOMS)
+	for index: int in visited:
+		if index < FOG_MAX_ROOMS:
+			lit[index] = 1.0
+	(_fog.material as ShaderMaterial).set_shader_parameter(&"lit", lit)

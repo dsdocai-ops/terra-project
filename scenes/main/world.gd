@@ -40,6 +40,9 @@ func _ready() -> void:
 	NetworkManager.floor_layout_ready.connect(_on_floor_layout_ready)
 	NetworkManager.player_joined.connect(_on_player_joined)
 	_build_combat_feedback()
+	var prompt := InteractPrompt.new()
+	prompt.name = "InteractPrompt"
+	add_child(prompt)
 	var existing: FloorLayout = NetworkManager.last_floor_layout as FloorLayout
 	if existing != null:
 		build_floor(existing)
