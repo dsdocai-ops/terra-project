@@ -75,7 +75,9 @@ func launch(hit: HitInfo, side: Team.Kind, max_range: float, pierce: int, spec: 
 		homing_strength = spec.homing_strength
 		lifetime_seconds = spec.lifetime_seconds
 		reflectable = spec.reflectable
-	_flight = ProjectileFlight.new()
+	# The flight object is reused, not remade: `arm` rewrites every number it
+	# carries, so a pooled projectile's next shot never allocates mid-run.
+	_ensure_flight()
 	_flight.arm(synced_velocity, max_range, lifetime_seconds)
 	_flight.bounces_left = spec.bounce if spec != null else 0
 	_flight.homing_strength = homing_strength
@@ -139,6 +141,27 @@ func _physics_process(delta: float) -> void:
 		return
 	_ensure_flight()
 	_host_step(delta)
+
+
+## Parked for the pool (`ProjectilePool._make` and `release`): retired, so
+## `_physics_process` steps nothing while the bolt waits idle, and with the
+## flight object already made, so even the first launch after warm-up
+## allocates nothing.
+func park() -> void:
+	_retired = true
+	_ensure_flight()
+
+
+## The pool calls this on acquire: a reused projectile starts clean, with the
+## flight numbers a previous launch left behind reset to what a fresh node
+## carries. The next `launch` re-arms whatever that shot needs — with no spec
+## it flies the defaults, not the last shot's homing, lifetime or reflect.
+func reset_for_reuse() -> void:
+	homing_strength = 0.0
+	homing_target = null
+	lifetime_seconds = ProjectileFlight.NO_LIFETIME
+	reflectable = false
+	_pierce_left = 0
 
 
 ## End of flight — a wall with no bounce left, a spent budget, pierce run out:

@@ -12,6 +12,11 @@ extends RefCounted
 ## Seconds of flight left when the projectile carries no lifetime limit.
 const NO_LIFETIME: float = 0.0
 
+## Every instance this class has ever made, ever counting up. Tests read the
+## delta around a firing loop: after the pool's warm-up it must not move (the
+## no-allocation rule). A plain int, so nothing here pins a resource alive.
+static var total_created: int = 0
+
 ## Pixels per second; the node sets this from its spawn velocity.
 var velocity: Vector2 = Vector2.ZERO
 ## Radians per second the projectile may turn toward its homing target.
@@ -27,6 +32,10 @@ var distance_left: float = 0.0
 ## Seconds of flight remaining; `NO_LIFETIME` means unlimited.
 var lifetime_seconds: float = NO_LIFETIME
 var _lifetime_left: float = NO_LIFETIME
+
+
+func _init() -> void:
+	total_created += 1
 
 
 ## Arms the lifetime budget. Called by the owner once, at launch.

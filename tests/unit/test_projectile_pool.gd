@@ -5,8 +5,10 @@ extends GutTest
 ## allocs" runs as the brief's no-allocation rule — after warm-up, acquiring
 ## and releasing 500 projectiles creates no new instances, counted by the
 ## pool's `created_count` — and as the perf scene's shape: 500 pooled
-## projectiles in flight at once after a 500-strong warm-up. Named-method
-## callbacks only.
+## projectiles in flight at once after a 500-strong warm-up. "No allocations"
+## is read past the node count too: `ProjectileFlight.total_created` must not
+## move after warm-up, across idle parked ticks and firing rounds alike.
+## Named-method callbacks only.
 
 const PROJECTILE_SCENE: PackedScene = preload("res://scenes/projectiles/projectile.tscn")
 
@@ -36,6 +38,30 @@ func test_the_warm_set_exists_before_the_first_shot() -> void:
 		assert_not_null(projectile, "the warm set is projectiles")
 		assert_false(projectile.visible, "parked out of sight")
 		assert_false(projectile.active, "and parked cold")
+		assert_true(projectile._retired, "parked retired, out of the physics step")
+
+
+# --- no allocation after warm-up, flight objects counted too -------------------------------
+
+func test_idle_warm_set_allocates_nothing_on_its_physics_ticks() -> void:
+	_pool.warm(PROJECTILE_SCENE)
+	var flights_before: int = ProjectileFlight.total_created
+	for _frame in 3:
+		await get_tree().physics_frame
+	assert_eq(ProjectileFlight.total_created, flights_before,
+		"parked bolts step nothing, so no idle tick builds a flight")
+
+
+func test_500_fire_rounds_after_warm_up_allocate_zero_flight_objects() -> void:
+	_pool.warm(PROJECTILE_SCENE, 500)
+	var flights_before: int = ProjectileFlight.total_created
+	for _round in 500:
+		var shot: Projectile = _pool.acquire(PROJECTILE_SCENE)
+		shot.synced_velocity = Vector2(240, 0)
+		shot.launch(HitInfo.new(), Team.Kind.PLAYER, 600.0, 0)
+		_pool.release(shot)
+	assert_eq(ProjectileFlight.total_created, flights_before,
+		"launch re-arms the pooled flight object instead of making one")
 
 
 # --- the Accept line: 500 pooled projectiles, no allocations ------------------------------
@@ -73,6 +99,24 @@ func test_an_empty_type_grows_on_demand_and_shrinks_back_to_reuse() -> void:
 		_pool.release(shot)
 	_pool.acquire(PROJECTILE_SCENE)
 	assert_eq(_pool.created_count, ProjectilePool.WARM_PER_TYPE + 3, "and it reuses once they come back")
+
+
+func test_a_reused_bolt_launches_clean_without_a_spec() -> void:
+	_pool.warm(PROJECTILE_SCENE, 1)
+	var spec: ProjectileSpec = ProjectileSpec.new(null, 240.0, 5.0, HitInfo.Element.NONE, 0, 2, 3.5, 5.0, true)
+	var first: Projectile = _pool.acquire(PROJECTILE_SCENE)
+	first.synced_velocity = Vector2(240, 0)
+	first.launch(HitInfo.new(), Team.Kind.PLAYER, 600.0, 1, spec)
+	assert_eq(first.homing_strength, 3.5, "the spec armed the first shot")
+	_pool.release(first)
+	var second: Projectile = _pool.acquire(PROJECTILE_SCENE)
+	assert_same(second, first, "the pool handed the same bolt back")
+	assert_eq(second.homing_strength, 0.0, "the stale homing strength is reset")
+	assert_null(second.homing_target, "the stale homing target is reset")
+	assert_eq(second.lifetime_seconds, ProjectileFlight.NO_LIFETIME, "the stale lifetime is reset")
+	assert_false(second.reflectable, "the stale reflect flag is reset")
+	second.launch(HitInfo.new(), Team.Kind.PLAYER, 600.0, 0)
+	assert_eq(second.bounces_left(), 0, "no spec: the defaults fly, not the last shot's numbers")
 
 
 func test_a_released_projectile_comes_back_the_same_instance() -> void:

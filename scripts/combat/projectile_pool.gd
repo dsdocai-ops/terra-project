@@ -9,12 +9,15 @@ extends Node
 ## pooled instance is never handed to it; a client runs its own identical pool
 ## under its own World for its own use. Nothing here reaches across the wire.
 ##
-## Idle projectiles wait hidden under this node with their hitbox cold. An
-## acquired one moves into `spawn_root` (World's Entities container, so its
-## position is world-relative next to the spawner's bolts) and flies when the
-## caller calls `launch` — which re-arms every flight number, so a reused
-## projectile starts clean. A retired one hands itself back (deferred, because
-## the death path runs inside physics) and nothing is ever freed mid-run.
+## Idle projectiles wait hidden under this node with their hitbox cold, parked
+## retired so their physics tick steps nothing. An acquired one moves into
+## `spawn_root` — World points it at a dedicated container outside Entities, so
+## neither the floor-clear sweep nor a `MultiplayerSpawner`'s spawn path ever
+## sees a pooled bolt — and flies when the caller calls `launch`, which re-arms
+## every flight number. Acquire resets the numbers a last launch left behind,
+## so a reused projectile starts clean. A retired one hands itself back
+## (deferred, because the death path runs inside physics) and nothing is ever
+## freed mid-run.
 
 ## Instances created up front for a warmed type, so the first volley of a
 ## fight never allocates (SPEC-combat-core: pre-warm 64 per common type).
@@ -40,7 +43,8 @@ var _free: Dictionary = {}
 ## Attaches one pool named `POOL_NODE_NAME` under `parent`, reusing an existing
 ## one (the same pattern as DamageNumberPool.attach). The pool's spawn root
 ## defaults to `parent`; a caller that wants acquired projectiles elsewhere
-## (World: its Entities container) sets `spawn_root` after attaching.
+## (World: its own `PooledProjectiles` container, outside Entities) sets
+## `spawn_root` after attaching.
 static func attach(parent: Node) -> ProjectilePool:
 	var existing := parent.get_node_or_null(POOL_NODE_NAME) as ProjectilePool
 	if existing != null:
@@ -64,16 +68,17 @@ func warm(scene: PackedScene, count: int = WARM_PER_TYPE) -> void:
 ## Hands out a projectile of `scene`'s type: from the free list when one waits,
 ## grown fresh when the type is empty (grow-on-demand — growth is the design,
 ## not a leak; the no-allocation rule starts after warm-up). The projectile
-## comes out unretired, visible and cold; the caller places it and calls
-## `launch`, which (re)arms every flight number. The tree change here is only
-## safe outside physics — a caller inside one defers the acquire itself.
+## comes out unretired, visible, cold, and clean: the flight numbers a last
+## launch left behind are reset, so it flies what the next `launch` arms, not
+## what the previous one did. The tree change here is only safe outside
+## physics — a caller inside one defers the acquire itself.
 func acquire(scene: PackedScene) -> Projectile:
 	var free_list := _free_list(scene.resource_path)
 	var projectile: Projectile = free_list.pop_back() if not free_list.is_empty() else _make(scene)
 	projectile._retired = false
 	projectile.visible = true
 	projectile.active = false
-	projectile.homing_target = null
+	projectile.reset_for_reuse()
 	if spawn_root != null:
 		if projectile.get_parent() != null:
 			projectile.get_parent().remove_child(projectile)
@@ -118,6 +123,7 @@ func _make(scene: PackedScene) -> Projectile:
 	projectile.pool = self
 	projectile.visible = false
 	projectile.active = false
+	projectile.park()
 	return projectile
 
 

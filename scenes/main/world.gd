@@ -33,6 +33,11 @@ extends Node2D
 ## combat-core's per-peer hit feedback (see _build_combat_feedback).
 var combat_feedback: CombatFeedback = null
 
+## The child node pooled projectiles fly from — outside Entities, so the
+## floor-clear sweep never frees an in-flight bolt and the projectile
+## spawner's spawn path never sees a pooled instance.
+const POOLED_PROJECTILES_NAME: String = "PooledProjectiles"
+
 
 func _ready() -> void:
 	if debug_test_floor:
@@ -61,12 +66,17 @@ func _build_combat_feedback() -> void:
 
 ## combat-core's projectile pool (W2-A6): made here, not in world.tscn, so the
 ## shared scene stays untouched (the CombatFeedback pattern). It warms the base
-## projectile scene's set at load and flies acquired bolts out of the Entities
+## projectile scene's set at load and flies acquired bolts from a dedicated
 ## container; acquire and release are host-side node recycling, nothing on the
-## pool is replicated.
+## pool is replicated. The container sits outside Entities on purpose: Entities
+## is ProjectileSpawner's spawn_path, and `_clear_floor_entities` sweeps it —
+## neither may ever see a pooled bolt.
 func _build_projectile_pool() -> void:
+	var bolts := Node2D.new()
+	bolts.name = POOLED_PROJECTILES_NAME
+	add_child(bolts)
 	var pool := ProjectilePool.attach(self)
-	pool.spawn_root = entities
+	pool.spawn_root = bolts
 	pool.warm(load(ProjectilePool.COMMON_SCENE_PATH) as PackedScene)
 
 
@@ -129,7 +139,9 @@ func build_floor(layout: FloorLayout) -> void:
 
 
 ## Host. Frees enemies, pickups and interactables of the previous floor; the
-## spawners and drop logic stay.
+## spawners and drop logic stay. Pooled projectiles in flight are not here to
+## be freed: they live under `POOLED_PROJECTILES_NAME`, outside this sweep,
+## and a floor change hands them back through the pool, never queue_free.
 func _clear_floor_entities() -> void:
 	for child: Node in entities.get_children():
 		if child is MultiplayerSpawner or child == loot_drops:
