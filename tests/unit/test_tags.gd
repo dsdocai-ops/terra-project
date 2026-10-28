@@ -174,10 +174,13 @@ func test_projectile_spec_extends_refcounted_with_the_specs_fields() -> void:
 		if int(prop["usage"]) & PROPERTY_USAGE_SCRIPT_VARIABLE == 0:
 			continue
 		names.append(str(prop["name"]))
-	var expected: Array[String] = ["scene", "speed", "damage", "element", "pierce", "bounce"]
+	var expected: Array[String] = [
+		"scene", "speed", "damage", "element", "pierce", "bounce",
+		"homing_strength", "lifetime_seconds", "reflectable",
+	]
 	for field: String in expected:
 		assert_true(names.has(field), "ProjectileSpec must declare '%s'" % field)
-	assert_eq(names.size(), expected.size(), "and no field beyond the spec's six: %s" % str(names))
+	assert_eq(names.size(), expected.size(), "and no field beyond the spec's nine: %s" % str(names))
 
 
 func test_projectile_spec_defaults_are_neutral() -> void:
@@ -188,13 +191,16 @@ func test_projectile_spec_defaults_are_neutral() -> void:
 	assert_eq(spec.element, HitInfo.Element.NONE, "element")
 	assert_eq(spec.pierce, 0, "pierce")
 	assert_eq(spec.bounce, 0, "bounce")
+	assert_eq(spec.homing_strength, 0.0, "homing_strength: dead straight")
+	assert_eq(spec.lifetime_seconds, 0.0, "lifetime_seconds: unlimited")
+	assert_false(spec.reflectable, "reflectable")
 
 
 func test_projectile_spec_round_trips_through_a_dictionary() -> void:
 	var scene: PackedScene = load(PLACEHOLDER_PROJECTILE_SCENE)
 	assert_not_null(scene, "the placeholder projectile scene must exist")
 	var spec: ProjectileSpec = ProjectileSpec.new(
-		scene, 240.0, 12.5, HitInfo.Element.STORM, 2, 3
+		scene, 240.0, 12.5, HitInfo.Element.STORM, 2, 3, PI, 1.5, true
 	)
 	var copy: ProjectileSpec = ProjectileSpec.from_dict(spec.to_dict())
 	assert_not_null(copy.scene, "the scene survives the round trip")
@@ -204,11 +210,14 @@ func test_projectile_spec_round_trips_through_a_dictionary() -> void:
 	assert_eq(copy.element, HitInfo.Element.STORM, "element")
 	assert_eq(copy.pierce, 2, "pierce")
 	assert_eq(copy.bounce, 3, "bounce")
+	assert_eq(copy.homing_strength, PI, "homing_strength")
+	assert_eq(copy.lifetime_seconds, 1.5, "lifetime_seconds")
+	assert_true(copy.reflectable, "reflectable")
 
 
 func test_projectile_spec_dictionary_uses_plain_types_for_the_spawner() -> void:
 	var spec: ProjectileSpec = ProjectileSpec.new(
-		load(PLACEHOLDER_PROJECTILE_SCENE), 120.0, 7.0, HitInfo.Element.FIRE, 1, 0
+		load(PLACEHOLDER_PROJECTILE_SCENE), 120.0, 7.0, HitInfo.Element.FIRE, 1, 0, 2.0, 4.0, true
 	)
 	var data: Dictionary = spec.to_dict()
 	assert_eq(typeof(data["scene_path"]), TYPE_STRING, "the scene travels as a resource path")
@@ -217,6 +226,9 @@ func test_projectile_spec_dictionary_uses_plain_types_for_the_spawner() -> void:
 	assert_eq(typeof(data["element"]), TYPE_INT, "the element travels as its enum value")
 	assert_eq(typeof(data["pierce"]), TYPE_INT, "pierce")
 	assert_eq(typeof(data["bounce"]), TYPE_INT, "bounce")
+	assert_eq(typeof(data["homing_strength"]), TYPE_FLOAT, "homing_strength")
+	assert_eq(typeof(data["lifetime_seconds"]), TYPE_FLOAT, "lifetime_seconds")
+	assert_eq(typeof(data["reflectable"]), TYPE_BOOL, "reflectable")
 
 
 func test_projectile_spec_from_dict_is_costless_about_a_missing_scene() -> void:

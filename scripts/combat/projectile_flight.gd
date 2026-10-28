@@ -88,14 +88,45 @@ func reflect(surface_normal: Vector2 = Vector2.ZERO) -> bool:
 ## Burns the distance budget by the step length and the lifetime budget by the
 ## scaled seconds, so a frozen projectile (scale 0) neither moves nor expires.
 func advance(delta: float, time_scale: float = 1.0) -> Vector2:
+	var step: Vector2 = step_for(delta, time_scale)
+	commit(step, delta, time_scale)
+	return step
+
+
+## The displacement this frame would produce, with no budget burned yet — the
+## owner raycasts the step before committing it, because a bounce frame turns
+## in place and must not spend range on distance it never flew.
+func step_for(delta: float, time_scale: float = 1.0) -> Vector2:
 	var scaled: float = maxf(delta, 0.0) * maxf(time_scale, 0.0)
-	var step: Vector2 = velocity * scaled
+	return velocity * scaled
+
+
+## Burns the budgets for a step that is actually applied. A zero step costs
+## nothing: a frozen projectile neither moves nor expires.
+func commit(step: Vector2, delta: float, time_scale: float = 1.0) -> void:
 	if step == Vector2.ZERO:
-		return step
+		return
 	distance_left -= step.length()
 	if lifetime_seconds > NO_LIFETIME:
-		_lifetime_left = maxf(_lifetime_left - scaled, 0.0)
-	return step
+		_lifetime_left = maxf(_lifetime_left - maxf(delta, 0.0) * maxf(time_scale, 0.0), 0.0)
+
+
+## Burns only the lifetime budget: the cost of a frame whose seconds passed
+## without the projectile moving (a bounce frame turns, it does not fly).
+func burn_time(delta: float, time_scale: float = 1.0) -> void:
+	if lifetime_seconds > NO_LIFETIME:
+		_lifetime_left = maxf(_lifetime_left - maxf(delta, 0.0) * maxf(time_scale, 0.0), 0.0)
+
+
+## The frame a wall is in the way: spends a bounce, mirrors the velocity off
+## `normal`, and burns the frame's lifetime but not its range — nothing moved.
+## Returns false — and changes nothing — when no bounce is left, which is the
+## caller's signal to stop the projectile.
+func hit_wall(normal: Vector2, delta: float, time_scale: float = 1.0) -> bool:
+	if not bounce_off(normal):
+		return false
+	burn_time(delta, time_scale)
+	return true
 
 
 ## Whether the flight is over: the range ran out, or a configured lifetime did.

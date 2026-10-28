@@ -3,7 +3,10 @@ extends RefCounted
 ## What `Effect.fire_projectile()` hands the projectile spawner: the scene to
 ## instantiate and the numbers it should fly with. Owned by effect-system
 ## (W4-B2); the spec's field list is
-## `ProjectileSpec (RefCounted: scene, speed, damage, element, pierce, bounce)`.
+## `ProjectileSpec (RefCounted: scene, speed, damage, element, pierce, bounce,
+## homing_strength, lifetime_seconds, reflectable)` — the last three were added
+## by combat-core (W2-A6) so the `Projectile` base reads every flight number
+## from the spec instead of from ad-hoc node vars.
 ##
 ## It is a value object, not a node: the effect builds it on the host, the
 ## spawner reads it, and nothing keeps it alive afterwards. `to_dict()` /
@@ -21,6 +24,9 @@ const KEY_DAMAGE: String = "damage"
 const KEY_ELEMENT: String = "element"
 const KEY_PIERCE: String = "pierce"
 const KEY_BOUNCE: String = "bounce"
+const KEY_HOMING: String = "homing_strength"
+const KEY_LIFETIME: String = "lifetime_seconds"
+const KEY_REFLECTABLE: String = "reflectable"
 
 ## The scene the spawner instantiates. Null is legal: a spec with no scene
 ## still carries the numbers, which is what the "spawner absent" path reports.
@@ -35,6 +41,15 @@ var element: HitInfo.Element = HitInfo.Element.NONE
 var pierce: int = 0
 ## How many times it ricochets off a wall or target.
 var bounce: int = 0
+## Radians per second the projectile may turn toward its homing target
+## (SPEC-combat-core `homing_strength`). 0.0 flies dead straight.
+var homing_strength: float = 0.0
+## Seconds of flight before the projectile expires on its own. 0 = unlimited;
+## the range budget always applies (`ProjectileFlight.NO_LIFETIME`).
+var lifetime_seconds: float = 0.0
+## Whether a reflect source (Guardian block, Crystal Hollows crystals) can bat
+## the projectile back at the other team (SPEC-combat-core `reflectable`).
+var reflectable: bool = false
 
 
 func _init(
@@ -44,6 +59,9 @@ func _init(
 	p_element: HitInfo.Element = HitInfo.Element.NONE,
 	p_pierce: int = 0,
 	p_bounce: int = 0,
+	p_homing_strength: float = 0.0,
+	p_lifetime_seconds: float = 0.0,
+	p_reflectable: bool = false,
 ) -> void:
 	scene = p_scene
 	speed = p_speed
@@ -51,6 +69,9 @@ func _init(
 	element = p_element
 	pierce = p_pierce
 	bounce = p_bounce
+	homing_strength = p_homing_strength
+	lifetime_seconds = p_lifetime_seconds
+	reflectable = p_reflectable
 
 
 ## Plain-type form for the spawner. The scene becomes its resource path, the
@@ -66,6 +87,9 @@ func to_dict() -> Dictionary:
 		KEY_ELEMENT: int(element),
 		KEY_PIERCE: pierce,
 		KEY_BOUNCE: bounce,
+		KEY_HOMING: homing_strength,
+		KEY_LIFETIME: lifetime_seconds,
+		KEY_REFLECTABLE: reflectable,
 	}
 
 
@@ -85,6 +109,9 @@ static func from_dict(data: Dictionary) -> ProjectileSpec:
 	spec.element = _element_from(data.get(KEY_ELEMENT, int(HitInfo.Element.NONE)))
 	spec.pierce = int(data.get(KEY_PIERCE, 0))
 	spec.bounce = int(data.get(KEY_BOUNCE, 0))
+	spec.homing_strength = float(data.get(KEY_HOMING, 0.0))
+	spec.lifetime_seconds = float(data.get(KEY_LIFETIME, 0.0))
+	spec.reflectable = bool(data.get(KEY_REFLECTABLE, false))
 	return spec
 
 

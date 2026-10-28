@@ -50,8 +50,10 @@ func _ready() -> void:
 
 
 ## Host. Arms the projectile: `hit` is its damage template. A non-null `spec`
-## supplies the bounce count (and is where a caller carries speed and pierce);
-## without one the projectile flies the old way — straight, no ricochet.
+## supplies every flight number — bounce count, homing turn rate, lifetime and
+## the reflect flag — and is where a caller carries speed and pierce; without
+## one the projectile flies the old way, on its own vars: straight, no
+## ricochet.
 func launch(hit: HitInfo, side: Team.Kind, max_range: float, pierce: int, spec: ProjectileSpec = null) -> void:
 	team = side
 	hostile = side == Team.Kind.ENEMY
@@ -59,6 +61,10 @@ func launch(hit: HitInfo, side: Team.Kind, max_range: float, pierce: int, spec: 
 	_pierce_left = pierce
 	hit_once_per_target = true
 	active = true
+	if spec != null:
+		homing_strength = spec.homing_strength
+		lifetime_seconds = spec.lifetime_seconds
+		reflectable = spec.reflectable
 	_flight = ProjectileFlight.new()
 	_flight.arm(synced_velocity, max_range, lifetime_seconds)
 	_flight.bounces_left = spec.bounce if spec != null else 0
@@ -103,6 +109,12 @@ func bounces_left() -> int:
 	return _flight.bounces_left
 
 
+## Test and seam read of the range budget left.
+func range_left() -> float:
+	_ensure_flight()
+	return _flight.distance_left
+
+
 ## Test and seam read of the flight's current velocity (post turn or bounce).
 func flight_velocity() -> Vector2:
 	_ensure_flight()
@@ -119,22 +131,30 @@ func _physics_process(delta: float) -> void:
 
 ## Host. One frame of flight: steer, step, die on an empty budget, bounce off
 ## a wall or stop at one. `ProjectileFlight` carries every number; this is only
-## the glue to the physics ray and the replicated pose.
+## the glue to the physics ray and the replicated pose. The step is raycast
+## before its cost is committed, so a bounce frame spends the frame's time but
+## not its range.
 func _host_step(delta: float) -> void:
 	var time_scale: float = TimeManager.scale_for(self)
 	_steer(delta, time_scale)
-	var step: Vector2 = _flight.advance(delta, time_scale)
-	if _flight.is_expired():
-		queue_free()
-		return
+	var step: Vector2 = _flight.step_for(delta, time_scale)
+	var bounced := false
 	if step != Vector2.ZERO:
 		var wall: Dictionary = _wall_normal_ahead(step)
 		if not wall.is_empty():
-			if not _flight.bounce_off(wall["normal"]):
+			if not _flight.hit_wall(wall["normal"], delta, time_scale):
 				queue_free()
 				return
 			# The bounce spends this frame turning; the next step flies out.
+			# The frame's time still passes (`hit_wall` burns the lifetime),
+			# but the range does not: nothing moved.
 			step = Vector2.ZERO
+			bounced = true
+	if not bounced:
+		_flight.commit(step, delta, time_scale)
+	if _flight.is_expired():
+		queue_free()
+		return
 	if step != Vector2.ZERO:
 		position += step
 		synced_position = position

@@ -3,10 +3,12 @@ extends GutTest
 ## angle, homing turn rate, lifetime and range budgets, the reflect flag, and
 ## time-scaled stepping. Owned by combat-core. The math is tested on a bare
 ## `ProjectileFlight`; the node cases prove `launch` reads its bounce count
-## from the `ProjectileSpec`, that the relic seam `add_bounce` lands on the
+## from the `ProjectileSpec` — bounce, homing turn rate, lifetime and the
+## reflect flag all of them — that the relic seam `add_bounce` lands on the
 ## real node, that a reflect flips the team and moves the projectile between
-## time groups with it, and that a hostile projectile joins the enemy time
-## group. Named-method callbacks only; no scene, no pool.
+## time groups with it, that a hostile projectile joins the enemy time group,
+## and that the node's wall path bounces without spending range. Named-method
+## callbacks only; no scene, no pool.
 
 const EPSILON: float = 0.0001
 const STOP_SOURCE: StringName = &"test_projectile_flight"
@@ -138,6 +140,36 @@ func test_a_frozen_projectile_neither_moves_nor_expires() -> void:
 	assert_eq(flight.distance_left, 100.0, "the range budget is untouched")
 
 
+func test_step_for_prices_the_frame_and_commit_burns_it() -> void:
+	var flight: ProjectileFlight = _flight(Vector2(100, 0), 1000.0)
+	assert_eq(flight.step_for(0.1, 0.5), Vector2(5, 0), "the step is priced before anything burns")
+	assert_eq(flight.distance_left, 1000.0, "and pricing alone spends nothing")
+	flight.commit(Vector2(5, 0), 0.1, 0.5)
+	assert_eq(flight.distance_left, 995.0, "the commit burns the range by the step it is given")
+
+
+# --- a bounce frame costs time, not range ------------------------------------------------
+
+
+func test_a_bounce_frame_burns_lifetime_but_not_range() -> void:
+	var flight: ProjectileFlight = _flight(Vector2(100, -100), 500.0, 0.3)
+	flight.bounces_left = 1
+	assert_true(flight.hit_wall(Vector2(-1, 0), 0.1), "the bounce lands")
+	assert_eq(flight.velocity, Vector2(-100, -100), "mirrored off the wall")
+	assert_eq(flight.distance_left, 500.0, "the range is untouched: nothing moved")
+	flight.advance(0.2)
+	assert_true(flight.is_expired(), "and the frame's time still passed: 0.1 + 0.2 burns the 0.3 s budget")
+
+
+func test_a_wall_without_bounces_refuses_and_costs_nothing() -> void:
+	var flight: ProjectileFlight = _flight(Vector2(100, 0), 500.0, 0.3)
+	assert_false(flight.hit_wall(Vector2(-1, 0), 0.1), "no bounce left: the caller must stop it")
+	assert_eq(flight.velocity, Vector2(100, 0), "velocity untouched by the refusal")
+	assert_eq(flight.distance_left, 500.0, "range untouched")
+	flight.advance(0.2)
+	assert_false(flight.is_expired(), "the refusal burned no lifetime either: 0.2 of the 0.3 s is still left")
+
+
 # --- reflect flag -----------------------------------------------------------------------
 
 
@@ -180,6 +212,31 @@ func test_launch_without_a_spec_keeps_the_straight_no_bounce_flight() -> void:
 	projectile.launch(HitInfo.new(), Team.Kind.PLAYER, 600.0, 2)
 	assert_eq(projectile.bounces_left(), 0, "no spec, no ricochet")
 	assert_eq(projectile.flight_velocity(), Vector2(240, 0))
+
+
+func test_launch_reads_every_flight_number_from_the_spec() -> void:
+	var projectile: Projectile = autofree(Projectile.new())
+	projectile.synced_velocity = Vector2(240, 0)
+	var spec: ProjectileSpec = ProjectileSpec.new(
+		null, 240.0, 12.5, HitInfo.Element.NONE, 2, 3, 1.5, 2.5, true
+	)
+	projectile.launch(HitInfo.new(), Team.Kind.PLAYER, 600.0, 2, spec)
+	assert_eq(projectile.homing_strength, 1.5, "the homing turn rate comes from ProjectileSpec")
+	assert_eq(projectile.lifetime_seconds, 2.5, "the lifetime comes from ProjectileSpec")
+	assert_true(projectile.reflectable, "the reflect flag comes from ProjectileSpec")
+	assert_eq(projectile.bounces_left(), 3, "as does the bounce count")
+
+
+func test_launch_without_a_spec_flies_on_the_node_vars() -> void:
+	var projectile: Projectile = autofree(Projectile.new())
+	projectile.synced_velocity = Vector2(240, 0)
+	projectile.homing_strength = 1.5
+	projectile.lifetime_seconds = 2.5
+	projectile.reflectable = true
+	projectile.launch(HitInfo.new(), Team.Kind.PLAYER, 600.0, 0)
+	assert_eq(projectile.homing_strength, 1.5, "no spec: the homing turn rate stands")
+	assert_eq(projectile.lifetime_seconds, 2.5, "so does the lifetime")
+	assert_true(projectile.reflectable, "and the reflect flag")
 
 
 func test_the_relic_seam_adds_bounces_to_the_real_projectile() -> void:
@@ -241,6 +298,54 @@ func test_a_reflected_player_projectile_joins_the_enemy_time_group() -> void:
 	assert_true(projectile.reflect_projectile(), "an enemy reflect source turns it")
 	assert_true(projectile.hostile)
 	assert_eq(TimeManager.scale_for(projectile), 0.0, "and now it flies on the enemy clock")
+
+
+# --- the node-level wall path ------------------------------------------------------------
+
+
+func test_the_node_bounces_off_a_wall_without_spending_range() -> void:
+	var projectile: WalledProjectile = autofree(WalledProjectile.new())
+	projectile.synced_velocity = Vector2(100, -100)
+	projectile.launch(HitInfo.new(), Team.Kind.PLAYER, 400.0, 0)
+	projectile.add_bounce(1)
+	projectile.wall = {"normal": Vector2(-1, 0)}
+	projectile._host_step(0.1)
+	assert_eq(projectile.flight_velocity(), Vector2(-100, -100), "the wall mirrors the flight")
+	assert_false(projectile.is_queued_for_deletion(), "a bounce was left, so it flies on")
+	assert_almost_eq(projectile.range_left(), 400.0, EPSILON, "the bounce frame spent no range")
+	assert_eq(projectile.position, Vector2.ZERO, "and it did not move through the wall")
+
+
+func test_the_node_bounce_frame_still_burns_lifetime() -> void:
+	var projectile: WalledProjectile = autofree(WalledProjectile.new())
+	projectile.synced_velocity = Vector2(100, -100)
+	projectile.lifetime_seconds = 0.3
+	projectile.launch(HitInfo.new(), Team.Kind.PLAYER, 400.0, 0)
+	projectile.add_bounce(1)
+	projectile.wall = {"normal": Vector2(-1, 0)}
+	projectile._host_step(0.1)
+	assert_false(projectile.is_queued_for_deletion(), "still flying after the bounce frame")
+	projectile.wall = {}
+	projectile._host_step(0.2)
+	assert_true(projectile.is_queued_for_deletion(), "0.1 + 0.2 burns the 0.3 s budget: time passed on the bounce frame")
+
+
+func test_the_node_dies_at_a_wall_it_cannot_bounce_off() -> void:
+	var projectile: WalledProjectile = autofree(WalledProjectile.new())
+	projectile.synced_velocity = Vector2(100, 0)
+	projectile.launch(HitInfo.new(), Team.Kind.PLAYER, 400.0, 0)
+	projectile.wall = {"normal": Vector2(-1, 0)}
+	projectile._host_step(0.1)
+	assert_true(projectile.is_queued_for_deletion(), "no bounce left at the wall: the projectile stops")
+
+
+## A `Projectile` whose wall ray always reports `wall`: the node-level wall
+## path (`_host_step`'s raycast, bounce and death) without a physics world.
+class WalledProjectile extends Projectile:
+	var wall: Dictionary = {}
+
+	func _wall_normal_ahead(_step: Vector2) -> Dictionary:
+		return wall
 
 
 func _flight(velocity: Vector2, range_px: float, lifetime: float = ProjectileFlight.NO_LIFETIME) -> ProjectileFlight:
