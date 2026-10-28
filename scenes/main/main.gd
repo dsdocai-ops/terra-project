@@ -99,16 +99,7 @@ func _ready() -> void:
 	apply_options(LaunchArgs.parse(OS.get_cmdline_user_args()))
 	_maybe_add_debug_console()
 	_maybe_add_hud()
-	# Module startup registration (SPEC-floor-generation: each owning module
-	# registers its room populators at startup). Guarded in each module itself:
-	# a no-op that records its blocker once until the registry exists.
-	Rope.register_populator()
-	SpawnDirector.register_populators()
-	Shrine.register_populator()
-	Chest.register_populator()
-	RoomFurniture.register_populator()
-	Shopkeeper.register_populator()
-	LorePage.register_populator()
+	register_populators()
 	_start_from_options()
 	if options.smoke_seconds > 0.0:
 		_start_smoke(options.smoke_seconds)
@@ -116,6 +107,20 @@ func _ready() -> void:
 		_start_smoke3(options.smoke3_seconds)
 	elif options.smoke_floor_seconds > 0.0:
 		_start_smoke_floor(options.smoke_floor_seconds)
+
+
+## Module startup registration (SPEC-floor-generation: each owning module
+## registers its room populators at startup). Guarded in each module itself:
+## a no-op that records its blocker once until the registry exists. A method of
+## its own so a test can run the live registration without the whole `_ready`.
+func register_populators() -> void:
+	Rope.register_populator()
+	SpawnDirector.register_populators()
+	Shrine.register_populator()
+	Chest.register_populator()
+	RoomFurniture.register_populator()
+	Shopkeeper.register_populator()
+	LorePage.register_populator()
 
 
 ## Headless smoke support: the local player walks right as soon as its node

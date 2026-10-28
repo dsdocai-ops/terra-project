@@ -225,3 +225,55 @@ func test_a_painted_floor_populates_each_registered_room_on_the_host() -> void:
 	assert_same(_populated_rooms[0], floor_node.room_of_type(FloorGenerator.RoomType.TREASURE),
 		"the populator was handed the floor's own Room node")
 	assert_eq(_rope_calls, 0, "floor 1 has no ROPE room, so the ROPE populator never ran")
+
+
+# --- wiring: the live startup registration (main.gd) --------------------------
+
+
+## G16d's live-caller proof for the startup registrations: `main.gd`'s
+## registration block is executed, not read as source — a `Main` instance
+## (never in the tree, so its `_ready` never runs) calls
+## `Main.register_populators()`, and every module lands its entry in the
+## registry. The guarded modules' `_populator_registered` statics may already
+## be true from an earlier suite file, which would turn the live call into a
+## no-op before this test could watch it register — so they are snapshotted,
+## cleared for the call, and put back after (GUT asserts continue a failing
+## test, so the restore always runs; the registry itself goes through the
+## file's `after_each` clear).
+func test_main_startup_registers_the_live_populators() -> void:
+	var rope_was: bool = Rope._populator_registered
+	var chest_was: bool = Chest._populator_registered
+	var shrine_was: bool = Shrine._populator_registered
+	var shopkeeper_was: bool = Shopkeeper._populator_registered
+	var lore_was: bool = LorePage._populator_registered
+	Rope._populator_registered = false
+	Chest._populator_registered = false
+	Shrine._populator_registered = false
+	Shopkeeper._populator_registered = false
+	LorePage._populator_registered = false
+
+	var main_node := Main.new()
+	autofree(main_node)
+
+	main_node.register_populators()
+
+	assert_gte(FloorGenerator.populator_count(FloorGenerator.RoomType.COMBAT), 1,
+		"SpawnDirector and RoomFurniture registered for COMBAT")
+	assert_gte(FloorGenerator.populator_count(FloorGenerator.RoomType.ELITE_COMBAT), 1,
+		"SpawnDirector registered for ELITE_COMBAT")
+	assert_gte(FloorGenerator.populator_count(FloorGenerator.RoomType.ROPE), 1,
+		"Rope registered for ROPE")
+	assert_gte(FloorGenerator.populator_count(FloorGenerator.RoomType.TREASURE), 1,
+		"Chest registered for TREASURE")
+	assert_gte(FloorGenerator.populator_count(FloorGenerator.RoomType.SHRINE), 1,
+		"Shrine registered for SHRINE")
+	assert_gte(FloorGenerator.populator_count(FloorGenerator.RoomType.SHOP), 1,
+		"Shopkeeper registered for SHOP")
+	assert_gte(FloorGenerator.populator_count(FloorGenerator.RoomType.LORE), 1,
+		"LorePage registered for LORE")
+
+	Rope._populator_registered = rope_was
+	Chest._populator_registered = chest_was
+	Shrine._populator_registered = shrine_was
+	Shopkeeper._populator_registered = shopkeeper_was
+	LorePage._populator_registered = lore_was
