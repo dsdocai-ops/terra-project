@@ -3,7 +3,8 @@ extends CharacterBody2D
 ## The one enemy scene every enemy type is built on (SPEC-enemies-ai
 ## `enemy_base`): configured entirely from `EnemyData`, driven by a small
 ## StateMachine (Idle, Chase, Attack, HitStun, Stagger) whose decisions live in
-## the pure `EnemyStateLogic` and `Targeting`. Owned by enemies-ai.
+## the pure `EnemyStateLogic` and `Targeting`, with the routing on the floor's
+## `AStarGrid2D` in the pure `EnemyPathing`. Owned by enemies-ai.
 ## Sync: the host runs AI, attacks, HP and death; StateSync replicates
 ## position, animation tag, current HP, the telegraph progress and aim, and the
 ## spawn-time `kind`/`elite`. Clients only present that state. Art: the
@@ -265,31 +266,18 @@ func _time_scale() -> float:
 	return TimeManager.scale_for(self)
 
 
+## The wiring around the pure `EnemyPathing`: rebuilds the route on
+## `PATH_REFRESH_SECONDS`, trims the waypoints this body reached and steers at
+## the next one (direct at `point` when there is no floor to path on).
 func _next_waypoint(point: Vector2) -> Vector2:
 	var world: World = GameState.world
 	if world == null or world.floor_node == null or world.floor_node.astar == null:
 		return point
 	if _path_timer <= 0.0 or _path.is_empty():
 		_path_timer = PATH_REFRESH_SECONDS
-		_path = _build_path(world.floor_node.astar, point)
-	while _path.size() > 0 and global_position.distance_to(_path[0]) < 10.0:
-		_path.remove_at(0)
-	if _path.is_empty():
-		return point
-	return _path[0]
-
-
-func _build_path(astar: AStarGrid2D, point: Vector2) -> PackedVector2Array:
-	var from: Vector2i = Iso.to_tile(global_position)
-	var to: Vector2i = Iso.to_tile(point)
-	var region: Rect2i = astar.region
-	if not region.has_point(from) or not region.has_point(to) or astar.is_point_solid(from) or astar.is_point_solid(to):
-		return PackedVector2Array([point])
-	var cells: Array[Vector2i] = astar.get_id_path(from, to)
-	var path := PackedVector2Array()
-	for index: int in range(1, cells.size()):
-		path.append(Iso.to_screen(cells[index]))
-	return path
+		_path = EnemyPathing.build_path(world.floor_node.astar, global_position, point)
+	_path = EnemyPathing.advance(_path, global_position, EnemyPathing.ARRIVAL_RADIUS)
+	return EnemyPathing.goal(_path, point)
 
 
 func _separation() -> Vector2:
