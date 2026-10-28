@@ -365,6 +365,7 @@ static func _carve_corridors(rects: Array[Rect2i], edges: Array[Vector2i]) -> Ar
 				if y == to.y:
 					break
 				y += step_y
+		if to.x != from.x and to.y != from.y:
 			_carve_corner(cells, Vector2i(to.x, from.y))
 	var ordered: Array[Vector2i] = []
 	for y: int in GRID:

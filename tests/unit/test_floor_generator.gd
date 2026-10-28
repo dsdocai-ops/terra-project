@@ -293,6 +293,10 @@ func _expected_l_cells(from: Vector2i, to: Vector2i) -> Dictionary[Vector2i, boo
 			if y == to.y:
 				break
 			y += step_y
+	if to.x != from.x and to.y != from.y:
+		# The filled 3x3 corner at the turn. Only a real turn has one: a
+		# straight edge (one axis shared) carves its band alone, so the
+		# corner must not add 3 cells past the band at either centre.
 		for dx: int in range(-1, 2):
 			for dy: int in range(-1, 2):
 				expected[Vector2i(to.x + dx, from.y + dy)] = true
