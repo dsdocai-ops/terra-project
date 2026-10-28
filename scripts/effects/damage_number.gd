@@ -19,6 +19,10 @@ const PLAYER_HURT_COLOR: Color = Color(1.0, 0.35, 0.3, 1.0)
 ## The pool that recycles this number, or null for a spawn-and-free one.
 var pool: DamageNumberPool = null
 
+## The running pop tween (tests step it with `custom_step` to reach the real
+## tween-end hand-back instead of calling `_finish` directly).
+var _tween: Tween = null
+
 
 ## Spawns a number at world position `at` under `parent`.
 static func spawn(parent: Node, at: Vector2, amount: int, crit: bool, on_player: bool) -> DamageNumber:
@@ -61,14 +65,17 @@ func setup_text(at: Vector2, word: String, color: Color = STAGGER_COLOR) -> void
 
 
 ## Runs the pop-drift-fade. A fresh unpooled number plays from `_ready`; the
-## pool calls it on every reuse.
+## pool calls it on every reuse. A restart kills the previous tween first, so
+## a reused number never runs two pops at once.
 func play() -> void:
+	if _tween != null and _tween.is_valid():
+		_tween.kill()
 	modulate.a = 1.0
-	var tween: Tween = create_tween()
-	tween.set_parallel(true)
-	tween.tween_property(self, "position:y", position.y - RISE_PX, LIFETIME_SECONDS)
-	tween.tween_property(self, "modulate:a", 0.0, LIFETIME_SECONDS)
-	tween.chain().tween_callback(_finish)
+	_tween = create_tween()
+	_tween.set_parallel(true)
+	_tween.tween_property(self, "position:y", position.y - RISE_PX, LIFETIME_SECONDS)
+	_tween.tween_property(self, "modulate:a", 0.0, LIFETIME_SECONDS)
+	_tween.chain().tween_callback(_finish)
 
 
 ## The tween's end: back to the pool, or freed when there is none.

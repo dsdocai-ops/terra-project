@@ -16,6 +16,11 @@ const WHITE: Color = Color(1.0, 1.0, 1.0, 1.0)
 const GOLD: Color = Color(1.0, 0.82, 0.2, 1.0)
 const RED: Color = Color(1.0, 0.25, 0.2, 1.0)
 
+## The template material the flash scene sets (a ShaderMaterial sub-resource on
+## `hit_flash.tscn`, so the shader is referenced from the scene that spawns
+## it). Each target gets its own duplicate; null when built without the scene.
+@export var flash_material: ShaderMaterial = null
+
 var _materials: Array[ShaderMaterial] = []
 var _frames_total: int = DEFAULT_FRAMES
 var _frames_left: int = 0
@@ -50,11 +55,21 @@ func _ready() -> void:
 
 
 func add_target(item: CanvasItem) -> void:
-	var material := ShaderMaterial.new()
-	material.shader = SHADER
+	var material := _new_material()
 	material.set_shader_parameter(&"flash_amount", 0.0)
 	item.material = material
 	_materials.append(material)
+
+
+## A fresh material per target: a duplicate of the scene's `flash_material`
+## template, or a new one on the preloaded SHADER when there is no scene.
+func _new_material() -> ShaderMaterial:
+	if flash_material != null:
+		var dupe: ShaderMaterial = flash_material.duplicate() as ShaderMaterial
+		return dupe
+	var material := ShaderMaterial.new()
+	material.shader = SHADER
+	return material
 
 
 func is_flashing() -> bool:

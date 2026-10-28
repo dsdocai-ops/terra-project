@@ -59,6 +59,18 @@ func test_a_finished_number_walks_itself_back_to_the_pool() -> void:
 	assert_false(number.visible)
 
 
+func test_the_real_tween_end_hands_the_number_back_through_the_pool() -> void:
+	var number: DamageNumber = _pool.spawn_number(Vector2.ZERO, 4, false, false)
+	assert_same(number.get_parent(), _fx)
+	# Step the pop's own Tween past its end: the tween's `tween_callback(_finish)`
+	# fires inside the tween, and the release removes the node from the tree from
+	# within its own callback — no direct `_finish` call from the test.
+	number._tween.custom_step(DamageNumber.LIFETIME_SECONDS + 0.1)
+	assert_same(number.get_parent(), _pool, "the tween end released it, not the test")
+	assert_false(number.visible)
+	assert_gt(_pool._free.size(), 0, "back in the free list")
+
+
 func test_an_empty_pool_grows_on_demand_instead_of_failing() -> void:
 	var in_flight: Array[DamageNumber] = []
 	for _hit in DamageNumberPool.WARM_INSTANCES + 3:
