@@ -49,6 +49,9 @@ func after_each() -> void:
 	if GameState.run != null and NetworkManager.is_host:
 		GameState.end_run(RunEndReason.Reason.ABORT)
 	GameState.run = null
+	# The input half presses the real `interact` key: clear it here so a
+	# failing test cannot leave the action held into the next file.
+	Input.action_release(&"interact")
 	_recorder.revived.clear()
 	_recorder.by.clear()
 
@@ -584,3 +587,74 @@ func test_the_downed_body_hides_a_farther_interactable_from_the_prompt() -> void
 	assert_eq(InteractPrompt.nearest(reviver, reviver.global_position),
 		_downed_interactable_of(target),
 		"the prompt offers the downed body, not the chest behind it")
+
+
+# --- the input half (G13b2b): the live `interact` action drives the hold ------
+# `Player._tick_combat_timers` reads `Input.is_action_pressed(&"interact")`
+# every frame (scenes/player/player.gd:612) — the held state, not the press
+# edge lane B's prompt fires on. These tests press the real F key through the
+# Input singleton and drive the live `_tick_combat_timers` on both players, so
+# the action routes through the Input Map into the hold.
+
+## One frame of the live loop, the order the game runs: the host banks the
+## downed teammate's clock, then the local reviver's machine steps the hold.
+func _tick_pair(reviver: Player, target: Player) -> void:
+	var frame: float = 1.0 / 60.0
+	target._tick_combat_timers(frame)
+	reviver._tick_combat_timers(frame)
+
+
+func _press_interact(pressed: bool) -> void:
+	# The real binding (`interact` is F, pinned by test_input_map.gd) — a fresh
+	# event per press: Godot refuses to parse the same object twice.
+	var key := InputEventKey.new()
+	key.physical_keycode = KEY_F
+	key.pressed = pressed
+	key.device = 0
+	Input.parse_input_event(key)
+	Input.flush_buffered_events()
+
+
+func test_a_held_interact_key_drives_the_live_hold_to_completion() -> void:
+	var pair := _scene_pair(45.0)
+	var reviver := pair[0]
+	var target := pair[1]
+	reviver.peer_id = multiplayer.get_unique_id()
+	_down_in_tree(target)
+	await wait_physics_frames(REGISTRATION_FRAMES)
+	reviver.revive_hold.completed.connect(_recorder.record)
+	_press_interact(true)
+	assert_true(Input.is_action_pressed(&"interact"), "the F press reads as the held action")
+	for frame: int in range(100):
+		_tick_pair(reviver, target)
+	assert_true(target.downed_clock.holding(), "mid-hold: the held key is banking on the clock")
+	assert_eq(_recorder.revived.size(), 0, "and 100 frames (1.65 s) is short of the 3 s hold")
+	for frame: int in range(110):
+		_tick_pair(reviver, target)
+	assert_eq(_recorder.revived.size(), 1, "the held key held the full 3 s: the hold completed")
+	assert_eq(_recorder.revived[0], target, "the emit names who was revived")
+	assert_eq(_recorder.by[0], reviver, "and the local player that held it")
+	assert_true(target.is_downed,
+		"the stand-up itself is the W3-B4 connection — the driver's boundary is the emit")
+
+
+func test_a_single_press_frame_banks_nothing() -> void:
+	# The press edge cannot carry a hold: one frame of held F starts one, the
+	# release ends it with nothing banked, and every later frame runs a hold
+	# that is no longer there.
+	var pair := _scene_pair(45.0)
+	var reviver := pair[0]
+	var target := pair[1]
+	reviver.peer_id = multiplayer.get_unique_id()
+	_down_in_tree(target)
+	await wait_physics_frames(REGISTRATION_FRAMES)
+	reviver.revive_hold.completed.connect(_recorder.record)
+	_press_interact(true)
+	_tick_pair(reviver, target)
+	_press_interact(false)
+	for frame: int in range(300):
+		_tick_pair(reviver, target)
+	assert_eq(_recorder.revived.size(), 0, "one held frame never completed the 3 s hold")
+	assert_false(target.downed_clock.holding())
+	assert_eq(target.downed_clock.hold_progress(), 0.0,
+		"a hold is a continuous hold: the pressed frame banked nothing")
