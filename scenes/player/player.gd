@@ -112,6 +112,12 @@ var simulates: bool:
 ## and reads it. Host and predicting owner run their own copy — the cooldown
 ## gates the owner's input.
 var dodge_clock: DodgeClock = DodgeClock.new()
+## The downed numbers and the bleed-out / revive-hold bookkeeping
+## (SPEC-player-controller "Downed and revive"). Pure logic on
+## `scripts/player/downed_clock.gd`; the Downed and Dead states drive it and
+## the host's combat timers step it (a downed player's machine is stopped —
+## see `simulates` — so the state cannot tick it itself).
+var downed_clock: DownedClock = DownedClock.new()
 ## Charges left. A synergy that adds a charge (Phantom Dancer's 2) raises
 ## `dodge_clock.max_charges` and the clock recharges up to it.
 var dodge_charges: int:
@@ -141,7 +147,11 @@ var is_dead: bool = false:
 		velocity = Vector2.ZERO
 		refresh_authority()
 		_apply_downed_tint()
-var bleed_out_left: float = 0.0
+## Seconds of bleed-out left, read off the downed clock. 0.0 while the player
+## is not down.
+var bleed_out_left: float:
+	get:
+		return downed_clock.bleed_out_left
 var _perfect_window_left: float = 0.0
 ## True once a hit was blocked during the dodge that is running, so that dodge has
 ## already emitted its one `player_dodged(player, true)`.
@@ -330,9 +340,10 @@ func refresh_authority() -> void:
 ## the host's replicated StateSync value or a downed/revived broadcast
 ## (W3-B4a). A down stops the player simulating and announces it on the
 ## player's own `downed` signal; standing back up resumes it. Presentation and
-## authority only — HP, the 30 s bleed-out timer and the `Downed` state itself
-## are player-controller's (blocked on Dev A W3-A5), and `revived(by)` names who
-## did the reviving, so it is emitted by the revive path (W3-B4b) instead.
+## authority only — the 30 s bleed-out runs on the host's `downed_clock` and
+## the `Downed` state itself is entered by the host's death path (W3-A5), and
+## `revived(by)` names who did the reviving, so it is emitted by the revive
+## path (W3-B4b) instead.
 func _apply_downed_state() -> void:
 	refresh_authority()
 	velocity = Vector2.ZERO
@@ -508,7 +519,7 @@ func _sibling_player_positions() -> Array[Vector2]:
 
 ## Host. Back to full health, standing and alive, for a fresh run.
 func reset_for_run() -> void:
-	bleed_out_left = 0.0
+	downed_clock.reset()
 	is_dead = false
 	is_downed = false
 	hit_iframes_left = 0.0
@@ -535,7 +546,8 @@ func _apply_downed_tint() -> void:
 
 
 ## Dodge, perfect-dodge and bleed-out timers, counted on the host and the
-## predicting owner alike (the dodge cooldown gates the owner's input).
+## predicting owner alike (the dodge cooldown gates the owner's input). The
+## bleed-out is the host's clock alone.
 func _tick_combat_timers(delta: float) -> void:
 	dodge_clock.tick(delta)
 	if _perfect_window_left > 0.0:
@@ -543,9 +555,28 @@ func _tick_combat_timers(delta: float) -> void:
 		if _perfect_window_left <= 0.0:
 			_perfect_dodge_window_open = false
 	if multiplayer.is_server() and is_downed and not is_dead:
-		bleed_out_left -= delta
-		if bleed_out_left <= 0.0:
-			_die()
+		tick_downed(delta)
+
+
+## Host. One tick of the downed clock: the 30 s bleed-out counts down and a
+## running revive hold banks. Stepped from _tick_combat_timers because a
+## downed player's state machine is stopped (`simulates` is false — a downed
+## player runs no states), so the Downed state cannot tick it itself. A
+## bleed-out that has run out is Dead for the floor.
+func tick_downed(delta: float) -> void:
+	downed_clock.tick(delta)
+	if not downed_clock.bleeding():
+		_die()
+
+
+## Host. The Downed state's entry: the 30 s bleed-out starts running.
+func begin_bleed_out() -> void:
+	downed_clock.start_bleed_out()
+
+
+## Host. The bleed-out stops before it expired (the revive stood the player up).
+func stop_bleed_out() -> void:
+	downed_clock.stop_bleed_out()
 
 
 ## A charge left on the clock (a spent charge recharges on the
@@ -620,16 +651,18 @@ func _perfect_window_opened() -> void:
 
 
 ## Host. Health hit zero: a teammate still standing means this player is downed
-## (revivable for 30 s); otherwise they die at once.
+## (revivable for 30 s, the Downed state); otherwise they die at once — solo
+## skips downed (SPEC: "Solo: downed is skipped, Dead immediately").
 func _on_died(_hit: HitInfo) -> void:
 	if not multiplayer.is_server():
 		return
-	if _teammate_standing():
-		bleed_out_left = BLEED_OUT_SECONDS
-		is_downed = true
-		Events.player_downed.emit(self)
-	else:
+	if DownedClock.goes_straight_to_dead(_teammate_standing()):
 		_die()
+		return
+	is_downed = true
+	if state_machine != null:
+		state_machine.change_to(&"Downed")
+	Events.player_downed.emit(self)
 
 
 func _teammate_standing() -> bool:
@@ -639,17 +672,20 @@ func _teammate_standing() -> bool:
 	return false
 
 
-## Host. Dead for the floor.
+## Host. Dead for the floor: the Dead state takes the body until the next
+## floor's fresh run stands it back up.
 func _die() -> void:
 	is_downed = false
 	is_dead = true
+	if state_machine != null:
+		state_machine.change_to(&"Dead")
 	Events.player_died.emit(self)
 
 
 ## Back on their feet with 40% HP and a moment of grace (host; every peer
 ## resets the state machine).
 func _on_revived(_by: Player) -> void:
-	bleed_out_left = 0.0
+	downed_clock.stop_bleed_out()
 	if state_machine != null:
 		state_machine.change_to(&"Idle")
 	if multiplayer.is_server():

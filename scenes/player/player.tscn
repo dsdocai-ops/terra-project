@@ -15,6 +15,8 @@
 [ext_resource type="Script" path="res://scenes/player/states/heavy_charge.gd" id="13_heavycharge"]
 [ext_resource type="Script" path="res://scripts/combat/attack_controller.gd" id="13_attackctl"]
 [ext_resource type="Script" path="res://scripts/weapons/weapon_controller.gd" id="14_weapons"]
+[ext_resource type="Script" path="res://scenes/player/states/downed.gd" id="15_downed"]
+[ext_resource type="Script" path="res://scenes/player/states/dead.gd" id="16_dead"]
 
 [sub_resource type="SceneReplicationConfig" id="SceneReplicationConfig_input"]
 properties/0/path = NodePath(".:move_input")
@@ -114,6 +116,12 @@ script = ExtResource("12_dodge")
 
 [node name="HeavyCharge" type="Node" parent="StateMachine"]
 script = ExtResource("13_heavycharge")
+
+[node name="Downed" type="Node" parent="StateMachine"]
+script = ExtResource("15_downed")
+
+[node name="Dead" type="Node" parent="StateMachine"]
+script = ExtResource("16_dead")
 
 [node name="SlotRing" type="Node2D" parent="."]
 script = ExtResource("6_ring")
