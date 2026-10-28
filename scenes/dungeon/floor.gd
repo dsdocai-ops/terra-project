@@ -63,18 +63,23 @@ func _clear_children() -> void:
 	current_room_index = -1
 
 
+## The three tile kinds of SPEC-floor-generation step 5: floor on the walkable
+## cells, wall on the ring around them, pit tiles elsewhere.
 func _paint_tiles(world: World, biome: BiomeData) -> void:
+	var paint := FloorPaint.new(layout)
 	world.floor_layer.clear()
 	world.walls_layer.clear()
 	world.floor_layer.modulate = biome.tint if biome != null else Color.WHITE
-	for cell: Vector2i in layout.walkable:
-		world.floor_layer.set_cell(cell, Tiles.SOURCE, Tiles.floor_at(cell))
-	for cell: Vector2i in layout.walkable:
-		for dx: int in range(-1, 2):
-			for dy: int in range(-1, 2):
-				var neighbor: Vector2i = cell + Vector2i(dx, dy)
-				if not layout.walkable.has(neighbor):
-					world.walls_layer.set_cell(neighbor, Tiles.SOURCE, Tiles.WALL)
+	for x: int in FloorGenerator.GRID:
+		for y: int in FloorGenerator.GRID:
+			var cell := Vector2i(x, y)
+			var kind: int = paint.kind(cell)
+			if kind == FloorPaint.Kind.FLOOR:
+				world.floor_layer.set_cell(cell, Tiles.SOURCE, Tiles.floor_at(cell))
+			elif kind == FloorPaint.Kind.WALL:
+				world.walls_layer.set_cell(cell, Tiles.SOURCE, Tiles.WALL)
+			else:
+				world.floor_layer.set_cell(cell, Tiles.SOURCE, Tiles.PIT)
 
 
 func _build_astar() -> void:

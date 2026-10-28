@@ -292,18 +292,22 @@ static func _assign_types(rng: RandomNumberGenerator, adjacency: Array[PackedInt
 	types[start] = RoomType.START
 	types[exit_room] = RoomType.EXIT
 	var in_biome: int = BiomeData.floor_in_biome(floor_index)
-	# Priority order: when the floor has more specials than rooms, the tail drops.
+	# Priority order: the week-3 special types (Rope, Treasure, the floor's
+	# elites) are claimed before the week-6 ones (Lore, Shrine, Shop, Rest,
+	# Anvil, Rune), so a room-poor floor drops the week-6 tail, never an Elite
+	# Combat room the week's floor must carry. When the floor has more specials
+	# than rooms, the tail drops.
 	var wanted: Array[int] = []
 	if in_biome == 2:
 		wanted.append(RoomType.ROPE)
-	if in_biome == biome.lore_floor:
-		wanted.append(RoomType.LORE)
 	wanted.append(RoomType.TREASURE)
-	wanted.append(RoomType.SHRINE)
 	if floor_index >= 3:
 		wanted.append(RoomType.ELITE_COMBAT)
 	if floor_index >= 11:
 		wanted.append(RoomType.ELITE_COMBAT)
+	if in_biome == biome.lore_floor:
+		wanted.append(RoomType.LORE)
+	wanted.append(RoomType.SHRINE)
 	if in_biome >= 2 and in_biome <= 4:
 		wanted.append(RoomType.SHOP)
 	if in_biome >= 3 and in_biome <= 4:

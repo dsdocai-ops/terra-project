@@ -67,7 +67,21 @@ func _check(layout: FloorLayout, floor_index: int) -> String:
 		return "ropes %d, wanted %d" % [ropes, want_rope]
 	if layout.rooms_of_type(FloorGenerator.RoomType.TREASURE).size() != 1:
 		return "treasure count"
-	if layout.rooms_of_type(FloorGenerator.RoomType.SHRINE).size() != 1:
+	# Shrine is "1 per floor" (a week-6 rule), but a room-poor floor that must
+	# carry the week-3 specials (rope, treasure, the floor's elites) has no room
+	# left for one: those are claimed first, and the shrine is the type that
+	# drops. Required exactly when the special budget can still fit it.
+	var biome: BiomeData = _biome_of(floor_index)
+	var in_biome: int = BiomeData.floor_in_biome(floor_index)
+	var ahead: int = 1  # treasure, always wanted
+	if in_biome == 2:
+		ahead += 1  # rope
+	ahead += 2 if floor_index >= 11 else 1 if floor_index >= 3 else 0  # elites
+	if in_biome == biome.lore_floor:
+		ahead += 1  # lore claims the pool ahead of the shrine
+	var budget: int = count - 2 - FloorGenerator.MIN_COMBAT_ROOMS
+	var want_shrine: int = 1 if budget >= ahead + 1 else 0
+	if layout.rooms_of_type(FloorGenerator.RoomType.SHRINE).size() != want_shrine:
 		return "shrine count"
 	var combat: int = layout.rooms_of_type(FloorGenerator.RoomType.COMBAT).size()
 	if combat < FloorGenerator.MIN_COMBAT_ROOMS:
