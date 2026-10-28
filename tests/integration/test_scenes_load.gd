@@ -65,6 +65,45 @@ func test_enemy_base_scene_loads_wired() -> void:
 	enemy.free()
 
 
+## The W3-A2 Room and Door nodes (G10b1): both load and instantiate. Neither
+## has a .tscn — Floor._build_rooms builds every room and door in code — so
+## the .tscn collector above cannot see them; the painted-floor wiring (a
+## room's own scan closing its door nodes, the shapes opening and closing) is
+## proven in tests/integration/test_room_door_scene.gd.
+func test_room_and_door_nodes_load() -> void:
+	var room_script: GDScript = load("res://scenes/dungeon/room.gd") as GDScript
+	assert_not_null(room_script, "room.gd loads")
+	var door_script: GDScript = load("res://scenes/dungeon/door.gd") as GDScript
+	assert_not_null(door_script, "door.gd loads")
+	var room := room_script.new() as Room
+	assert_not_null(room, "Room instantiates as the Room script")
+	assert_true(room is Node2D, "Room is a Node2D")
+	if room != null:
+		room.free()
+	var door := door_script.new() as Door
+	assert_not_null(door, "Door instantiates as the Door script")
+	assert_true(door is StaticBody2D, "Door is a StaticBody2D")
+	# In the tree the door builds its own collision and placeholder visual, and
+	# set_closed moves both (the deferred shape needs one frame to land).
+	add_child_autofree(door)
+	door.set_closed(true)
+	await wait_physics_frames(1)
+	var shape: CollisionShape2D = null
+	var visual: Polygon2D = null
+	for child: Node in door.get_children():
+		if child is CollisionShape2D:
+			shape = child as CollisionShape2D
+		elif child is Polygon2D:
+			visual = child as Polygon2D
+	assert_not_null(shape, "the door built its collision shape")
+	assert_not_null(visual, "the door built its placeholder visual")
+	assert_eq(door.get_child_count(), 2, "the door built exactly its shape and its visual")
+	if shape != null:
+		assert_false(shape.disabled, "a closed door's collision is live")
+	if visual != null:
+		assert_true(visual.visible, "a closed door shows its placeholder")
+
+
 ## The W2-A10 placeholder sprites: each enemy's SpriteFrames under assets/
 ## load, and every animation's frame texture loads with them (G8a adds the
 ## Hollow Miner; G8b appends the other two). The drawing itself — the enemy
