@@ -6,10 +6,12 @@ extends EnemyState
 ## the breaking hit slides it like HitStun. Owned by enemies-ai (combat v2 C2).
 ## Sync: host-only; the `staggered` flag it sets rides StateSync so clients can
 ## draw the dazed marker.
+##
+## The decisions — the clock length and the stun clock itself — are the pure
+## `EnemyStateLogic` (`stagger_length`, `tick_down`); this state applies them
+## to the Enemy.
 
-const DAMAGE_TAKEN_FACTOR: float = 1.25
 const DAMAGE_SOURCE: StringName = &"stagger"
-const DEFAULT_SECONDS: float = 0.8
 
 var _left: float = 0.0
 
@@ -19,8 +21,8 @@ func enter(_from: StringName) -> void:
 	enemy.telegraph_progress = -1.0
 	enemy.hitbox.active = false
 	enemy.staggered = true
-	enemy.hurtbox.set_damage_taken_factor(DAMAGE_SOURCE, DAMAGE_TAKEN_FACTOR)
-	_left = enemy.data.stagger_seconds if enemy.data != null else DEFAULT_SECONDS
+	enemy.hurtbox.set_damage_taken_factor(DAMAGE_SOURCE, EnemyStateLogic.STAGGER_DAMAGE_TAKEN)
+	_left = EnemyStateLogic.stagger_length(enemy.data != null, enemy.data.stagger_seconds if enemy.data != null else 0.0)
 
 
 func exit(_to: StringName) -> void:
@@ -33,8 +35,8 @@ func physics_update(delta: float) -> void:
 	enemy.decay_knockback(delta)
 	enemy.velocity = enemy.knockback_velocity * machine.effective_scale
 	enemy.move_and_slide()
-	if enemy.is_on_wall():
-		enemy.knockback_velocity = Vector2.ZERO
-	_left -= delta
-	if _left <= 0.0:
+	enemy.knockback_velocity = EnemyStateLogic.knockback_after_wall(enemy.knockback_velocity, enemy.is_on_wall())
+	var tick := EnemyStateLogic.tick_down(_left, delta)
+	_left = tick.left
+	if tick.over:
 		machine.change_to(&"Chase")

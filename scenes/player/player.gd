@@ -173,6 +173,11 @@ var is_downed: bool = false:
 			return
 		is_downed = value
 		_apply_downed_state()
+## True while a Smoke Step / Smoke Bomb / Vanish / Ghost Wrap hides this
+## player: enemies' `Targeting.pick` cannot see them and their aggro drops.
+## The hiding effect owns the flag and clears it (SPEC-enemies-ai
+## "Targeting"); read only through `Targeting.candidate`.
+var untargetable: bool = false
 ## Base animation name ("idle", "walk") without the facing suffix. Replicated
 ## by StateSync so remote copies play what the host plays.
 var current_anim: String = "":

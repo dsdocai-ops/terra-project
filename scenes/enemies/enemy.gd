@@ -2,7 +2,8 @@ class_name Enemy
 extends CharacterBody2D
 ## The one enemy scene every enemy type is built on (SPEC-enemies-ai
 ## `enemy_base`): configured entirely from `EnemyData`, driven by a small
-## StateMachine (Idle, Chase, Attack, HitStun). Owned by enemies-ai.
+## StateMachine (Idle, Chase, Attack, HitStun, Stagger) whose decisions live in
+## the pure `EnemyStateLogic` and `Targeting`. Owned by enemies-ai.
 ## Sync: the host runs AI, attacks, HP and death; StateSync replicates
 ## position, animation tag, current HP, the telegraph progress and aim, and the
 ## spawn-time `kind`/`elite`. Clients only present that state. Art: the
@@ -213,18 +214,18 @@ func _draw() -> void:
 # --- targeting and movement ----------------------------------------------------
 
 
-## The nearest living player, or null.
+## The target to chase (SPEC-enemies-ai "Targeting"): the pure `Targeting.pick`
+## over the players — a taunt overrides the distance, an `untargetable` player
+## is invisible (aggro drops when that leaves nothing), the current target is
+## kept while it stays near the nearest. Null when nothing is targetable.
+## Host only.
 func pick_target() -> Node2D:
-	var best: Node2D = null
-	var best_dist: float = INF
+	var candidates: Array[Targeting.Candidate] = []
 	for player: Player in NetworkManager.players.values():
-		if not is_instance_valid(player) or player.is_downed or player.is_dead:
-			continue
-		var dist: float = global_position.distance_to(player.global_position)
-		if dist < best_dist:
-			best_dist = dist
-			best = player
-	return best
+		if is_instance_valid(player):
+			candidates.append(Targeting.candidate(player))
+	var picked := Targeting.pick(global_position, target, candidates)
+	return picked.node if picked != null else null
 
 
 ## Steers toward `point` along the floor's A* path (direct when there is no
@@ -318,7 +319,7 @@ func absorb_hit_poise(hit: HitInfo) -> void:
 func apply_knockback(impulse: Vector2, stun_seconds: float, hit: HitInfo = null) -> void:
 	var resist: float = clampf(data.knockback_resist if data != null else 0.0, 0.0, 1.0)
 	knockback_velocity = impulse * (1.0 - resist)
-	_knockback_decel = knockback_velocity.length() / 0.2 if knockback_velocity.length() > 0.0 else 0.0
+	_knockback_decel = EnemyStateLogic.knockback_decel(knockback_velocity.length())
 	if hit == null:
 		var stun_resist: float = clampf(data.stagger_resist if data != null else 0.0, 0.0, 1.0)
 		hit_stun_left = stun_seconds * (1.0 - stun_resist)
