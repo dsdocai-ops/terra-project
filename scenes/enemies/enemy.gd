@@ -61,6 +61,14 @@ var _last_position: Vector2 = Vector2.ZERO
 ## Height of one sprite frame, 0 while the placeholder polygon is shown.
 var _sprite_height: float = 0.0
 
+## The per-frame shared separation hash: the first `_separation` this physics
+## frame collects the whole group (self included) into it, every push this
+## frame then reads only its own nine cells — never a group-wide scan.
+## Host-only AI over plain positions, nothing to sync.
+static var _frame_hash: EnemySeparation = null
+static var _hash_frame: int = -1
+static var _hash_group_size: int = -1
+
 @onready var stat_block: StatBlock = $StatBlock
 @onready var health: Health = $Health
 @onready var hurtbox: Hurtbox = $Hurtbox
@@ -280,17 +288,30 @@ func _next_waypoint(point: Vector2) -> Vector2:
 	return EnemyPathing.goal(_path, point)
 
 
+## Drops the shared separation hash so the next `_separation` rebuilds it.
+## The frame and group-size checks below already catch the game's drift; tests
+## (which can sit on one physics frame for many bodies) call this between
+## setups, and a caller that spawned or freed enemies off the physics step can too.
+static func reset_separation_cache() -> void:
+	_frame_hash = null
+	_hash_frame = -1
+	_hash_group_size = -1
+
+
+## The separation push, through the pure `EnemySeparation` spatial hash (see
+## the `_frame_hash` note by the member block for the sharing).
 func _separation() -> Vector2:
-	var push: Vector2 = Vector2.ZERO
-	for other: Node in get_tree().get_nodes_in_group(GROUP):
-		var enemy: Enemy = other as Enemy
-		if enemy == null or enemy == self:
-			continue
-		var offset: Vector2 = global_position - enemy.global_position
-		var dist: float = offset.length()
-		if dist > 0.01 and dist < SEPARATION_RADIUS:
-			push += offset / dist * (1.0 - dist / SEPARATION_RADIUS)
-	return push * (SEPARATION_PUSH / 60.0)
+	var frame: int = Engine.get_physics_frames()
+	var group_size: int = get_tree().get_nodes_in_group(GROUP).size()
+	if _frame_hash == null or _hash_frame != frame or _hash_group_size != group_size:
+		_hash_frame = frame
+		_hash_group_size = group_size
+		_frame_hash = EnemySeparation.new(SEPARATION_RADIUS)
+		for node: Node in get_tree().get_nodes_in_group(GROUP):
+			var enemy := node as Enemy
+			if enemy != null:
+				_frame_hash.insert(enemy.global_position)
+	return EnemySeparation.push_for(global_position, _frame_hash.nearby(global_position), SEPARATION_RADIUS, SEPARATION_PUSH)
 
 
 # --- hit reactions and death ---------------------------------------------------
