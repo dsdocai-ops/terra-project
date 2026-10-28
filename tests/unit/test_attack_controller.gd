@@ -551,6 +551,17 @@ func test_a_combo_cancel_restart_keeps_the_anim_scaled() -> void:
 	assert_almost_eq(_player.sprite.speed_scale, 2.0, 0.001, "the restart re-applied the scale")
 
 
+func test_a_buff_picked_up_mid_swing_moves_the_anim_with_the_clock() -> void:
+	_set_attack_speed(1.0)
+	_start_attack(_long_spec())
+	_tick(0.01)
+	assert_almost_eq(_attack_state().elapsed(), 0.02, 0.005, "setup: one frame at the 2x clock")
+	_set_attack_speed(1.0, &"test_second_haste")
+	_tick(0.01)
+	assert_almost_eq(_player.sprite.speed_scale, 3.0, 0.001, "the animation followed the mid-swing buff")
+	assert_almost_eq(_attack_state().elapsed(), 0.05, 0.005, "and so did the clock: 2x for a frame, then 3x")
+
+
 func test_a_dodge_out_of_the_attack_restores_the_anim_speed() -> void:
 	_set_attack_speed(1.0)
 	_start_attack(_long_spec())

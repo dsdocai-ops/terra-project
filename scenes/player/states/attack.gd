@@ -86,6 +86,9 @@ func _attack_speed() -> float:
 
 func physics_update(delta: float) -> void:
 	_elapsed += delta * _attack_speed()
+	# Re-read every frame so a buff picked up mid-swing speeds the animation
+	# up with the clock (SPEC-combat-core "Attack speed").
+	player.sprite.speed_scale = _attack_speed()
 	_steer(delta)
 	if not _swung and _elapsed >= _spec.windup_seconds:
 		_swung = true
