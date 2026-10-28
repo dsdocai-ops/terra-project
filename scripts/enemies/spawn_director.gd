@@ -20,6 +20,17 @@ const DEFAULT_POOL: Array[Array] = [
 const ELITE_ROOM_BONUS_ELITES: int = 1
 const SEED_MIX: int = 7919
 
+## The enemy count one combat room's v1 wave carries on `floor_index`: the
+## SPEC-enemies-ai budget, `Scaling.enemies_per_room(floor)` (the stats-status
+## curve — its base, step and cap constants are the budget table), floored at
+## `MIN_ENEMIES` so the shallowest room never fields fewer than the wave needs.
+## v1 spawns the whole budget as one wave; the 1-to-3 wave split is v2 (G12a2's
+## single-wave rule owns the v1 shape). Pure: the floor goes in, the count comes
+## out, nothing reads the tree.
+static func room_budget(floor_index: int) -> int:
+	return maxi(Scaling.enemies_per_room(floor_index), MIN_ENEMIES)
+
+
 ## Registers the combat populators with the floor generator. Safe to call more
 ## than once.
 static func register_populators() -> void:
@@ -50,7 +61,7 @@ static func fill_room(room: Room) -> Array[Enemy]:
 	var rng := RandomNumberGenerator.new()
 	var base_seed: int = GameState.run.seed if GameState.run != null else 1
 	rng.seed = FloorGenerator.layout_seed(base_seed, floor_index) + room.spec.index * SEED_MIX
-	var count: int = maxi(Scaling.enemies_per_room(floor_index), MIN_ENEMIES)
+	var count: int = room_budget(floor_index)
 	var elites_left: int = ELITE_ROOM_BONUS_ELITES if room.type == FloorGenerator.RoomType.ELITE_COMBAT else 0
 	var cells: Array[Vector2i] = _spawn_cells(room, rng)
 	for index: int in count:
