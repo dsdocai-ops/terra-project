@@ -105,6 +105,30 @@ func test_the_revived_player_comes_back_at_forty_percent_hp() -> void:
 	assert_eq(NetworkManager.revive_hp_for(0), 1, "and never at a negative HP")
 
 
+func test_the_downed_clock_banks_the_holds_the_host_revive_path_reads() -> void:
+	# G13a1: the pure downed clock's hold and the host's revive hold are the
+	# same hold at every reviver speed — the clock banks the seconds the
+	# reviver holds, and a completed hold is what the 40% restore waits on.
+	var holder := _join(CLIENT_PEER)
+	var clock := DownedClock.new()
+
+	assert_eq(clock.hold_duration(holder.revive_speed_mult),
+		NetworkManager.revive_seconds_for(holder), "same base hold at mult 1")
+	holder.revive_speed_mult = 2.0
+	var scaled: float = NetworkManager.revive_seconds_for(holder)
+	assert_eq(clock.hold_duration(holder.revive_speed_mult), scaled,
+		"and the same scaled hold at mult 2")
+
+	clock.begin_hold(holder.revive_speed_mult)
+	var left: float = scaled
+	while left > 0.0:
+		clock.tick(minf(left, 0.25))
+		left -= 0.25
+	assert_true(clock.hold_complete(), "%s s of holding completes the clock's hold" % scaled)
+	assert_eq(clock.hold_progress(), 1.0)
+	assert_eq(NetworkManager.revive_hp_for(100), 40, "and the completed hold restores 40%")
+
+
 # --- the RPC contract -------------------------------------------------------
 
 func test_request_revive_is_a_client_to_host_request() -> void:
