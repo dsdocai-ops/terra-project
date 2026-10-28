@@ -1,7 +1,8 @@
 class_name Enemy
 extends CharacterBody2D
-## The one enemy scene every enemy type is built on (SPEC-enemies-ai
-## `enemy_base`): configured entirely from `EnemyData`, driven by a small
+## The one enemy scene every enemy type is built on — `enemy_base.tscn`
+## (SPEC-enemies-ai `enemy_base`; SPEC-project's folder layout): configured
+## entirely from `EnemyData`, driven by a small
 ## StateMachine (Idle, Chase, Attack, HitStun, Stagger) whose decisions live in
 ## the pure `EnemyStateLogic` and `Targeting`, with the routing on the floor's
 ## `AStarGrid2D` in the pure `EnemyPathing`. Owned by enemies-ai.

@@ -6,7 +6,7 @@ extends GutTest
 ## enemy by hand so the physics server never runs between asserts. TimeManager
 ## is global, so its sources are cleared after every test.
 
-const ENEMY_SCENE := "res://scenes/enemies/enemy.tscn"
+const ENEMY_SCENE := "res://scenes/enemies/enemy_base.tscn"
 const PLAYER_SCENE := "res://scenes/player/player.tscn"
 const FRAME := 1.0 / 60.0
 

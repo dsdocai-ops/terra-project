@@ -4,7 +4,7 @@ extends GutTest
 ## falling back to the placeholder polygon when its data has none.
 ## Owned by art-audio (the sprite seam into player-controller and enemies-ai).
 
-const ENEMY_SCENE: PackedScene = preload("res://scenes/enemies/enemy.tscn")
+const ENEMY_SCENE: PackedScene = preload("res://scenes/enemies/enemy_base.tscn")
 const PLAYER_SCENE: PackedScene = preload("res://scenes/player/player.tscn")
 const BIOME_1_WITH_ART: Array[StringName] = [&"hollow_miner", &"rock_tick", &"lantern_wisp"]
 

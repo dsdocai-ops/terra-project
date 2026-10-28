@@ -5,7 +5,7 @@ extends GutTest
 ## real enemy scene and prove its `_separation` pushes from the hash's
 ## neighbours alone. Owned by enemies-ai.
 
-const ENEMY_SCENE := "res://scenes/enemies/enemy.tscn"
+const ENEMY_SCENE := "res://scenes/enemies/enemy_base.tscn"
 const CELL := 10.0
 const RADIUS := 22.0
 const PUSH := 40.0

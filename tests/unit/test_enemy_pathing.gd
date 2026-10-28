@@ -5,7 +5,7 @@ extends GutTest
 ## enemy scene against a real generated floor's grid and prove its
 ## `_next_waypoint` returns exactly the pure file's answer. Owned by enemies-ai.
 
-const ENEMY_SCENE := "res://scenes/enemies/enemy.tscn"
+const ENEMY_SCENE := "res://scenes/enemies/enemy_base.tscn"
 const WORLD_SCENE := "res://scenes/main/world.tscn"
 const LAYOUT_SEED: int = 42
 ## The unit grids mirror `Floor._build_astar`'s config at a hand-held size.

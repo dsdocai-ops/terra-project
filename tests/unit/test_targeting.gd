@@ -7,7 +7,7 @@ extends GutTest
 ## real `Enemy.pick_target` through `Targeting` with real players in
 ## `NetworkManager.players`. Owned by enemies-ai.
 
-const ENEMY_SCENE := "res://scenes/enemies/enemy.tscn"
+const ENEMY_SCENE := "res://scenes/enemies/enemy_base.tscn"
 const PLAYER_SCENE := "res://scenes/player/player.tscn"
 const ORIGIN := Vector2.ZERO
 

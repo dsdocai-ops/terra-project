@@ -97,6 +97,17 @@ func test_world_has_enemy_and_projectile_spawners_under_entities() -> void:
 	assert_true(_world.projectile_spawner is MultiplayerSpawner)
 
 
+## W2-A9 G7b1: the live spawner spawns the real base scene, at the exact path
+## its doc names ("Dev A's scenes/enemies/enemy_base.tscn replaces this
+## placeholder") — the World's export override points there, not at the
+## networking placeholder.
+func test_world_enemy_spawner_spawns_the_real_enemy_base_scene() -> void:
+	var scene := _world.enemy_spawner.enemy_scene as PackedScene
+	assert_not_null(scene, "the spawner's enemy scene is set")
+	if scene != null:
+		assert_eq(scene.resource_path, "res://scenes/enemies/enemy_base.tscn")
+
+
 # Spawn round-trip
 
 func test_spawn_enemy_creates_a_node_under_entities_with_authority_set() -> void:

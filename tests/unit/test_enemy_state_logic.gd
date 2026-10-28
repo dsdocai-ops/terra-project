@@ -6,7 +6,7 @@ extends GutTest
 ## Idle -> Chase -> Attack -> HitStun -> Stagger on that logic. Owned by
 ## enemies-ai.
 
-const ENEMY_SCENE := "res://scenes/enemies/enemy.tscn"
+const ENEMY_SCENE := "res://scenes/enemies/enemy_base.tscn"
 const PLAYER_SCENE := "res://scenes/player/player.tscn"
 const FRAME := 1.0 / 60.0
 const ORIGIN := Vector2.ZERO

@@ -34,3 +34,32 @@ func test_every_scene_instantiates() -> void:
 		assert_not_null(node, "%s instantiates" % path)
 		if node != null:
 			node.free()
+
+
+## The enemies-ai base scene (W2-A9 G7b1) at the exact path the spec
+## (SPEC-project folder layout, SPEC-enemies-ai) and the spawner's doc name:
+## loads, instantiates as the `Enemy` script, and carries the wired base —
+## the G7a1 machine states, the components the spawner's swap-in expects and
+## the StateSync. The G7a2 pathing and G7a3 separation wiring on the script
+## are exercised against this same scene by their unit suites.
+func test_enemy_base_scene_loads_wired() -> void:
+	var packed := load("res://scenes/enemies/enemy_base.tscn") as PackedScene
+	assert_not_null(packed, "enemy_base.tscn loads")
+	var node := packed.instantiate() as Node
+	assert_not_null(node, "enemy_base.tscn instantiates")
+	var enemy := node as Enemy
+	assert_not_null(enemy, "enemy_base.tscn instantiates as the Enemy script")
+	if enemy == null:
+		if node != null:
+			node.free()
+		return
+	assert_not_null(enemy.get_node_or_null("StatBlock"), "StatBlock")
+	assert_not_null(enemy.get_node_or_null("Health"), "Health")
+	assert_not_null(enemy.get_node_or_null("Hurtbox"), "Hurtbox")
+	assert_not_null(enemy.get_node_or_null("Hitbox"), "Hitbox")
+	assert_not_null(enemy.get_node_or_null("Telegraph"), "Telegraph")
+	assert_not_null(enemy.get_node_or_null("StateSync"), "StateSync")
+	var machine: Node = enemy.get_node("StateMachine")
+	for state_name: String in ["Idle", "Chase", "Attack", "HitStun", "Stagger"]:
+		assert_not_null(machine.get_node_or_null(NodePath(state_name)), "state %s" % state_name)
+	enemy.free()

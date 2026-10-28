@@ -3,7 +3,7 @@ extends GutTest
 ## C5, SPEC-project perf: no allocations after warm-up). Owned by combat-core.
 
 const PLAYER_SCENE := "res://scenes/player/player.tscn"
-const ENEMY_SCENE := "res://scenes/enemies/enemy.tscn"
+const ENEMY_SCENE := "res://scenes/enemies/enemy_base.tscn"
 
 var _player: Player
 var _weapons: WeaponController

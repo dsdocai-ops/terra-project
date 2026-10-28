@@ -189,7 +189,7 @@ func test_a_flinch_does_not_cut_a_charge_but_a_slam_does() -> void:
 
 
 func test_enemy_attack_patterns_set_the_hit_weight_and_poise() -> void:
-	var enemy: Enemy = (load("res://scenes/enemies/enemy.tscn") as PackedScene).instantiate() as Enemy
+	var enemy: Enemy = (load("res://scenes/enemies/enemy_base.tscn") as PackedScene).instantiate() as Enemy
 	enemy.setup(&"hollow_miner")
 	add_child_autofree(enemy)
 	var pattern: AttackPattern = (load("res://data/enemies/attacks/miner_swing.tres") as AttackPattern).duplicate() as AttackPattern

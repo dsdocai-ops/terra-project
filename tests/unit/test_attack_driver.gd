@@ -8,7 +8,7 @@ extends GutTest
 ## frames the pre-driver clock moved it. Named-method callbacks only (a lambda
 ## connect never fires in GUT).
 
-const ENEMY_SCENE := "res://scenes/enemies/enemy.tscn"
+const ENEMY_SCENE := "res://scenes/enemies/enemy_base.tscn"
 const FRAME := 1.0 / 60.0
 const WINDUP := 0.3
 const ACTIVE := 0.2
