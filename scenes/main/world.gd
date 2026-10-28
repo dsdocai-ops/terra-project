@@ -46,6 +46,7 @@ func _ready() -> void:
 	NetworkManager.player_joined.connect(_on_player_joined)
 	_build_combat_feedback()
 	_build_projectile_pool()
+	_point_spawner_at_the_projectile_base()
 	var prompt := InteractPrompt.new()
 	prompt.name = "InteractPrompt"
 	add_child(prompt)
@@ -78,6 +79,17 @@ func _build_projectile_pool() -> void:
 	var pool := ProjectilePool.attach(self)
 	pool.spawn_root = bolts
 	pool.warm(load(ProjectilePool.COMMON_SCENE_PATH) as PackedScene)
+
+
+## Dev A's Projectile base replaces the spawner's placeholder now that W2-A6
+## has landed — the swap the spawner's own doc promised ("the placeholder is
+## the stand-in until then"): every live shot (a crossbow bolt, an enemy
+## fireball) instantiates the real flight model, and the caller's `launch`
+## arms it instead of failing a cast. Set in `_ready` on every peer, so host
+## and clients spawn the same scene; the placeholder stays the spawner's
+## standalone default (networking's file is not touched from this lane).
+func _point_spawner_at_the_projectile_base() -> void:
+	projectile_spawner.projectile_scene = load(ProjectilePool.COMMON_SCENE_PATH) as PackedScene
 
 
 ## Clears both layers, paints a `size` x `size` floor from (0, 0) and a one

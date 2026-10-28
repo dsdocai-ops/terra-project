@@ -3,9 +3,11 @@ extends Node2D
 ## The Pickaxe heavy's signature: a line of cracks struck across the ground in
 ## the swing's direction (SINKHOLE_SPEC section 7, Blades: "Heavy cracks the
 ## ground in a line"). Placeholder art drawn with `_draw()` until W2-A12.
-## Owned by weapons. Sync: none, local presentation — every peer that runs the
-## swing spawns its own from the same inputs, so nothing is replicated. It
-## times itself out, like `DodgePing`.
+## Owned by weapons. Sync: presentation only — every peer that runs the swing
+## (the owner's prediction, the host's authority) spawns its own from the same
+## inputs, and the host forwards the crack to the peers that do not run it
+## (`WeaponController._remote_ground_crack`, the slash arc's channel); nothing
+## replicated changes game state. It times itself out, like `DodgePing`.
 
 const MARK_COUNT: int = 5
 ## Interior marks get a short branch tick every `BRANCH_STEP` marks.

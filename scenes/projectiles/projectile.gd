@@ -155,13 +155,15 @@ func park() -> void:
 ## The pool calls this on acquire: a reused projectile starts clean, with the
 ## flight numbers a previous launch left behind reset to what a fresh node
 ## carries. The next `launch` re-arms whatever that shot needs — with no spec
-## it flies the defaults, not the last shot's homing, lifetime or reflect.
+## it flies the defaults, not the last shot's homing, lifetime or reflect —
+## and the last shot's size does not ride along either.
 func reset_for_reuse() -> void:
 	homing_strength = 0.0
 	homing_target = null
 	lifetime_seconds = ProjectileFlight.NO_LIFETIME
 	reflectable = false
 	_pierce_left = 0
+	scale = Vector2.ONE
 
 
 ## End of flight — a wall with no bounce left, a spent budget, pierce run out:

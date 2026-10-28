@@ -3,9 +3,12 @@ extends WeaponAttack
 ## The Pickaxe's per-weapon attack node (SPEC-weapons): its heavy cracks the
 ## ground in a line (SINKHOLE_SPEC section 7, Blades). The crack runs from the
 ## player along the aim as far as the charged heavy actually reaches, so the
-## signature shows the real hitbox. Owned by weapons. Sync: none — the hook
-## runs inside the swing each peer executes and the crack is local
-## presentation that changes no game state.
+## signature shows the real hitbox. Owned by weapons. Sync: presentation only —
+## the hook runs inside the swing each executing peer draws its own (the
+## owner's prediction, the host's authority), and the host forwards the crack
+## to the peers that do not run the swing, through the controller's
+## `strike_ground_crack` (the same channel the slash arc rides). Nothing
+## replicated changes game state.
 
 
 func heavy(charge: float) -> void:
@@ -14,7 +17,12 @@ func heavy(charge: float) -> void:
 		return
 	var length: float = WeaponController.melee_reach(spec, charge, true)
 	var dir: Vector2 = aim_dir if aim_dir.length() > 0.001 else Vector2.RIGHT
-	GroundCrackLine.spawn(_crack_parent(), player.global_position, dir, length)
+	if weapons != null:
+		weapons.strike_ground_crack(player.global_position, dir, length)
+	else:
+		# A scene-less attack node (no controller): spawn locally, nothing to
+		# forward.
+		GroundCrackLine.spawn(_crack_parent(), player.global_position, dir, length)
 
 
 ## Ground decals belong on the world's FX layer; a scene-less player (tests)

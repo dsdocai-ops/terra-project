@@ -14,6 +14,11 @@ var weapons: WeaponController = null
 var player: Player = null
 ## The swing's aim direction, set by the controller just before the hook runs.
 var aim_dir: Vector2 = Vector2.DOWN
+## Size multiplier the controller puts on the projectile this swing fires
+## (1.0 = the scene's own size). A charged weapon's hook sets it per swing
+## (SPEC-weapons "Charged attacks": `heavy(charge)` scales damage and size);
+## the generic hooks leave it at 1.0.
+var shot_scale: float = 1.0
 
 
 ## The light combo step `step` (0-based) went live.

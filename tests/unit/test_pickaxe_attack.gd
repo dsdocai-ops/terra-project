@@ -266,11 +266,39 @@ func test_the_pickaxe_attack_node_is_made_from_its_scene_on_first_swing() -> voi
 	assert_eq(node.player, _player)
 
 
-func test_the_crossbow_runs_the_noop_base_until_its_scene_lands() -> void:
+func test_a_crossbow_swing_makes_its_own_attack_node_and_no_crack() -> void:
 	var crossbow: WeaponData = load("res://data/weapons/crossbow.tres") as WeaponData
 	_weapons.equip(0, crossbow)
 	_weapons.begin_swing(crossbow.light_combo[0], Vector2.RIGHT, 0.0, false)
 	var node: WeaponAttack = _weapons._attack_nodes.get(crossbow.id) as WeaponAttack
 	assert_not_null(node, "a node exists for it")
-	assert_false(node is PickaxeAttack, "and it is the no-op base, not a pickaxe")
+	assert_true(node is CrossbowAttack, "instanced from scenes/player/weapons/crossbow.tscn")
 	assert_eq(_cracks().size(), 0, "no pickaxe signature on a crossbow swing")
+
+
+# --- the charged state ----------------------------------------------------------------------
+
+func test_the_charged_state_is_reached_and_cleared_for_the_pickaxe() -> void:
+	_press_heavy()
+	_tick(0.05)
+	assert_eq(_state(), &"HeavyCharge", "a heavy press enters the charged state")
+	_tick(0.35)
+	var charge: PlayerHeavyChargeState = _player.state_machine.current as PlayerHeavyChargeState
+	assert_not_null(charge, "still charging")
+	if charge != null:
+		assert_almost_eq(charge.charge(), 0.4 / 0.8, 0.02, "the charge builds on the pickaxe's own 0.8 s")
+	_tick(0.4)
+	if charge != null:
+		assert_true(charge.is_full(), "full at 0.8 s")
+	_release_heavy()
+	_tick(FRAME)
+	assert_ne(_state(), &"HeavyCharge", "the release clears the charged state")
+	assert_eq(_state(), &"Attack")
+	_tick(0.7)
+	assert_eq(_state(), &"Idle", "setup: the heavy's swing has played out")
+	_press_heavy()
+	_tick(0.05)
+	var fresh: PlayerHeavyChargeState = _player.state_machine.current as PlayerHeavyChargeState
+	assert_not_null(fresh, "a new hold charges again")
+	if fresh != null:
+		assert_almost_eq(fresh.charge(), 0.0, 0.01, "and starts from zero, nothing carried over")

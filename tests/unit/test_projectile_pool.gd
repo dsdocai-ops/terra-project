@@ -119,6 +119,17 @@ func test_a_reused_bolt_launches_clean_without_a_spec() -> void:
 	assert_eq(second.bounces_left(), 0, "no spec: the defaults fly, not the last shot's numbers")
 
 
+func test_a_released_bolt_returns_to_scale_one_on_reuse() -> void:
+	_pool.warm(PROJECTILE_SCENE, 1)
+	var first: Projectile = _pool.acquire(PROJECTILE_SCENE)
+	first.scale = Vector2.ONE * 1.5
+	_pool.release(first)
+	var second: Projectile = _pool.acquire(PROJECTILE_SCENE)
+	assert_same(second, first, "the same instance comes back")
+	assert_almost_eq(second.scale.x, 1.0, 0.001, "the last shot's size is not left behind")
+	assert_almost_eq(second.scale.y, 1.0, 0.001)
+
+
 func test_a_released_projectile_comes_back_the_same_instance() -> void:
 	_pool.warm(PROJECTILE_SCENE, 1)
 	var first: Projectile = _pool.acquire(PROJECTILE_SCENE)

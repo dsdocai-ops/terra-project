@@ -394,4 +394,45 @@ func _fire_projectile(spec: AttackSpec, dir: Vector2, hit: HitInfo) -> void:
 	if projectile == null:
 		return
 	projectile.launch(hit, Team.Kind.PLAYER, spec.projectile_range, spec.pierce)
+	# The weapon hook's size for this swing (the crossbow's charged bolt):
+	# a fresh spawner node carries 1.0 anyway, so this is a plain write.
+	var attack_node: WeaponAttack = _attack_node_for(active_weapon())
+	if attack_node != null:
+		projectile.scale = Vector2.ONE * attack_node.shot_scale
 	Events.projectile_fired.emit(_player, projectile)
+
+
+## A weapon hook just struck a ground crack (the pickaxe heavy): spawn it
+## locally and — on the host — forward it to every peer that does not run this
+## swing itself, so the signature is visible on remote peers too. Presentation
+## only, the same channel the slash arc rides.
+func strike_ground_crack(origin: Vector2, dir: Vector2, length_px: float) -> void:
+	GroundCrackLine.spawn(_fx_parent(), origin, dir, length_px)
+	broadcast_ground_crack(origin, dir, length_px)
+
+
+## Host -> other peers (never the owner, who drew its own inside the hook).
+func broadcast_ground_crack(origin: Vector2, dir: Vector2, length_px: float) -> void:
+	if not multiplayer.is_server() or _player == null:
+		return
+	for peer_id: int in multiplayer.get_peers():
+		if peer_id != _player.peer_id:
+			_remote_ground_crack.rpc_id(peer_id, origin, dir.normalized(), length_px)
+
+
+## Presentation of a swing this peer did not run. Unreliable like the slash arc:
+## a dropped crack is a 0.7 s decal, not state.
+@rpc("any_peer", "call_remote", "unreliable")
+func _remote_ground_crack(origin: Vector2, dir: Vector2, length_px: float) -> void:
+	if multiplayer.get_remote_sender_id() != NetworkManager.HOST_PEER_ID or _player == null:
+		return
+	GroundCrackLine.spawn(_fx_parent(), origin, dir, length_px)
+
+
+## Where swing FX live: the world's FX layer, or the player's parent when no
+## world exists (tests, scene-less setups) so the node is always in the tree.
+func _fx_parent() -> Node:
+	var world: World = GameState.world
+	if world != null and is_instance_valid(world) and world.fx != null:
+		return world.fx
+	return _player.get_parent() if _player != null else self
