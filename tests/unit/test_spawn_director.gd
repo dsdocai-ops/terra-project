@@ -4,8 +4,9 @@ extends GutTest
 ## budget by floor; G12a2 adds the two spawn rules — the single wave (one
 ## `fill_room` call fields the whole budget, nothing held back) and the
 ## no-spawn-near-players check (`safe_cells`: `SAFE_RADIUS` around every
-## player, with the too-small-room fallback) — plus the week-2 trio the wave
-## fields and the seed determinism. The registry look-up proof is still to
+## player, with no exception — the judge-rejected too-small-room fallback is
+## gone, a room with no safe cell fields nothing) — plus the week-2 trio the
+## wave fields and the seed determinism. The registry look-up proof is still to
 ## come and will extend this file.
 ##
 ## The budget table is `Scaling`'s constants (stats-status owns the tuning; the
@@ -121,7 +122,7 @@ func test_a_cell_within_the_safe_radius_of_a_player_is_dropped() -> void:
 	var points: Array[Vector2i] = [Vector2i(10, 0), Vector2i(30, 0), Vector2i(50, 0)]
 	var players: Array[Vector2] = [Iso.to_screen(Vector2i(10, 0))]
 	var kept: Array[Vector2i] = SpawnDirector.safe_cells(points, players, \
-		SpawnDirector.SAFE_RADIUS, 1)
+		SpawnDirector.SAFE_RADIUS)
 	assert_eq(kept.size(), 2, "the two cells clear of the player survive")
 	assert_true(kept.has(Vector2i(30, 0)) and kept.has(Vector2i(50, 0)), \
 		"and they are the far ones — the cell under the player is gone")
@@ -133,7 +134,7 @@ func test_a_cell_near_any_one_of_several_players_is_dropped() -> void:
 		Iso.to_screen(Vector2i(50, 0)) + Vector2(100.0, 0.0), \
 		Iso.to_screen(Vector2i(30, 0))]
 	var kept: Array[Vector2i] = SpawnDirector.safe_cells(points, players, \
-		SpawnDirector.SAFE_RADIUS, 1)
+		SpawnDirector.SAFE_RADIUS)
 	assert_eq(kept, [Vector2i(10, 0)] as Array[Vector2i], \
 		"a cell clear of the first player but inside the second's radius is dropped too")
 
@@ -146,41 +147,39 @@ func test_the_radius_boundary_drops_inside_and_keeps_exactly_at_it() -> void:
 	var points: Array[Vector2i] = [cell, Vector2i(200, 0)]
 	var just_inside: Array[Vector2] = [Iso.to_screen(cell) + Vector2(SpawnDirector.SAFE_RADIUS - 1.0, 0.0)]
 	var exactly_at: Array[Vector2] = [Iso.to_screen(cell) + Vector2(SpawnDirector.SAFE_RADIUS, 0.0)]
-	assert_false(SpawnDirector.safe_cells(points, just_inside, SpawnDirector.SAFE_RADIUS, 1) \
+	assert_false(SpawnDirector.safe_cells(points, just_inside, SpawnDirector.SAFE_RADIUS) \
 		.has(cell), "just inside the radius (159 px) is dropped")
-	assert_true(SpawnDirector.safe_cells(points, exactly_at, SpawnDirector.SAFE_RADIUS, 1) \
+	assert_true(SpawnDirector.safe_cells(points, exactly_at, SpawnDirector.SAFE_RADIUS) \
 		.has(cell), "exactly at the radius (160 px) is kept")
 
 
 func test_no_players_leaves_every_spawn_point_safe() -> void:
 	var points: Array[Vector2i] = [Vector2i(10, 0), Vector2i(30, 0), Vector2i(50, 0)]
-	assert_eq(SpawnDirector.safe_cells(points, [], SpawnDirector.SAFE_RADIUS, 1), points, \
+	assert_eq(SpawnDirector.safe_cells(points, [], SpawnDirector.SAFE_RADIUS), points, \
 		"an empty player list drops nothing")
 
 
-func test_the_fallback_returns_every_spawn_point_when_too_few_are_safe() -> void:
+func test_too_few_safe_cells_still_returns_only_the_safe_ones() -> void:
 	var points: Array[Vector2i] = [Vector2i(10, 0), Vector2i(11, 0), Vector2i(300, 0)]
 	var players: Array[Vector2] = [Iso.to_screen(Vector2i(10, 0)), Iso.to_screen(Vector2i(11, 0))]
-	assert_eq(SpawnDirector.safe_cells(points, players, SpawnDirector.SAFE_RADIUS, \
-		SpawnDirector.MIN_ENEMIES), points, \
-		"one safe cell is below the minimum — the room is too small to be safe, so every spawn point comes back")
-
-
-func test_the_fallback_does_not_fire_when_exactly_the_minimum_survive() -> void:
-	var points: Array[Vector2i] = [Vector2i(10, 0), Vector2i(11, 0), Vector2i(300, 0), Vector2i(320, 0)]
-	var players: Array[Vector2] = [Iso.to_screen(Vector2i(10, 0))]
 	var kept: Array[Vector2i] = SpawnDirector.safe_cells(points, players, \
-		SpawnDirector.SAFE_RADIUS, SpawnDirector.MIN_ENEMIES)
-	assert_eq(kept.size(), SpawnDirector.MIN_ENEMIES, \
-		"exactly the minimum survived, so no fallback")
-	assert_false(kept.has(Vector2i(10, 0)), "and the blocked cell is still dropped")
-	assert_false(kept.has(Vector2i(11, 0)), "the near cell 45 px away is blocked too")
+		SpawnDirector.SAFE_RADIUS)
+	assert_eq(kept, [Vector2i(300, 0)] as Array[Vector2i], \
+		"one safe cell is below the minimum, but the spec's 160 px rule has no exception — " \
+		+ "only the safe cell comes back, never the blocked ones")
+
+
+func test_no_safe_cell_at_all_returns_an_empty_list() -> void:
+	var points: Array[Vector2i] = [Vector2i(10, 0), Vector2i(11, 0)]
+	var players: Array[Vector2] = [Iso.to_screen(Vector2i(10, 0)), Iso.to_screen(Vector2i(11, 0))]
+	assert_eq(SpawnDirector.safe_cells(points, players, SpawnDirector.SAFE_RADIUS).size(), 0, \
+		"every spawn point blocked: an empty list, so the room fields nothing")
 
 
 func test_safe_cells_never_touches_the_input_array() -> void:
 	var points: Array[Vector2i] = [Vector2i(10, 0), Vector2i(11, 0)]
 	var players: Array[Vector2] = [Iso.to_screen(Vector2i(10, 0))]
-	SpawnDirector.safe_cells(points, players, SpawnDirector.SAFE_RADIUS, 1)
+	SpawnDirector.safe_cells(points, players, SpawnDirector.SAFE_RADIUS)
 	assert_eq(points, [Vector2i(10, 0), Vector2i(11, 0)] as Array[Vector2i], \
 		"the filter reads the caller's array, it does not own it")
 
@@ -265,23 +264,37 @@ func test_no_enemy_spawns_within_the_safe_radius_of_a_player() -> void:
 			"every spawn sat on a safe cell, never a blocked one")
 
 
-func test_a_room_too_small_to_be_safe_still_fields_its_wave() -> void:
+func test_a_room_with_no_safe_cell_fields_an_empty_wave() -> void:
 	_wire_world()
 	var points: Array[Vector2i] = [Vector2i(10, 0), Vector2i(11, 0), Vector2i(12, 0), Vector2i(13, 0)]
 	var player: Player = _add_player(1, Iso.to_screen(Vector2i(11, 0)))
 	var room := _room(_spec(points))
 	var spawned: Array[Enemy] = SpawnDirector.fill_room(room)
-	var screens: Array[Vector2] = []
-	for cell: Vector2i in points:
-		screens.append(Iso.to_screen(cell))
-	assert_eq(spawned.size(), SpawnDirector.room_budget(1), \
-		"the fallback still fields the whole budget")
-	var within: int = 0
+	assert_eq(spawned.size(), 0, \
+		"every spawn point sits inside the safe radius: no enemy spawns at all — " \
+		+ "the spec's 160 px rule has no exception, so the old fallback is gone")
+
+
+func test_a_room_with_fewer_safe_cells_than_the_budget_spawns_only_on_safe_cells() -> void:
+	_wire_world()
+	var blocked: Array[Vector2i] = [Vector2i(10, 0), Vector2i(11, 0)]
+	var safe: Array[Vector2i] = [Vector2i(60, 0)]
+	var points: Array[Vector2i] = []
+	points.append_array(blocked)
+	points.append_array(safe)
+	var player: Player = _add_player(1, Iso.to_screen(Vector2i(10, 0)))
+	var room := _room(_spec(points))
+	var spawned: Array[Enemy] = SpawnDirector.fill_room(room)
+	var safe_screens: Array[Vector2] = []
+	for cell: Vector2i in safe:
+		safe_screens.append(Iso.to_screen(cell))
+	assert_lt(spawned.size(), SpawnDirector.room_budget(1), \
+		"one safe cell against the whole budget: the wave is cut short, not filled unsafely")
 	for enemy: Enemy in spawned:
-		assert_true(screens.has(enemy.position), "the spawn sat on a real spawn point")
-		if enemy.position.distance_to(player.position) < SpawnDirector.SAFE_RADIUS:
-			within += 1
-	assert_gt(within, 0, "the room was genuinely too small to be safe — the fallback really fired")
+		assert_gte(enemy.position.distance_to(player.position), SpawnDirector.SAFE_RADIUS, \
+			"and every spawn that did land is past the threshold")
+		assert_true(safe_screens.has(enemy.position), \
+			"on a safe cell, never a blocked one")
 
 
 func test_the_wave_fields_the_week_2_trio_data() -> void:

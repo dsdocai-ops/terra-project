@@ -34,12 +34,13 @@ static func room_budget(floor_index: int) -> int:
 
 ## Pure: which of `spawn_points` stand at least `safe_radius` px from every
 ## player position (SPEC-enemies-ai: "Spawn positions avoid 160 px around
-## players" — a cell exactly at the radius is outside it and stays safe). When
-## fewer than `minimum` cells survive, every spawn point comes back, so a room
-## too small to be safe still fills. Nothing reads the tree: the caller feeds
-## the live player positions in.
+## players" — a cell exactly at the radius is outside it and stays safe). The
+## rule has no exception: when too few cells survive the room fields fewer —
+## when none survive, an empty list — never an unsafe cell (the old
+## too-small-room fallback that returned every spawn point is gone). Nothing
+## reads the tree: the caller feeds the live player positions in.
 static func safe_cells(spawn_points: Array[Vector2i], player_positions: Array[Vector2], \
-		safe_radius: float, minimum: int) -> Array[Vector2i]:
+		safe_radius: float) -> Array[Vector2i]:
 	var safe: Array[Vector2i] = []
 	for cell: Vector2i in spawn_points:
 		var pos: Vector2 = Iso.to_screen(cell)
@@ -50,8 +51,6 @@ static func safe_cells(spawn_points: Array[Vector2i], player_positions: Array[Ve
 				break
 		if clear:
 			safe.append(cell)
-	if safe.size() < minimum:
-		return spawn_points.duplicate()
 	return safe
 
 
@@ -77,9 +76,11 @@ static func _on_room_activated(room: Room) -> void:
 
 ## Spawns the room's wave. Returns the enemies created. v1's shape: one call
 ## spawns the whole budget as a single wave — nothing is held back for a later
-## trigger — and no enemy spawns within `SAFE_RADIUS` of a player unless the
-## room is too small to be safe (the fallback). Deterministic given the run
-## seed and the room's index.
+## trigger — and no enemy ever spawns within `SAFE_RADIUS` of a player: a room
+## with fewer safe cells than the budget fields fewer than the budget, and one
+## with no safe cell at all fields an empty wave (the old too-small-room
+## fallback is gone — the spec's 160 px rule has no exception). Deterministic
+## given the run seed and the room's index.
 static func fill_room(room: Room) -> Array[Enemy]:
 	var spawned: Array[Enemy] = []
 	var world: World = GameState.world
@@ -143,7 +144,7 @@ static func _spawn_cells(room: Room, rng: RandomNumberGenerator) -> Array[Vector
 	for player: Player in NetworkManager.players.values():
 		if is_instance_valid(player):
 			players.append(player.position)
-	var cells: Array[Vector2i] = safe_cells(room.spec.spawn_points, players, SAFE_RADIUS, MIN_ENEMIES)
+	var cells: Array[Vector2i] = safe_cells(room.spec.spawn_points, players, SAFE_RADIUS)
 	for i: int in range(cells.size() - 1, 0, -1):
 		var j: int = rng.randi_range(0, i)
 		var swap: Vector2i = cells[i]
