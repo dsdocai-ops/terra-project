@@ -413,7 +413,6 @@ static func _spawn_points(room: RoomSpec) -> Array[Vector2i]:
 	return points
 
 
-## Locking rooms on the shortest Start to Exit path, ends excluded.
 static func _hash_layout(layout: FloorLayout) -> int:
 	var acc: int = layout.floor_index * FLOOR_STRIDE + layout.biome_id
 	for room: RoomSpec in layout.rooms:
