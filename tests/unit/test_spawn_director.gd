@@ -6,8 +6,11 @@ extends GutTest
 ## no-spawn-near-players check (`safe_cells`: `SAFE_RADIUS` around every
 ## player, with no exception — the judge-rejected too-small-room fallback is
 ## gone, a room with no safe cell fields nothing) — plus the week-2 trio the
-## wave fields and the seed determinism. The registry look-up proof is still to
-## come and will extend this file.
+## wave fields and the seed determinism. G12b adds the registry look-up: the
+## registration existed on disk all along (`register_populators` arms
+## `arm_room` for COMBAT and ELITE_COMBAT, `main.gd` calls it at startup), so
+## the proof is that the looked-up callable reaches `fill_room` once per room
+## activation — no second registration was added.
 ##
 ## The budget table is `Scaling`'s constants (stats-status owns the tuning; the
 ## week-12 balance pass may move them), so no balance number is invented here:
@@ -105,12 +108,17 @@ const TRIO: Array[StringName] = [&"hollow_miner", &"rock_tick", &"lantern_wisp"]
 var _world: World = null
 
 
+func before_each() -> void:
+	FloorGenerator.clear_populators()
+
+
 func after_each() -> void:
 	NetworkManager.players.erase(1)
 	NetworkManager.players.erase(2)
 	GameState.world = null
 	_world = null
 	Enemy.reset_separation_cache()
+	FloorGenerator.clear_populators()
 
 
 # The pure safe-cell filter. `Iso` tiles are 64x32 (HALF_W 32), so a cell 20
@@ -326,3 +334,90 @@ func test_fill_room_is_deterministic_given_the_seed() -> void:
 		if third[index].position != first[index].position:
 			differs = true
 	assert_true(differs, "a different room index mixes the seed differently — the arrangement is not fixed")
+
+
+# --- G12b: the registered populator (the registered path reaches fill_room) ---
+#
+# The registration is `arm_room`, not `fill_room` itself: `arm_room` arms a
+# room (connects its `activated` signal to the fill on the host only), so a
+# floor does not start with every room already fighting. The proof therefore
+# runs the whole registered path — register, look up through the G11b
+# registry, activate the room — and counts the wave that falls out.
+
+
+func _enemy_count() -> int:
+	var count: int = 0
+	for child: Node in _world.entities.get_children():
+		if child is Enemy:
+			count += 1
+	return count
+
+
+func test_register_populators_registers_combat_and_elite_combat_in_the_registry() -> void:
+	SpawnDirector.register_populators()
+	assert_eq(FloorGenerator.populator_count(FloorGenerator.RoomType.COMBAT), 1, \
+		"one COMBAT entry in the G11b registry")
+	assert_eq(FloorGenerator.populator_count(FloorGenerator.RoomType.ELITE_COMBAT), 1, \
+		"one ELITE_COMBAT entry")
+	assert_eq(FloorGenerator.populator_count(FloorGenerator.RoomType.TREASURE), 0, \
+		"and no type outside the pair — TREASURE's populator is another module's")
+
+
+func test_register_populators_is_idempotent_so_a_startup_recall_stays_one_entry() -> void:
+	SpawnDirector.register_populators()
+	SpawnDirector.register_populators()
+	assert_eq(FloorGenerator.populator_count(FloorGenerator.RoomType.COMBAT), 1, \
+		"the same (type, callable) twice folds to one entry, per the registry's own rule")
+	assert_eq(FloorGenerator.populator_count(FloorGenerator.RoomType.ELITE_COMBAT), 1, \
+		"on the elite type too")
+
+
+func test_main_registers_the_populators_at_startup() -> void:
+	var source := FileAccess.get_file_as_string("res://scenes/main/main.gd")
+	assert_gt(source.length(), 0, "scenes/main/main.gd is readable")
+	assert_true(source.contains("SpawnDirector.register_populators()"), \
+		"the game calls the registration at startup (SPEC-floor-generation: each owning " \
+		+ "module registers its populators at startup)")
+
+
+func test_a_combat_room_looked_up_through_the_registry_fills_once_on_activation() -> void:
+	_wire_world()
+	SpawnDirector.register_populators()
+	var room := _room(_spec(_far_points(8)))
+	FloorGenerator.run_populators(room)
+	assert_true(room.activated.is_connected(SpawnDirector._on_room_activated), \
+		"the looked-up callable armed the room: `activated` is wired to the fill on the host")
+	var before: int = _enemy_count()
+	room.activated.emit(room)
+	assert_eq(_enemy_count() - before, SpawnDirector.room_budget(1), \
+		"one activation ran fill_room exactly once — the whole budget, not a doubled wave")
+
+
+func test_a_second_lookup_does_not_double_arm_the_room() -> void:
+	_wire_world()
+	SpawnDirector.register_populators()
+	var room := _room(_spec(_far_points(8)))
+	FloorGenerator.run_populators(room)
+	FloorGenerator.run_populators(room)
+	var before: int = _enemy_count()
+	room.activated.emit(room)
+	assert_eq(_enemy_count() - before, SpawnDirector.room_budget(1), \
+		"a repaint re-running the registry on an armed room still fields one wave, not two")
+
+
+func test_an_elite_combat_room_looked_up_through_the_registry_fills_once_on_activation() -> void:
+	_wire_world()
+	SpawnDirector.register_populators()
+	var room := _room(_spec(_far_points(8), 4, FloorGenerator.RoomType.ELITE_COMBAT))
+	FloorGenerator.run_populators(room)
+	var before: int = _enemy_count()
+	room.activated.emit(room)
+	var spawned_budget: int = _enemy_count() - before
+	assert_eq(spawned_budget, SpawnDirector.room_budget(1), \
+		"one activation on the elite room too — fill_room once, the whole budget")
+	var elites: int = 0
+	for child: Node in _world.entities.get_children():
+		if child is Enemy and (child as Enemy).elite:
+			elites += 1
+	assert_gte(elites, SpawnDirector.ELITE_ROOM_BONUS_ELITES, \
+		"and the elite room's own fill_room bonus elite is in the wave")
