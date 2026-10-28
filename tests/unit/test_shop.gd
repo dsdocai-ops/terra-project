@@ -277,12 +277,15 @@ func test_the_shelf_is_the_same_for_the_same_run_and_floor() -> void:
 		assert_eq(a[i].id, b[i].id)
 
 
-func test_the_populator_registration_is_a_guarded_noop_without_the_generator() -> void:
-	if RoomPopulator.generator_script() != null:
-		pending("the generator exists; registration is covered by its own wiring")
-		return
-	assert_false(Shopkeeper.register_populator())
-	assert_eq(Shopkeeper.blocker_warnings(), 1)
+func test_the_shop_registration_is_guarded_on_dev_as_registry_landing() -> void:
+	# The registry landed (W3-A3, G11b): the registration succeeds exactly when
+	# Dev A's FloorGenerator script exists, and the second call returns the same
+	# verdict (already registered reads true, still-blocked reads false).
+	var registry_exists: bool = ResourceLoader.exists(RoomPopulator.GENERATOR_SCRIPT_PATH)
+	assert_eq(Shopkeeper.register_populator(), registry_exists,
+		"the SHOP registration succeeds exactly when Dev A's FloorGenerator script exists")
+	assert_eq(Shopkeeper.register_populator(), registry_exists,
+		"the second call returns the same verdict, never a re-registration")
 
 
 func test_a_shop_never_sells_the_shield_potion_yet() -> void:

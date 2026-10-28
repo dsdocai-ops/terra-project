@@ -21,10 +21,12 @@ extends RefCounted
 ## unit case — and a container with no spawner still pays its currency, because
 ## the coin is only how a player sees a drop that has already been credited.
 ##
-## **blocked on Dev A (W3-A3)**: `scripts/generation/floor_generator.gd` and its
-## `RoomType` enumeration are `floor-generation`'s and are not in the tree, so
-## `generator_script()` answers null and every guarded registration is a
-## recorded no-op. Nothing else here depends on the other lane.
+## **The registry landed (W3-A3, G11b).** `scripts/generation/floor_generator.gd`
+## declares the `RoomType` enumeration and the static `register_populator(type,
+## populator)` registry the spec names, so `generator_script()` answers the real
+## script and every guarded registration in run-economy registers for real at
+## startup (`main.gd`). The guarded no-op paths stay as the recorded fallback
+## for a missing or half-landed script.
 ##
 ## Sync: none — four pure reads. The host gate belongs to the caller.
 
