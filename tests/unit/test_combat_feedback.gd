@@ -139,6 +139,54 @@ func test_a_boss_kill_freezes_ten_frames() -> void:
 	assert_eq(_stop_frames(enemy), 10)
 
 
+# --- hit-stop is called once per hit through TimeManager ----------------------------
+
+## Counts the hit-stop calls CombatFeedback makes. Named method, no lambda
+## connect (the GUT lambda gotcha).
+class HitStopSpy extends RefCounted:
+	var calls: Array[Dictionary] = []
+
+	func record(a: Node, b: Node, frames: int) -> void:
+		calls.append({"a": a, "b": b, "frames": frames})
+
+
+func test_hit_stop_is_called_exactly_once_per_qualifying_hit() -> void:
+	var spy := HitStopSpy.new()
+	_feedback.hit_stop_call = Callable(spy, &"record")
+	var player: Player = _player()
+	var enemy: Enemy = _enemy()
+	Events.hit_landed.emit(_hit(player, enemy))
+	assert_eq(spy.calls.size(), 1, "one hit_stop call for one hit")
+	Events.hit_landed.emit(_hit(player, enemy, true))
+	assert_eq(spy.calls.size(), 2, "and one more per further hit")
+
+
+func test_a_hit_with_no_target_never_calls_hit_stop() -> void:
+	var spy := HitStopSpy.new()
+	_feedback.hit_stop_call = Callable(spy, &"record")
+	Events.hit_landed.emit(_hit(null, null))
+	assert_eq(spy.calls.size(), 0, "nothing qualified, nothing called")
+
+
+func test_the_hit_stop_call_carries_both_entities_and_the_tier() -> void:
+	var spy := HitStopSpy.new()
+	_feedback.hit_stop_call = Callable(spy, &"record")
+	var player: Player = _player()
+	var enemy: Enemy = _enemy()
+	Events.hit_landed.emit(_hit(player, enemy, true, true))
+	assert_eq(spy.calls[0]["frames"], 8, "the heavy crit tier")
+	assert_same(spy.calls[0]["a"], enemy, "the target freezes")
+	assert_same(spy.calls[0]["b"], player, "so does the attacker")
+
+
+func test_the_seam_defaults_to_the_time_manager_singleton() -> void:
+	var player: Player = _player()
+	var enemy: Enemy = _enemy()
+	assert_true(_feedback.hit_stop_call.is_valid(), "_ready wired the real backend")
+	Events.hit_landed.emit(_hit(player, enemy))
+	assert_eq(_stop_frames(enemy), 3, "and the hit lands on the entity effects as before")
+
+
 # --- frozen entities do not move ----------------------------------------------------
 
 func test_a_player_with_scale_zero_does_not_walk() -> void:

@@ -1,0 +1,6 @@
+[gd_scene format=3]
+
+[ext_resource type="Script" path="res://scripts/effects/damage_number.gd" id="1_damage_number"]
+
+[node name="DamageNumber" type="Label"]
+script = ExtResource("1_damage_number")

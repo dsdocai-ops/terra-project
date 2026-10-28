@@ -31,9 +31,13 @@ var camera: GameCamera = null
 ## The label pool under `fx_root` that every number goes through.
 ## Null until setup runs.
 var number_pool: DamageNumberPool = null
+## The hit-stop backend: `TimeManager.hit_stop`, wired in _ready. Tests inject
+## a spy here to prove the call happens exactly once per qualifying hit.
+var hit_stop_call: Callable = Callable()
 
 
 func _ready() -> void:
+	hit_stop_call = TimeManager.hit_stop
 	if not Events.hit_landed.is_connected(_on_hit_landed):
 		Events.hit_landed.connect(_on_hit_landed)
 
@@ -75,7 +79,17 @@ func apply_hit_stop(hit: HitInfo, target: Node, frames: int) -> void:
 	var source: Node = hit.source
 	if not (target is Player) and not hit.is_projectile and source != null and is_instance_valid(source) and source != target:
 		other = source
-	TimeManager.hit_stop(target, other, frames)
+	_hit_stop(target, other, frames)
+
+
+## One hit-stop call. Goes through `hit_stop_call` when it is wired (the real
+## TimeManager method in game, a spy in tests); a feedback node that was never
+## in the tree falls back to the singleton.
+func _hit_stop(a: Node, b: Node, frames: int) -> void:
+	if hit_stop_call.is_valid():
+		hit_stop_call.call(a, b, frames)
+	else:
+		TimeManager.hit_stop(a, b, frames)
 
 
 func make_payload(hit: HitInfo, target: Node2D, boss_kill: bool = false) -> Dictionary:
@@ -106,7 +120,7 @@ func _is_boss_kill(target: Node) -> bool:
 func play_perfect_dodge(player: Player) -> void:
 	if not multiplayer.is_server() or player == null or not is_instance_valid(player):
 		return
-	TimeManager.hit_stop(player, player, CombatFeedbackConstants.HIT_STOP_PERFECT_DODGE_FRAMES)
+	_hit_stop(player, player, CombatFeedbackConstants.HIT_STOP_PERFECT_DODGE_FRAMES)
 	var anchor: Node = get_parent() if get_parent() != null else self
 	var path: NodePath = anchor.get_path_to(player)
 	if multiplayer.get_peers().is_empty():

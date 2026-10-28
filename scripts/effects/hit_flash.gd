@@ -8,6 +8,9 @@ extends Node
 ## hit-stopped entity still flashes while it is frozen.
 
 const SHADER: Shader = preload("res://scripts/effects/hit_flash.gdshader")
+## The flash scene (references this script, so `load`, not `preload`: a preload
+## would be a load-time cycle). Every flash the game spawns instantiates it.
+const SCENE_PATH: String = "res://scenes/effects/hit_flash.tscn"
 const DEFAULT_FRAMES: int = 4
 const WHITE: Color = Color(1.0, 1.0, 1.0, 1.0)
 const GOLD: Color = Color(1.0, 0.82, 0.2, 1.0)
@@ -24,12 +27,22 @@ static func attach(owner_node: Node, items: Array[CanvasItem]) -> HitFlash:
 	var existing: HitFlash = owner_node.get_node_or_null("HitFlash") as HitFlash
 	if existing != null:
 		return existing
-	var flash := HitFlash.new()
+	var flash := _spawn()
 	flash.name = "HitFlash"
 	owner_node.add_child(flash)
 	for item: CanvasItem in items:
 		flash.add_target(item)
 	return flash
+
+
+## The scene instance, or a plain `new()` when the scene is missing.
+static func _spawn() -> HitFlash:
+	var scene: PackedScene = load(SCENE_PATH) as PackedScene
+	if scene != null:
+		var spawned: Node = scene.instantiate()
+		if spawned is HitFlash:
+			return spawned
+	return HitFlash.new()
 
 
 func _ready() -> void:

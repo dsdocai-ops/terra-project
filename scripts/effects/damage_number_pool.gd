@@ -12,6 +12,11 @@ extends Node
 
 ## Labels created up front so the first hits of a fight never allocate.
 const WARM_INSTANCES: int = 8
+## The pool scene (references this script, so `load`, not `preload`: a preload
+## would be a load-time cycle). World/FX attaches it through `attach`.
+const POOL_SCENE_PATH: String = "res://scenes/effects/damage_number_pool.tscn"
+## The label scene every pooled number instantiates.
+const NUMBER_SCENE_PATH: String = "res://scenes/effects/damage_number.tscn"
 
 ## How many labels this pool has made in its life (tests count this).
 var created_count: int = 0
@@ -26,10 +31,20 @@ static func attach(fx_root: Node) -> DamageNumberPool:
 	var existing: DamageNumberPool = fx_root.get_node_or_null("DamageNumberPool") as DamageNumberPool
 	if existing != null:
 		return existing
-	var pool := DamageNumberPool.new()
+	var pool := _from_scene(POOL_SCENE_PATH)
 	pool.name = "DamageNumberPool"
 	fx_root.add_child(pool)
 	return pool
+
+
+## The scene instance, or a plain `new()` when the scene is missing.
+static func _from_scene(path: String) -> DamageNumberPool:
+	var scene: PackedScene = load(path) as PackedScene
+	if scene != null:
+		var spawned: Node = scene.instantiate()
+		if spawned is DamageNumberPool:
+			return spawned
+	return DamageNumberPool.new()
 
 
 func _ready() -> void:
@@ -67,7 +82,14 @@ func release(number: DamageNumber) -> void:
 
 func _make() -> DamageNumber:
 	created_count += 1
-	var number := DamageNumber.new()
+	var number: DamageNumber = null
+	var scene: PackedScene = load(NUMBER_SCENE_PATH) as PackedScene
+	if scene != null:
+		var spawned: Node = scene.instantiate()
+		if spawned is DamageNumber:
+			number = spawned
+	if number == null:
+		number = DamageNumber.new()
 	number.pool = self
 	number.visible = false
 	return number

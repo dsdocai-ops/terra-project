@@ -1,0 +1,6 @@
+[gd_scene format=3]
+
+[ext_resource type="Script" path="res://scripts/effects/hit_flash.gd" id="1_hit_flash"]
+
+[node name="HitFlash" type="Node"]
+script = ExtResource("1_hit_flash")
