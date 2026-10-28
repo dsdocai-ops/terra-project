@@ -515,3 +515,46 @@ func test_a_crushing_slow_clamps_to_the_attack_speed_floor() -> void:
 	_tick(0.1)
 	assert_almost_eq(_attack_state().elapsed(), 0.02, 0.01, "0.1 s of real time at the 0.2 floor")
 	assert_false(_attack_state().can_combo_cancel())
+
+
+# --- attack speed: the animation half ---------------------------------------------------
+## SPEC-combat-core "Attack speed": animation `speed_scale = StatBlock.ATTACK_SPEED`
+## alongside the clock. The player's AnimatedSprite2D runs the attack anim at the
+## same scale the attack clock does, and back to normal once the state leaves.
+
+func test_the_attack_anim_plays_at_the_statblock_speed() -> void:
+	_set_attack_speed(1.0)
+	_start_attack(_long_spec())
+	assert_almost_eq(_player.sprite.speed_scale, 2.0, 0.001, "the sprite runs at +100% attack speed")
+
+
+func test_a_slow_attack_halves_the_anim_speed_too() -> void:
+	_set_attack_speed(-0.5, &"test_slow")
+	_start_attack(_long_spec())
+	assert_almost_eq(_player.sprite.speed_scale, 0.5, 0.001, "the sprite runs at half speed")
+
+
+func test_leaving_the_attack_state_restores_the_anim_speed() -> void:
+	_set_attack_speed(1.0)
+	_start_attack(_long_spec())
+	_tick(0.6)
+	assert_eq(_state(), &"Idle", "setup: the fast attack is over")
+	assert_almost_eq(_player.sprite.speed_scale, 1.0, 0.001, "back to normal playback")
+
+
+func test_a_combo_cancel_restart_keeps_the_anim_scaled() -> void:
+	_set_attack_speed(1.0)
+	_start_attack(_long_spec())
+	_tick(0.6)
+	_controller.apply(AttackController.Kind.LIGHT, Vector2.RIGHT, 0.0)
+	assert_eq(_state(), &"Attack", "setup: the next step restarted the state")
+	assert_almost_eq(_player.sprite.speed_scale, 2.0, 0.001, "the restart re-applied the scale")
+
+
+func test_a_dodge_out_of_the_attack_restores_the_anim_speed() -> void:
+	_set_attack_speed(1.0)
+	_start_attack(_long_spec())
+	_tick(0.2)
+	_controller.apply(AttackController.Kind.DODGE, Vector2.RIGHT, 0.0)
+	assert_eq(_state(), &"Dodge", "setup: the dodge cancelled the attack")
+	assert_almost_eq(_player.sprite.speed_scale, 1.0, 0.001, "the dodge anim is not sped up")

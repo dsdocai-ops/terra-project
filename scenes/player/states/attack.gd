@@ -10,6 +10,9 @@ extends PlayerState
 ## once `dodge_cancel_at` has. Starting the next attack calls `restart`, which
 ## skips the rest of recovery.
 
+## The sprite's speed_scale when no attack is running.
+const RESTORED_ANIM_SPEED: float = 1.0
+
 var _spec: AttackSpec = null
 var _dir: Vector2 = Vector2.DOWN
 var _charge: float = 0.0
@@ -39,9 +42,11 @@ func enter(_from: StringName) -> void:
 	_weapons.attack_started()
 	player.set_facing(_dir)
 	player.play_directional("idle")
+	player.sprite.speed_scale = _attack_speed()
 
 
 func exit(_to: StringName) -> void:
+	player.sprite.speed_scale = RESTORED_ANIM_SPEED
 	if _weapons != null:
 		_weapons.end_swing()
 		_weapons.attack_finished()
@@ -69,12 +74,18 @@ func can_dodge_cancel() -> bool:
 	return _spec != null and _elapsed >= _spec.dodge_cancel_seconds()
 
 
-func physics_update(delta: float) -> void:
-	var speed_scale: float = 1.0
+## Attack speed from the StatBlock (never a base edit), clamped to the floor.
+## Feeds both the attack clock and the animation playback, per
+## SPEC-combat-core "Attack speed".
+func _attack_speed() -> float:
 	var stats := player.stat_block as StatBlock
-	if stats != null:
-		speed_scale = maxf(stats.get_value(StatBlock.Stat.ATTACK_SPEED), StatBlock.ATTACK_SPEED_MIN)
-	_elapsed += delta * speed_scale
+	if stats == null:
+		return RESTORED_ANIM_SPEED
+	return maxf(stats.get_value(StatBlock.Stat.ATTACK_SPEED), StatBlock.ATTACK_SPEED_MIN)
+
+
+func physics_update(delta: float) -> void:
+	_elapsed += delta * _attack_speed()
 	_steer(delta)
 	if not _swung and _elapsed >= _spec.windup_seconds:
 		_swung = true
