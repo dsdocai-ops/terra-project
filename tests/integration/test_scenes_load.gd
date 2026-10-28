@@ -73,6 +73,7 @@ func test_enemy_base_scene_loads_wired() -> void:
 func test_w2_a10_enemy_placeholder_sprites_load() -> void:
 	var paths: Array[String] = [
 		"res://assets/sprites/enemies/hollow_miner_frames.tres",
+		"res://assets/sprites/enemies/rock_tick_frames.tres",
 	]
 	for path: String in paths:
 		var frames: SpriteFrames = load(path) as SpriteFrames

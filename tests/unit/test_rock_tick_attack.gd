@@ -1,0 +1,108 @@
+extends GutTest
+## The Rock Tick (W2-A10): its authored data attached to the G7b
+## `enemy_base.tscn`, and its rush run through the G3 `AttackDriver` —
+## windup, active and recovery in order, with nothing armed before the
+## telegraph completes. Owned by enemies-ai.
+
+const ENEMY_SCENE: PackedScene = preload("res://scenes/enemies/enemy_base.tscn")
+const TICK_PATH: String = "res://data/enemies/collapsed_mines/rock_tick.tres"
+const RUSH_PATH: String = "res://data/enemies/attacks/tick_rush.tres"
+const MIN_RECOVERY_SECONDS: float = 0.3
+const FRAME: float = 1.0 / 60.0
+
+var _driver: AttackDriver = null
+var _phase_log: Array[int] = []
+
+
+func before_each() -> void:
+	_driver = AttackDriver.new()
+	_driver.windup_started.connect(_on_phase.bind(AttackDriver.Phase.WINDUP))
+	_driver.active_started.connect(_on_phase.bind(AttackDriver.Phase.ACTIVE))
+	_driver.recovery_started.connect(_on_phase.bind(AttackDriver.Phase.RECOVERY))
+	_driver.attack_finished.connect(_on_phase.bind(AttackDriver.Phase.DONE))
+
+
+func after_each() -> void:
+	_driver = null
+	_phase_log.clear()
+
+
+func _on_phase(phase: int) -> void:
+	_phase_log.append(phase)
+
+
+func test_the_ticks_data_loads_with_its_rush() -> void:
+	var tick: EnemyData = load(TICK_PATH) as EnemyData
+	assert_not_null(tick, "rock_tick.tres loads as EnemyData")
+	if tick == null:
+		return
+	assert_eq(tick.id, &"rock_tick", "id matches the file name")
+	assert_ne(tick.display_name, "", "display name set")
+	assert_true(tick.base_stats.has(StatBlock.Stat.MAX_HP), "MAX_HP present")
+	assert_eq(tick.attacks.size(), 1, "one attack: the rush")
+	var rush: AttackPattern = load(RUSH_PATH) as AttackPattern
+	assert_not_null(rush, "tick_rush.tres loads as AttackPattern")
+	if rush == null:
+		return
+	assert_eq(tick.attacks[0].id, rush.id, "the tick's attack is the rush")
+	assert_eq(rush.kind, AttackPattern.Kind.RUSH, "the tick is a rusher (SPEC-enemies-ai, week 2 trio)")
+	assert_eq(tick.poise, 0.0, "fodder poise (SPEC-combat-core: 0 for fodder like Rock Tick)")
+	assert_gte(rush.windup_seconds, AttackPattern.MIN_WINDUP, "windup meets the attack contract")
+	assert_gte(rush.recovery_seconds, MIN_RECOVERY_SECONDS, "recovery leaves the tick punishable")
+	assert_gt(rush.damage, 0.0, "the rush deals damage")
+	assert_gt(rush.trigger_range, 0.0, "the rush has a trigger range")
+	assert_gt(rush.speed, 0.0, "the rush has a dash speed (RUSH: dash speed while active)")
+
+
+## The G8b1 attack test: the real `tick_rush.tres` through the G3 driver,
+## stepped a physics frame at a time.
+func test_the_rush_runs_windup_active_recovery_in_order_through_the_driver() -> void:
+	var rush: AttackPattern = load(RUSH_PATH) as AttackPattern
+	_driver.start(rush)
+	var total: float = rush.windup_seconds + rush.active_seconds + rush.recovery_seconds + 4.0 * FRAME
+	var windup_frames := 0
+	var active_frames := 0
+	var recovery_frames := 0
+	var hit_outside_active := 0
+	for _step_index: int in int(ceil(total / FRAME)):
+		_driver.advance(FRAME)
+		match _driver.phase():
+			AttackDriver.Phase.WINDUP:
+				windup_frames += 1
+				assert_gte(_driver.telegraph_progress(), 0.0, "the telegraph fills over the windup")
+				assert_false(_driver.may_hit(), "nothing is armed during the windup")
+			AttackDriver.Phase.ACTIVE:
+				active_frames += 1
+				assert_eq(_driver.telegraph_progress(), -1.0, "the telegraph hides at the hit")
+				if not _driver.may_hit():
+					hit_outside_active += 1
+			AttackDriver.Phase.RECOVERY:
+				recovery_frames += 1
+				assert_false(_driver.may_hit(), "nothing is armed through the recovery")
+			AttackDriver.Phase.DONE:
+				pass
+	assert_false(_driver.may_hit(), "nothing is armed after the rush")
+	assert_gt(windup_frames, 0, "the telegraph was on screen before the hit")
+	assert_gt(active_frames, 0, "the active window ran")
+	assert_gt(recovery_frames, 0, "the recovery ran")
+	assert_eq(hit_outside_active, 0, "may_hit only while the active window runs")
+	var expected: Array[int] = [
+		AttackDriver.Phase.WINDUP,
+		AttackDriver.Phase.ACTIVE,
+		AttackDriver.Phase.RECOVERY,
+		AttackDriver.Phase.DONE,
+	]
+	assert_eq(_phase_log, expected, "the phases ran once each, in order")
+
+
+func test_the_tick_attaches_to_enemy_base_with_its_states() -> void:
+	var enemy: Enemy = ENEMY_SCENE.instantiate() as Enemy
+	assert_true(enemy.setup(&"rock_tick"), "the base scene sets up from the tick data")
+	add_child_autofree(enemy)
+	assert_eq(enemy.data.id, &"rock_tick", "the enemy carries the tick data")
+	assert_eq(enemy.data.attacks[0].id, &"tick_rush", "the machine's attack is the rush")
+	var machine: Node = enemy.get_node("StateMachine")
+	for state_name: String in ["Idle", "Chase", "Attack", "HitStun", "Stagger"]:
+		assert_not_null(machine.get_node_or_null(NodePath(state_name)), "state %s" % state_name)
+	assert_eq((enemy.get_node("Sprite") as AnimatedSprite2D).sprite_frames, enemy.data.sprite_frames,
+			"the tick's placeholder frames are linked")
