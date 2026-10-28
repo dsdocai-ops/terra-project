@@ -78,3 +78,29 @@ func test_a_charged_crossbow_heavy_fires_a_bigger_bolt() -> void:
 	assert_almost_eq(bolt.range_left(), crossbow.heavy.projectile_range, 0.01, "at the heavy's range")
 	assert_gt(bolt.template.base_damage, crossbow.light_combo[0].base_damage,
 		"and carrying the charged heavy's damage")
+
+
+func test_the_charged_scale_rides_the_spawn_data_to_every_peer() -> void:
+	var crossbow: WeaponData = load(CROSSBOW_PATH) as WeaponData
+	_weapons.begin_swing(crossbow.heavy, Vector2.RIGHT, 1.0, true)
+	assert_eq(_fired.size(), 1, "setup: the host's bolt is away")
+	if _fired.is_empty():
+		return
+	var host_bolt: Projectile = _fired[0]
+	var info: ProjectileSpawnInfo = _weapons.build_spawn_info(crossbow.heavy, Vector2.RIGHT)
+	assert_almost_eq(info.scale.x, 1.0 + CrossbowAttack.FULL_CHARGE_SCALE_BONUS, 0.001,
+		"the charge's size rides the spawn data, not a host-only node write")
+	# `_spawn_from_data` is the function MultiplayerSpawner runs on every peer
+	# with the host's dictionary — this is the client-side rebuild, driven
+	# without a second instance (the spawner's own unit-test seam).
+	var client_copy: Projectile = _world.projectile_spawner._spawn_from_data(info.to_dict()) as Projectile
+	assert_not_null(client_copy, "a client rebuilds a projectile from the host's data")
+	if client_copy != null:
+		assert_almost_eq(client_copy.scale.x, host_bolt.scale.x, 0.001,
+			"the remote copy draws the bolt that does the hitting, not a base-size one")
+		client_copy.free()
+	_weapons.begin_swing(crossbow.light_combo[0], Vector2.RIGHT, 0.0, false)
+	var light_info: ProjectileSpawnInfo = _weapons.build_spawn_info(crossbow.light_combo[0], Vector2.RIGHT)
+	# The light's hook resets the scale; the next shot's spawn data carries the
+	# base size again.
+	assert_almost_eq(light_info.scale.x, 1.0, 0.001, "a light shot rides the base size")

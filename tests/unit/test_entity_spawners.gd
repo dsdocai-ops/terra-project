@@ -62,7 +62,28 @@ func test_projectile_spawn_info_round_trips_through_dictionary() -> void:
 	assert_eq(copy.spawn_position, Vector2(150, 80))
 	assert_eq(copy.velocity, Vector2(120, 0))
 	assert_eq(copy.owner_peer_id, 1)
+	assert_eq(copy.scale, Vector2.ONE, "the default bolt is the base size")
 	assert_eq(typeof(info.to_dict()["velocity"]), TYPE_VECTOR2, "plain Vector2 on the wire")
+
+
+func test_projectile_spawn_info_round_trips_the_bolt_scale() -> void:
+	# The crossbow's charged bolt: the size a peer draws rides the spawn data,
+	# so every peer rebuilds the bolt the host's hitbox flies.
+	var info := ProjectileSpawnInfo.new(&"bolt", Vector2(3, 4), Vector2(120, 0), 1, Vector2(1.5, 1.5))
+	assert_eq(info.to_dict()["scale"], Vector2(1.5, 1.5), "plain Vector2 on the wire")
+	var copy := ProjectileSpawnInfo.from_dict(info.to_dict())
+	assert_eq(copy.scale, Vector2(1.5, 1.5))
+
+
+func test_a_spawn_dictionary_without_a_scale_key_keeps_the_base_size() -> void:
+	# Older senders and every non-charged shot: the key is optional.
+	var legacy := ProjectileSpawnInfo.from_dict({
+		"projectile_id": "pebble",
+		"spawn_position": Vector2(1, 2),
+		"velocity": Vector2(10, 0),
+		"owner_peer_id": 1,
+	})
+	assert_eq(legacy.scale, Vector2.ONE)
 
 
 # Spawner registration under World/Entities

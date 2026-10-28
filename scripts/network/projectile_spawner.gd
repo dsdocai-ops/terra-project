@@ -43,9 +43,10 @@ func _spawn_from_data(data: Variant) -> Node:
 	projectile.name = "Projectile%d" % _next_id
 	_next_id += 1
 	projectile.position = info.spawn_position
-	# The replicated pose and owner; Projectile (Dev A) must keep these names
-	# so the swap-in stays mechanical (recorded in .goals/LOG.md).
+	# The replicated pose, owner and drawn size; Projectile (Dev A) must keep
+	# these names so the swap-in stays mechanical (recorded in .goals/LOG.md).
 	projectile.set("synced_position", info.spawn_position)
 	projectile.set("synced_velocity", info.velocity)
 	projectile.set("owner_peer_id", info.owner_peer_id)
+	projectile.set("scale", info.scale)
 	return projectile

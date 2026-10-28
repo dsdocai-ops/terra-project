@@ -47,6 +47,13 @@ var last_light_step: int = 0
 ## routes through.
 var _attack_nodes: Dictionary = {}
 
+## Cracks this controller forwarded to other peers (one per target peer); the
+## two-instance smoke reads it on the host. Smoke evidence, not state.
+var cracks_forwarded: int = 0
+## Cracks received over the host's RPC on this controller; the two-instance
+## smoke reads it on the client. Smoke evidence, not state.
+var remote_cracks_received: int = 0
+
 ## One hitbox shape per AttackSpec and charge bucket, built the first time it is
 ## swung and reused after that: swinging allocates no shapes once warm. (Per
 ## controller, not a static: a static cache of Resources trips the engine's leak
@@ -382,23 +389,32 @@ func _build_melee_shape(spec: AttackSpec, reach: float) -> Shape2D:
 	return polygon
 
 
+## The spawn data for one shot, read at the moment the swing goes live: the
+## attack hook's size for this swing rides along, so every peer draws the bolt
+## that does the hitting (the crossbow's charged bolt), not a base-size copy.
+func build_spawn_info(spec: AttackSpec, dir: Vector2) -> ProjectileSpawnInfo:
+	var attack_node: WeaponAttack = _attack_node_for(active_weapon())
+	var shot_scale: float = attack_node.shot_scale if attack_node != null else 1.0
+	return ProjectileSpawnInfo.new(
+		PROJECTILE_ID,
+		_player.global_position + dir * 12.0,
+		dir * spec.projectile_speed,
+		_player.peer_id,
+		Vector2.ONE * shot_scale,
+	)
+
+
 func _fire_projectile(spec: AttackSpec, dir: Vector2, hit: HitInfo) -> void:
 	if not multiplayer.is_server():
 		return
 	var world: World = GameState.world
 	if world == null or _player == null:
 		return
-	var info := ProjectileSpawnInfo.new(PROJECTILE_ID, _player.global_position + dir * 12.0, dir * spec.projectile_speed, _player.peer_id)
-	var node: Node = world.projectile_spawner.spawn_projectile(info)
+	var node: Node = world.projectile_spawner.spawn_projectile(build_spawn_info(spec, dir))
 	var projectile: Projectile = node as Projectile
 	if projectile == null:
 		return
 	projectile.launch(hit, Team.Kind.PLAYER, spec.projectile_range, spec.pierce)
-	# The weapon hook's size for this swing (the crossbow's charged bolt):
-	# a fresh spawner node carries 1.0 anyway, so this is a plain write.
-	var attack_node: WeaponAttack = _attack_node_for(active_weapon())
-	if attack_node != null:
-		projectile.scale = Vector2.ONE * attack_node.shot_scale
 	Events.projectile_fired.emit(_player, projectile)
 
 
@@ -407,17 +423,31 @@ func _fire_projectile(spec: AttackSpec, dir: Vector2, hit: HitInfo) -> void:
 ## swing itself, so the signature is visible on remote peers too. Presentation
 ## only, the same channel the slash arc rides.
 func strike_ground_crack(origin: Vector2, dir: Vector2, length_px: float) -> void:
-	GroundCrackLine.spawn(_fx_parent(), origin, dir, length_px)
+	_spawn_local_crack(origin, dir, length_px)
 	broadcast_ground_crack(origin, dir, length_px)
+
+
+## Peers that did not run this swing: everyone connected except the owner, who
+## drew its own crack inside the hook. Static so tests pin the exclusion
+## without a live multiplayer peer.
+static func crack_targets(owner_peer_id: int, connected: Array[int]) -> Array[int]:
+	var targets: Array[int] = []
+	for peer_id: int in connected:
+		if peer_id != owner_peer_id:
+			targets.append(peer_id)
+	return targets
 
 
 ## Host -> other peers (never the owner, who drew its own inside the hook).
 func broadcast_ground_crack(origin: Vector2, dir: Vector2, length_px: float) -> void:
 	if not multiplayer.is_server() or _player == null:
 		return
+	var connected: Array[int] = []
 	for peer_id: int in multiplayer.get_peers():
-		if peer_id != _player.peer_id:
-			_remote_ground_crack.rpc_id(peer_id, origin, dir.normalized(), length_px)
+		connected.append(peer_id)
+	for peer_id: int in crack_targets(_player.peer_id, connected):
+		_remote_ground_crack.rpc_id(peer_id, origin, dir.normalized(), length_px)
+		cracks_forwarded += 1
 
 
 ## Presentation of a swing this peer did not run. Unreliable like the slash arc:
@@ -426,6 +456,13 @@ func broadcast_ground_crack(origin: Vector2, dir: Vector2, length_px: float) -> 
 func _remote_ground_crack(origin: Vector2, dir: Vector2, length_px: float) -> void:
 	if multiplayer.get_remote_sender_id() != NetworkManager.HOST_PEER_ID or _player == null:
 		return
+	remote_cracks_received += 1
+	_spawn_local_crack(origin, dir, length_px)
+
+
+## The local half both a swing this peer ran and a crack received over the RPC
+## share: the same decal, struck at the same inputs.
+func _spawn_local_crack(origin: Vector2, dir: Vector2, length_px: float) -> void:
 	GroundCrackLine.spawn(_fx_parent(), origin, dir, length_px)
 
 

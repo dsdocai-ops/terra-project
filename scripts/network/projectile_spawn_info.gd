@@ -15,6 +15,10 @@ var spawn_position: Vector2 = Vector2.ZERO
 var velocity: Vector2 = Vector2.ZERO
 ## Who fired it; host-only damage attribution in future kill bookkeeping.
 var owner_peer_id: int = 1
+## Size multiplier the bolt is drawn at on every peer (the crossbow's charged
+## bolt). Vector2 so a peer draws exactly the bolt the host's hitbox flies;
+## the default keeps older dictionaries and every non-charged shot at 1.0.
+var scale: Vector2 = Vector2.ONE
 
 
 func _init(
@@ -22,11 +26,13 @@ func _init(
 	p_spawn_position: Vector2 = Vector2.ZERO,
 	p_velocity: Vector2 = Vector2.ZERO,
 	p_owner_peer_id: int = 1,
+	p_scale: Vector2 = Vector2.ONE,
 ) -> void:
 	projectile_id = p_projectile_id
 	spawn_position = p_spawn_position
 	velocity = p_velocity
 	owner_peer_id = p_owner_peer_id
+	scale = p_scale
 
 
 func to_dict() -> Dictionary:
@@ -35,6 +41,7 @@ func to_dict() -> Dictionary:
 		"spawn_position": spawn_position,
 		"velocity": velocity,
 		"owner_peer_id": owner_peer_id,
+		"scale": scale,
 	}
 
 
@@ -43,9 +50,12 @@ static func from_dict(data: Dictionary) -> ProjectileSpawnInfo:
 	var pos: Vector2 = raw_position if raw_position is Vector2 else Vector2.ZERO
 	var raw_velocity: Variant = data.get("velocity", Vector2.ZERO)
 	var vel: Vector2 = raw_velocity if raw_velocity is Vector2 else Vector2.ZERO
+	var raw_scale: Variant = data.get("scale", Vector2.ONE)
+	var bolt_scale: Vector2 = raw_scale if raw_scale is Vector2 else Vector2.ONE
 	return ProjectileSpawnInfo.new(
 		StringName(str(data.get("projectile_id", String(DEFAULT_PROJECTILE_ID)))),
 		pos,
 		vel,
 		int(data.get("owner_peer_id", 1)),
+		bolt_scale,
 	)

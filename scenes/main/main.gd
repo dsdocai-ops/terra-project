@@ -37,6 +37,9 @@ var _smoke3_kill_logged: bool = false
 var _smoke3_kill_emissions: int = 0
 var _smoke3_logged_hp_host: int = -1
 var _smoke3_logged_hp_client: int = -1
+var _smoke3_host_heavy_ticks: int = -1
+var _smoke3_crack_forwarded: bool = false
+var _smoke3_crack_received: bool = false
 ## Full-HP ticks seen before resolving the partial hit: gives StateSync a
 ## beat to deliver the spawn (hp=10) to the client before the drop.
 var _smoke3_full_hp_ticks: int = 0
@@ -181,6 +184,10 @@ func _on_smoke3_heavy_released(player: Player, charge: float) -> void:
 	print("[smoke3] heavy_attack_released from peer %d charge=%.2f" % [player.peer_id, charge])
 	if player.peer_id != NetworkManager.local_peer_id:
 		_smoke3_window_pending = true
+		# Then the host swings its own heavy: its ground crack is a swing the
+		# client did not run, so the client only sees it over the crack RPC.
+		if NetworkManager.is_host and _smoke3_host_heavy_ticks < 0:
+			_smoke3_host_heavy_ticks = 0
 
 
 func _on_smoke3_dodge_ping(player: Player) -> void:
@@ -203,6 +210,35 @@ func _smoke3_drive_heavy() -> void:
 		controller.send(AttackController.Kind.HEAVY, 0.9, false)
 		print("[smoke3] client released heavy")
 	_smoke3_heavy_ticks += 1
+
+
+## Host: the same press-and-release the client drove, on its own player. The
+## pickaxe heavy's ground crack is a swing the client did not run, so the
+## client only sees it over `_remote_ground_crack` — the smoke's crack proof.
+func _smoke3_drive_host_heavy() -> void:
+	var me: Player = NetworkManager.players.get(NetworkManager.local_peer_id) as Player
+	if me == null:
+		return
+	var controller: AttackController = me.get_node("AttackController") as AttackController
+	if _smoke3_host_heavy_ticks == 0:
+		controller.send(AttackController.Kind.HEAVY_PRESS, 0.0)
+		print("[smoke3] host pressed heavy")
+	elif _smoke3_host_heavy_ticks == 4:
+		controller.send(AttackController.Kind.HEAVY, 0.9, false)
+		print("[smoke3] host released heavy")
+	_smoke3_host_heavy_ticks += 1
+
+
+## The crack counter on a peer's WeaponController: forwarded on the host,
+## received over the RPC on the client. 0 while the player is not here yet.
+func _smoke3_crack_count(peer_id: int, forwarded: bool) -> int:
+	var player: Player = NetworkManager.players.get(peer_id) as Player
+	if player == null:
+		return 0
+	var weapons: WeaponController = player.get_node("WeaponController") as WeaponController
+	if weapons == null:
+		return 0
+	return weapons.cracks_forwarded if forwarded else weapons.remote_cracks_received
 
 
 ## Client: once the host's perfect-dodge window reaches this player (the host RPC),
@@ -243,6 +279,11 @@ func _smoke3_find_enemy() -> Node:
 ## of 3 (HP 10 -> 7, replicated to everyone). When the client's kill lands,
 ## log how many times enemy_killed fired — it must be exactly 1.
 func _smoke3_host_tick() -> void:
+	if _smoke3_host_heavy_ticks >= 0 and _smoke3_host_heavy_ticks <= 4:
+		_smoke3_drive_host_heavy()
+	if not _smoke3_crack_forwarded and _smoke3_crack_count(NetworkManager.local_peer_id, true) > 0:
+		_smoke3_crack_forwarded = true
+		print("[smoke3] host forwarded the ground crack to the client")
 	if _smoke3_window_pending and not _smoke3_window_sent:
 		# Stand-in for a dodged hit: the same call Player makes when the hurtbox
 		# reports a blocked hit (opens the host's window, freezes and pings the
@@ -320,6 +361,9 @@ func _smoke3_client_tick() -> void:
 	if _smoke3_heavy_ticks >= 0 and _smoke3_heavy_ticks <= 4:
 		_smoke3_drive_heavy()
 	_smoke3_drive_skill()
+	if not _smoke3_crack_received and _smoke3_crack_count(NetworkManager.HOST_PEER_ID, false) > 0:
+		_smoke3_crack_received = true
+		print("[smoke3] client received the ground crack over the host RPC")
 	if not _smoke3_spawn_requested:
 		_smoke3_spawn_requested = true
 		NetworkManager.rpc_id(NetworkManager.HOST_PEER_ID, "request_debug", "spawn grub 1", NetworkManager.local_peer_id)

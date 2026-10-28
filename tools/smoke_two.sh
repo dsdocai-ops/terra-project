@@ -110,6 +110,8 @@ check "$OUT/client3.log" '\[smoke3\] client sees the perfect-dodge window \(host
 check "$OUT/host3.log"   '\[smoke3\] host sees the client fire the weapon skill' "host3 saw the client fire the weapon skill"
 check "$OUT/host3.log"   '\[smoke3\] dodge ping played on peer 1 over Player[0-9]+' "host3 played the perfect-dodge ping"
 check "$OUT/client3.log" '\[smoke3\] dodge ping played on peer [0-9]+ over Player[0-9]+' "client3 played the perfect-dodge ping from the host RPC"
+check "$OUT/host3.log"   '\[smoke3\] host forwarded the ground crack' "host3 forwarded the pickaxe heavy's crack"
+check "$OUT/client3.log" '\[smoke3\] client received the ground crack over the host RPC' "client3 drew the crack from the host RPC"
 check "$OUT/client3.log" '\[smoke3\] client requested kill'              "client3 asked the host to kill the enemy"
 check "$OUT/host3.log"   '\[console\] kill .* -> killed 1 enem'         "host3 ran the kill through the console"
 check "$OUT/host3.log"   '\[smoke3\] enemy_killed emitted 1 time'        "host3 registered the kill exactly once"

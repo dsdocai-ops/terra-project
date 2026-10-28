@@ -230,6 +230,52 @@ func test_a_light_attack_emits_no_crack() -> void:
 	assert_eq(_cracks().size(), 0, "only the heavy cracks the ground")
 
 
+# --- the crack broadcast --------------------------------------------------------------------
+
+func test_strike_ground_crack_spawns_the_local_crack() -> void:
+	_weapons.strike_ground_crack(Vector2(4.0, 5.0), Vector2.RIGHT, 70.0)
+	var cracks: Array[Node] = _cracks()
+	assert_eq(cracks.size(), 1, "one local crack per strike")
+	if cracks.size() == 1:
+		var crack := cracks[0] as GroundCrackLine
+		assert_not_null(crack)
+		assert_almost_eq(crack.global_position.x, 4.0, 0.01, "at the strike origin")
+		assert_almost_eq(crack.global_position.y, 5.0, 0.01)
+		# The node sits at the strike origin, so its marks are the local geometry.
+		var expected: PackedVector2Array = GroundCrackLine.crack_points(Vector2.ZERO, Vector2.RIGHT, 70.0)
+		assert_eq(crack.points(), expected, "with the strike's own geometry")
+
+
+func test_a_solo_host_forwards_no_crack() -> void:
+	_weapons.strike_ground_crack(Vector2.ZERO, Vector2.RIGHT, 60.0)
+	assert_eq(_weapons.cracks_forwarded, 0, "solo has nobody to tell, the local crack is all there is")
+
+
+func test_the_crack_targets_are_every_peer_except_the_owner() -> void:
+	assert_eq(WeaponController.crack_targets(1, [1, 5, 7] as Array[int]), [5, 7] as Array[int],
+		"the owner already drew its own crack inside the hook")
+	assert_eq(WeaponController.crack_targets(5, [5] as Array[int]), [] as Array[int],
+		"an owner alone in the session has nobody to tell")
+	assert_eq(WeaponController.crack_targets(1, [] as Array[int]), [] as Array[int], "an empty session targets nobody")
+
+
+func test_the_crack_rpc_is_registered_unreliable_and_remote() -> void:
+	var rpc: Dictionary = (_weapons.get_script() as Script).get_rpc_config() as Dictionary
+	assert_true(rpc.has(&"_remote_ground_crack"), "the crack RPC is registered")
+	assert_eq(rpc[&"_remote_ground_crack"]["transfer_mode"], MultiplayerPeer.TRANSFER_MODE_UNRELIABLE,
+		"a dropped crack is a 0.7 s decal, not state")
+	assert_false(rpc[&"_remote_ground_crack"]["call_local"], "the sender already drew its own crack")
+
+
+func test_the_crack_rpc_refuses_a_direct_local_call() -> void:
+	# The body validates `multiplayer.get_remote_sender_id()` first: a direct
+	# local call reports sender 0 everywhere, so a peer cannot draw the host's
+	# crack by calling the RPC on itself instead of receiving it.
+	_weapons._remote_ground_crack(Vector2.ZERO, Vector2.RIGHT, 60.0)
+	assert_eq(_cracks().size(), 0, "sender 0 is not the host's crack")
+	assert_eq(_weapons.remote_cracks_received, 0, "and nothing was received")
+
+
 # --- the WeaponAttack hook routing ----------------------------------------------------------
 
 func _hook_spy_on(weapon: WeaponData) -> HookSpy:
