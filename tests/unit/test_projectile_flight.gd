@@ -4,11 +4,16 @@ extends GutTest
 ## time-scaled stepping. Owned by combat-core. The math is tested on a bare
 ## `ProjectileFlight`; the node cases prove `launch` reads its bounce count
 ## from the `ProjectileSpec`, that the relic seam `add_bounce` lands on the
-## real node, that a reflect flips the team, and that a hostile projectile
-## joins the enemy time group. Named-method callbacks only; no scene, no pool.
+## real node, that a reflect flips the team and moves the projectile between
+## time groups with it, and that a hostile projectile joins the enemy time
+## group. Named-method callbacks only; no scene, no pool.
 
 const EPSILON: float = 0.0001
 const STOP_SOURCE: StringName = &"test_projectile_flight"
+
+
+func after_each() -> void:
+	TimeManager.clear_source(STOP_SOURCE)
 
 
 # --- bounce: count and angle ------------------------------------------------------------
@@ -212,6 +217,30 @@ func test_a_hostile_projectile_respects_the_enemy_time_stack() -> void:
 	assert_eq(TimeManager.scale_for(projectile), 0.0, "a stopped enemy stack freezes enemy projectiles")
 	TimeManager.clear_source(STOP_SOURCE)
 	assert_eq(TimeManager.scale_for(projectile), 1.0, "and releases them")
+
+
+func test_a_reflected_enemy_projectile_leaves_the_enemy_time_group() -> void:
+	var projectile: Projectile = autofree(Projectile.new())
+	projectile.synced_velocity = Vector2(240, 0)
+	projectile.reflectable = true
+	projectile.launch(HitInfo.new(), Team.Kind.ENEMY, 600.0, 0)
+	TimeManager.stop_enemies(1.0, STOP_SOURCE)
+	assert_eq(TimeManager.scale_for(projectile), 0.0, "frozen while it flies for the enemy")
+	assert_true(projectile.reflect_projectile(), "a Guardian block bats it back")
+	assert_eq(TimeManager.scale_for(projectile), 1.0, "the reflect moves it out of the enemy stack")
+	assert_false(projectile.hostile)
+
+
+func test_a_reflected_player_projectile_joins_the_enemy_time_group() -> void:
+	var projectile: Projectile = autofree(Projectile.new())
+	projectile.synced_velocity = Vector2(240, 0)
+	projectile.reflectable = true
+	projectile.launch(HitInfo.new(), Team.Kind.PLAYER, 600.0, 0)
+	TimeManager.stop_enemies(1.0, STOP_SOURCE)
+	assert_eq(TimeManager.scale_for(projectile), 1.0, "a player bolt ignores the enemy stack")
+	assert_true(projectile.reflect_projectile(), "an enemy reflect source turns it")
+	assert_true(projectile.hostile)
+	assert_eq(TimeManager.scale_for(projectile), 0.0, "and now it flies on the enemy clock")
 
 
 func _flight(velocity: Vector2, range_px: float, lifetime: float = ProjectileFlight.NO_LIFETIME) -> ProjectileFlight:

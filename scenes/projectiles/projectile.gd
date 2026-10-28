@@ -64,10 +64,7 @@ func launch(hit: HitInfo, side: Team.Kind, max_range: float, pierce: int, spec: 
 	_flight.bounces_left = spec.bounce if spec != null else 0
 	_flight.homing_strength = homing_strength
 	_flight.reflectable = reflectable
-	if hostile:
-		# Enemy projectiles respect the enemy time stack (SPEC-combat-core):
-		# a global slow or stop drags their flight with it.
-		TimeManager.set_group(self, TimeManager.Group.ENEMY)
+	_update_time_group()
 
 
 ## The seam a relic asks when it wants this projectile already in flight to
@@ -86,7 +83,18 @@ func reflect_projectile() -> bool:
 		return false
 	team = Team.Kind.ENEMY if team == Team.Kind.PLAYER else Team.Kind.PLAYER
 	hostile = team == Team.Kind.ENEMY
+	# The time group follows the team across a reflect too: a reflected enemy
+	# bolt must stop freezing with the enemy stack, a reflected player bolt
+	# must join it.
+	_update_time_group()
 	return true
+
+
+## Enemy projectiles respect the enemy time stack (SPEC-combat-core): a global
+## slow or stop drags their flight with it. Player projectiles register in the
+## PLAYER group, which `scale_for` treats exactly like unregistered.
+func _update_time_group() -> void:
+	TimeManager.set_group(self, TimeManager.Group.ENEMY if hostile else TimeManager.Group.PLAYER)
 
 
 ## Test and seam read of the bounce budget left.
