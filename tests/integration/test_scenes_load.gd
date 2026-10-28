@@ -104,11 +104,6 @@ func test_room_and_door_nodes_load() -> void:
 		assert_true(visual.visible, "a closed door shows its placeholder")
 
 
-## The W2-A10 placeholder sprites: each enemy's SpriteFrames under assets/
-## load, and every animation's frame texture loads with them (G8a adds the
-## Hollow Miner; G8b appends the other two). The drawing itself — the enemy
-## shows its frames instead of the placeholder polygon — is the
-## test_v2_sprites suite.
 ## The W3-A2 floor scene (G10b2): loads, instantiates as the `Floor` script, and
 ## the World builds its live floor from it. A floor 2 layout painted through the
 ## scene places the START, EXIT and ROPE placeholder markers on their rooms'
