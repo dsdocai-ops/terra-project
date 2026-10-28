@@ -73,3 +73,28 @@ func test_new_pattern_fields_default_to_a_light_hit_with_no_poise() -> void:
 	assert_false(pattern.is_heavy)
 	assert_eq(pattern.poise_damage, 0.0)
 	assert_eq(AttackPattern.TelegraphShape.RING, 3, "RING is appended, existing .tres values keep their meaning")
+
+
+func test_every_pattern_uses_a_known_telegraph_shape() -> void:
+	for pattern: AttackPattern in _all_patterns():
+		assert_true(
+			pattern.telegraph_shape >= AttackPattern.TelegraphShape.CIRCLE
+			and pattern.telegraph_shape <= AttackPattern.TelegraphShape.RING,
+			"%s telegraph_shape" % pattern.id
+		)
+
+
+func test_every_patterns_telegraph_size_fits_its_shape() -> void:
+	for pattern: AttackPattern in _all_patterns():
+		var size: Vector2 = pattern.telegraph_size
+		assert_gt(size.x, 0.0, "%s telegraph length or radius" % pattern.id)
+		match pattern.telegraph_shape:
+			AttackPattern.TelegraphShape.CIRCLE:
+				pass  # size.x is the radius; nothing else is read.
+			AttackPattern.TelegraphShape.CONE:
+				assert_gt(size.y, 0.0, "%s cone width in degrees" % pattern.id)
+				assert_lt(size.y, 360.0, "%s cone width is not a full circle" % pattern.id)
+			AttackPattern.TelegraphShape.LINE:
+				assert_gt(size.y, 0.0, "%s line width" % pattern.id)
+			AttackPattern.TelegraphShape.RING:
+				assert_gt(size.y, 0.0, "%s ring band width" % pattern.id)

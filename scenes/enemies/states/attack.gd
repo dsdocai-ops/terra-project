@@ -2,20 +2,29 @@ extends EnemyState
 ## One enemy attack through the combat-core contract: windup (telegraph shown,
 ## nothing can hit), active (the hitbox or projectile goes live), recovery
 ## (vulnerable, cannot act). Owned by enemies-ai. Sync: host-only; clients draw
-## the telegraph from the replicated `telegraph_progress` and `aim_dir`.
-
-enum Phase { WINDUP, ACTIVE, RECOVERY }
+## the telegraph from the enemy's replicated `telegraph_progress` and `aim_dir`.
+##
+## The phase timing and the "no hit without a telegraph" gate live in the
+## combat-core `AttackDriver`: the hitbox arms only from its `active_started`,
+## which only a completed windup can fire, and the driver is disarmed on every
+## re-entry, so a reused or interrupted attack cannot hit without a telegraph.
 
 const MELEE_ARC_STEPS: int = 6
+
+var _driver := AttackDriver.new()
 
 ## One cone hitbox per pattern, built the first time the pattern is used by this
 ## enemy and reused after that: attacking allocates no shapes once warm.
 var _cone_cache: Dictionary = {}
 
 var _pattern: AttackPattern = null
-var _phase: Phase = Phase.WINDUP
-var _elapsed: float = 0.0
 var _dir: Vector2 = Vector2.DOWN
+
+
+func _on_setup() -> void:
+	super()
+	_driver.active_started.connect(_on_driver_active)
+	_driver.recovery_started.connect(_on_driver_recovery)
 
 
 func enter(_from: StringName) -> void:
@@ -23,8 +32,6 @@ func enter(_from: StringName) -> void:
 	if _pattern == null:
 		machine.change_to(&"Chase")
 		return
-	_phase = Phase.WINDUP
-	_elapsed = 0.0
 	_dir = Vector2.DOWN
 	if is_instance_valid(enemy.target):
 		_dir = (enemy.target.global_position - enemy.global_position).normalized()
@@ -32,9 +39,11 @@ func enter(_from: StringName) -> void:
 	enemy.telegraph.configure(_pattern, _dir)
 	enemy.telegraph_progress = 0.0
 	enemy.current_anim = &"windup"
+	_driver.start(_pattern)
 
 
 func exit(_to: StringName) -> void:
+	_driver.stop()
 	enemy.telegraph_progress = -1.0
 	enemy.hitbox.active = false
 
@@ -42,31 +51,25 @@ func exit(_to: StringName) -> void:
 func physics_update(delta: float) -> void:
 	if _pattern == null:
 		return
-	_elapsed += delta
-	match _phase:
-		Phase.WINDUP:
+	match _driver.advance(delta):
+		AttackDriver.Phase.WINDUP:
 			enemy.stop_moving(delta)
-			enemy.telegraph_progress = clampf(_elapsed / maxf(_pattern.windup_seconds, 0.01), 0.0, 1.0)
-			if _elapsed >= _pattern.windup_seconds:
-				_start_active()
-		Phase.ACTIVE:
+			enemy.telegraph_progress = _driver.telegraph_progress()
+		AttackDriver.Phase.ACTIVE:
 			if _pattern.kind == AttackPattern.Kind.RUSH:
 				enemy.velocity = _dir * _pattern.speed * machine.effective_scale
 				enemy.move_and_slide()
 			else:
 				enemy.stop_moving(delta)
-			if _elapsed >= _pattern.active_seconds:
-				_start_recovery()
-		Phase.RECOVERY:
+		AttackDriver.Phase.RECOVERY:
 			enemy.stop_moving(delta)
-			if _elapsed >= _pattern.recovery_seconds:
-				enemy.attack_cooldown_left = 0.2
-				machine.change_to(&"Chase")
+		AttackDriver.Phase.DONE:
+			enemy.stop_moving(delta)
+			enemy.attack_cooldown_left = 0.2
+			machine.change_to(&"Chase")
 
 
-func _start_active() -> void:
-	_phase = Phase.ACTIVE
-	_elapsed = 0.0
+func _on_driver_active() -> void:
 	enemy.telegraph_progress = -1.0
 	enemy.current_anim = &"attack"
 	var hit: HitInfo = _build_hit()
@@ -87,9 +90,7 @@ func _start_active() -> void:
 			_fire(hit)
 
 
-func _start_recovery() -> void:
-	_phase = Phase.RECOVERY
-	_elapsed = 0.0
+func _on_driver_recovery() -> void:
 	enemy.hitbox.active = false
 	enemy.current_anim = &"recovery"
 

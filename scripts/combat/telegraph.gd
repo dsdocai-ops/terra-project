@@ -51,6 +51,30 @@ static func ring_geometry(ring_size: Vector2, fill: float) -> Dictionary:
 	return {"inner": inner, "outer": outer, "filled_to": lerpf(inner, outer, clampf(fill, 0.0, 1.0))}
 
 
+## The radii of a CIRCLE telegraph at fill `fill` (0..1) for `size` (x = radius):
+## the outline radius and how far the fill has reached from the centre. The fill
+## grows from the centre out to the outline.
+static func circle_geometry(size: Vector2, fill: float) -> Dictionary:
+	var radius: float = maxf(size.x, 0.0)
+	return {"radius": radius, "filled_to": radius * clampf(fill, 0.0, 1.0)}
+
+
+## The geometry of a CONE telegraph at fill `fill` (0..1) for `size` (x = length,
+## y = width in degrees): the full length, the half angle, and how far the fill
+## has reached from the tip. The fill grows from the tip out to the full length.
+static func cone_geometry(size: Vector2, fill: float) -> Dictionary:
+	var length: float = maxf(size.x, 0.0)
+	return {"length": length, "half_angle_deg": maxf(size.y, 0.0) * 0.5, "filled_to": length * clampf(fill, 0.0, 1.0)}
+
+
+## The geometry of a LINE telegraph at fill `fill` (0..1) for `size` (x = length,
+## y = width): the full length, the width, and how far the fill has reached from
+## the base. The fill grows from the base toward the far edge.
+static func line_geometry(size: Vector2, fill: float) -> Dictionary:
+	var length: float = maxf(size.x, 0.0)
+	return {"length": length, "width": maxf(size.y, 0.0), "filled_to": length * clampf(fill, 0.0, 1.0)}
+
+
 func _draw() -> void:
 	if progress < 0.0:
 		return
@@ -59,17 +83,20 @@ func _draw() -> void:
 	last_drawn = shape
 	match shape:
 		AttackPattern.TelegraphShape.CIRCLE:
-			draw_arc(Vector2.ZERO, size.x, 0.0, TAU, 24, OUTLINE_COLOR, OUTLINE_WIDTH)
-			draw_circle(Vector2.ZERO, size.x * fill, FILL_COLOR)
+			var circle: Dictionary = circle_geometry(size, fill)
+			draw_arc(Vector2.ZERO, circle["radius"], 0.0, TAU, 24, OUTLINE_COLOR, OUTLINE_WIDTH)
+			draw_circle(Vector2.ZERO, circle["filled_to"], FILL_COLOR)
 		AttackPattern.TelegraphShape.CONE:
-			var half: float = deg_to_rad(size.y) * 0.5
+			var cone: Dictionary = cone_geometry(size, fill)
+			var half: float = deg_to_rad(cone["half_angle_deg"])
 			var base: float = direction.angle()
-			draw_colored_polygon(_sector(base, half, size.x * fill), FILL_COLOR)
-			draw_polyline(_sector(base, half, size.x) + PackedVector2Array([Vector2.ZERO]), OUTLINE_COLOR, OUTLINE_WIDTH)
+			draw_colored_polygon(_sector(base, half, cone["filled_to"]), FILL_COLOR)
+			draw_polyline(_sector(base, half, cone["length"]) + PackedVector2Array([Vector2.ZERO]), OUTLINE_COLOR, OUTLINE_WIDTH)
 		AttackPattern.TelegraphShape.LINE:
-			var across: Vector2 = direction.orthogonal() * size.y * 0.5
-			var far: Vector2 = direction * size.x
-			var near_fill: Vector2 = direction * size.x * fill
+			var line: Dictionary = line_geometry(size, fill)
+			var across: Vector2 = direction.orthogonal() * line["width"] * 0.5
+			var far: Vector2 = direction * line["length"]
+			var near_fill: Vector2 = direction * line["filled_to"]
 			draw_polyline(PackedVector2Array([-across, -across + far, across + far, across, -across]), OUTLINE_COLOR, OUTLINE_WIDTH)
 			draw_colored_polygon(PackedVector2Array([-across, -across + near_fill, across + near_fill, across]), FILL_COLOR)
 		AttackPattern.TelegraphShape.RING:

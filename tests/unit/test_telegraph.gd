@@ -1,8 +1,9 @@
 extends GutTest
 ## The ground telegraph (SPEC-combat-core "Telegraph"), including the RING shape
 ## added in combat v2 C5. Owned by combat-core. The dummy renderer cannot be
-## inspected, so the ring is checked through its pure geometry and through the
-## Telegraph draw counter, which proves `_draw` ran for that shape.
+## inspected, so every shape is checked through its pure geometry — the same
+## functions `_draw` reads — and through the Telegraph draw counter, which
+## proves `_draw` ran for that shape and that the fill tracks the windup.
 
 var _telegraph: Telegraph
 
@@ -35,6 +36,55 @@ func test_a_band_wider_than_the_radius_becomes_a_disc() -> void:
 	var disc: Dictionary = Telegraph.ring_geometry(Vector2(30, 90), 1.0)
 	assert_eq(disc["inner"], 0.0)
 	assert_eq(disc["outer"], 30.0)
+
+
+func test_circle_geometry_is_a_radius_that_fills_from_the_centre() -> void:
+	var empty: Dictionary = Telegraph.circle_geometry(Vector2(60, 0), 0.0)
+	assert_eq(empty["radius"], 60.0)
+	assert_eq(empty["filled_to"], 0.0, "nothing filled yet")
+	assert_eq(Telegraph.circle_geometry(Vector2(60, 0), 0.5)["filled_to"], 30.0, "half way out")
+	assert_eq(Telegraph.circle_geometry(Vector2(60, 0), 1.0)["filled_to"], 60.0, "full at the outline")
+	assert_eq(Telegraph.circle_geometry(Vector2(60, 0), 7.0)["filled_to"], 60.0, "fill is clamped")
+
+
+func test_cone_geometry_is_a_length_that_fills_from_the_tip() -> void:
+	var empty: Dictionary = Telegraph.cone_geometry(Vector2(64, 90), 0.0)
+	assert_eq(empty["length"], 64.0)
+	assert_eq(empty["half_angle_deg"], 45.0, "half of the 90 degree width")
+	assert_eq(empty["filled_to"], 0.0, "nothing filled yet")
+	assert_almost_eq(float(Telegraph.cone_geometry(Vector2(64, 90), 0.5)["filled_to"]), 32.0, 0.001, "half way along")
+	assert_eq(Telegraph.cone_geometry(Vector2(64, 90), 1.0)["filled_to"], 64.0, "full at the arc")
+	assert_eq(Telegraph.cone_geometry(Vector2(64, 90), -2.0)["filled_to"], 0.0, "fill is clamped")
+
+
+func test_line_geometry_is_a_length_that_fills_from_the_base() -> void:
+	var empty: Dictionary = Telegraph.line_geometry(Vector2(120, 28), 0.0)
+	assert_eq(empty["length"], 120.0)
+	assert_eq(empty["width"], 28.0)
+	assert_eq(empty["filled_to"], 0.0, "nothing filled yet")
+	assert_eq(Telegraph.line_geometry(Vector2(120, 28), 0.5)["filled_to"], 60.0, "half way along")
+	assert_eq(Telegraph.line_geometry(Vector2(120, 28), 1.0)["filled_to"], 120.0, "full at the far edge")
+	assert_eq(Telegraph.line_geometry(Vector2(120, 28), 9.0)["filled_to"], 120.0, "fill is clamped")
+
+
+func test_fill_tracks_the_windup_for_every_shape() -> void:
+	for shape: AttackPattern.TelegraphShape in [AttackPattern.TelegraphShape.CIRCLE, AttackPattern.TelegraphShape.CONE, AttackPattern.TelegraphShape.LINE, AttackPattern.TelegraphShape.RING]:
+		var pattern := AttackPattern.new()
+		pattern.telegraph_shape = shape
+		pattern.telegraph_size = Vector2(80, 24)
+		_telegraph.configure(pattern, Vector2.RIGHT)
+		_telegraph.progress = -1.0
+		_telegraph.progress = 0.0
+		await wait_process_frames(2)
+		assert_true(_telegraph.visible, "%s shows at the windup's start" % AttackPattern.TelegraphShape.keys()[shape])
+		var at_start: int = _telegraph.draw_count
+		_telegraph.progress = 0.5
+		await wait_process_frames(2)
+		assert_gt(_telegraph.draw_count, at_start, "%s redraws at half fill" % AttackPattern.TelegraphShape.keys()[shape])
+		var at_half: int = _telegraph.draw_count
+		_telegraph.progress = 1.0
+		await wait_process_frames(2)
+		assert_gt(_telegraph.draw_count, at_half, "%s redraws at full fill" % AttackPattern.TelegraphShape.keys()[shape])
 
 
 func test_configure_reads_the_ring_from_the_pattern() -> void:
