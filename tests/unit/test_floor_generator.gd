@@ -356,3 +356,91 @@ func test_corridors_connect_every_room_placed() -> void:
 						queue.append(next)
 			for room: RoomSpec in layout.rooms:
 				assert_true(seen.has(room.center()), "seed %d floor %d: room %d unreachable" % [run_seed, floor_index, room.index])
+
+
+# --- G9b2: the walkable data and the AStarGrid2D pathing (SPEC step 5) --------
+
+
+## The real `Floor` node with the layout's grid built — `Floor._build_astar` is
+## the one `AStarGrid2D` the spec names (the generator builds none), so the
+## tests below run it, not a second grid.
+func _astar_of(layout: FloorLayout) -> AStarGrid2D:
+	var floor_node := Floor.new()
+	floor_node.layout = layout
+	floor_node._build_astar()
+	autofree(floor_node)
+	return floor_node.astar
+
+
+func test_walkable_data_is_exactly_the_rooms_and_their_corridors() -> void:
+	# Step 5's walkable set: every room-interior cell and every corridor cell is
+	# walkable, and no walkable cell lies outside both — the data the painting
+	# and the pathing grid both read.
+	for run_seed: int in SEEDS:
+		for floor_index: int in FLOORS:
+			var layout: FloorLayout = _layout(run_seed, floor_index)
+			var problems: Array[String] = []
+			for room: RoomSpec in layout.rooms:
+				for x: int in range(room.rect.position.x, room.rect.end.x):
+					for y: int in range(room.rect.position.y, room.rect.end.y):
+						if not layout.is_walkable(Vector2i(x, y)):
+							problems.append("room %d cell %s not walkable" % [room.index, str(Vector2i(x, y))])
+			var corridor_set: Dictionary[Vector2i, bool] = {}
+			for cell: Vector2i in layout.corridors:
+				corridor_set[cell] = true
+				if not layout.is_walkable(cell):
+					problems.append("corridor cell %s not walkable" % str(cell))
+			for cell: Vector2i in layout.walkable:
+				if layout.room_at_cell(cell) == null and not corridor_set.has(cell):
+					problems.append("stray walkable cell %s" % str(cell))
+			assert_eq(problems.size(), 0, "seed %d floor %d: %s" % [run_seed, floor_index, ", ".join(problems.slice(0, 5))])
+
+
+func test_the_walkable_data_matches_the_painted_tiles() -> void:
+	# Step 5 paints floor on the walkable cells: over the whole grid, exactly
+	# the walkable cells paint as FLOOR, on real generated layouts.
+	for run_seed: int in SEEDS:
+		var layout: FloorLayout = _layout(run_seed)
+		var paint := FloorPaint.new(layout)
+		var problems: Array[String] = []
+		for x: int in FloorGenerator.GRID:
+			for y: int in FloorGenerator.GRID:
+				var cell := Vector2i(x, y)
+				if (paint.kind(cell) == FloorPaint.Kind.FLOOR) != layout.is_walkable(cell):
+					problems.append("cell %s painted %d walkable %s" % [str(cell), paint.kind(cell), str(layout.is_walkable(cell))])
+		assert_eq(problems.size(), 0, "seed %d: %s" % [run_seed, ", ".join(problems.slice(0, 5))])
+
+
+func test_the_real_astar_solids_match_the_walkable_data() -> void:
+	# The grid `Floor._build_astar` builds from the layout: solid exactly on the
+	# non-walkable cells, over the whole 96x96 region.
+	for run_seed: int in SEEDS:
+		var layout: FloorLayout = _layout(run_seed)
+		var astar: AStarGrid2D = _astar_of(layout)
+		assert_eq(astar.region, Rect2i(0, 0, FloorGenerator.GRID, FloorGenerator.GRID), "seed %d: the region is the grid" % run_seed)
+		var problems: Array[String] = []
+		for x: int in FloorGenerator.GRID:
+			for y: int in FloorGenerator.GRID:
+				var cell := Vector2i(x, y)
+				if astar.is_point_solid(cell) == layout.is_walkable(cell):
+					problems.append("cell %s solid=%s walkable=%s" % [str(cell), str(astar.is_point_solid(cell)), str(layout.is_walkable(cell))])
+		assert_eq(problems.size(), 0, "seed %d: %s" % [run_seed, ", ".join(problems.slice(0, 5))])
+
+
+func test_the_astar_returns_a_route_from_start_to_exit_on_every_test_seed() -> void:
+	for run_seed: int in SEEDS:
+		for floor_index: int in FLOORS:
+			var layout: FloorLayout = _layout(run_seed, floor_index)
+			var astar: AStarGrid2D = _astar_of(layout)
+			var start: Vector2i = layout.start_room.center()
+			var exit: Vector2i = layout.exit_room.center()
+			var route: Array[Vector2i] = astar.get_id_path(start, exit)
+			assert_gt(route.size(), 0, "seed %d floor %d: no Start to Exit route" % [run_seed, floor_index])
+			assert_eq(route[0], start, "seed %d floor %d: the route leaves the Start centre" % [run_seed, floor_index])
+			assert_eq(route[route.size() - 1], exit, "seed %d floor %d: the route ends at the Exit centre" % [run_seed, floor_index])
+			var problems: Array[String] = []
+			for cell: Vector2i in route:
+				if not layout.is_walkable(cell):
+					problems.append(str(cell))
+			assert_eq(problems.size(), 0, "seed %d floor %d: %d route cells off the painted floor (%s)"
+				% [run_seed, floor_index, problems.size(), ", ".join(problems.slice(0, 5))])
