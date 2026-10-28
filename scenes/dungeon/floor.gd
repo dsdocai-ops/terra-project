@@ -46,8 +46,19 @@ func paint(p_layout: FloorLayout, biome: BiomeData, world: World) -> void:
 	_paint_tiles(world, biome)
 	_build_astar()
 	_build_rooms()
+	_write_exit_rule()
 	_build_fog()
 	painted.emit(layout)
+
+
+## Host. The painted floor's Exit rule (SPEC-floor-generation "Doors and
+## clearing"): how many rooms must clear before the Exit opens, written into
+## the seam `RunState.required_rooms_cleared` names. Clients hold no run state,
+## so a client's paint writes nothing.
+func _write_exit_rule() -> void:
+	if not multiplayer.is_server() or GameState.run == null:
+		return
+	GameState.run.required_rooms_cleared = layout.required_rooms
 
 
 func _clear_children() -> void:

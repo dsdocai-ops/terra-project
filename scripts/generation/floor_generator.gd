@@ -143,7 +143,7 @@ static func assemble(run_seed: int, floor_index: int, biome_id: int, modifiers: 
 			layout.start_room = room
 		elif room.type == RoomType.EXIT:
 			layout.exit_room = room
-	layout.required_rooms = _required_rooms(layout, adjacency)
+	layout.required_rooms = ExitRule.required_clears(layout)
 	layout.layout_hash = _hash_layout(layout)
 	return layout
 
@@ -414,31 +414,6 @@ static func _spawn_points(room: RoomSpec) -> Array[Vector2i]:
 
 
 ## Locking rooms on the shortest Start to Exit path, ends excluded.
-static func _required_rooms(layout: FloorLayout, adjacency: Array[PackedInt32Array]) -> int:
-	if layout.start_room == null or layout.exit_room == null:
-		return 0
-	var parent: Array[int] = []
-	parent.resize(layout.rooms.size())
-	parent.fill(-2)
-	parent[layout.start_room.index] = -1
-	var queue: Array[int] = [layout.start_room.index]
-	var head: int = 0
-	while head < queue.size():
-		var current: int = queue[head]
-		head += 1
-		for next: int in adjacency[current]:
-			if parent[next] == -2:
-				parent[next] = current
-				queue.append(next)
-	var required: int = 0
-	var node: int = parent[layout.exit_room.index]
-	while node >= 0 and node != layout.start_room.index:
-		if layout.rooms[node].locks():
-			required += 1
-		node = parent[node]
-	return required
-
-
 static func _hash_layout(layout: FloorLayout) -> int:
 	var acc: int = layout.floor_index * FLOOR_STRIDE + layout.biome_id
 	for room: RoomSpec in layout.rooms:
