@@ -146,6 +146,12 @@ var _perfect_window_left: float = 0.0
 ## True once a hit was blocked during the dodge that is running, so that dodge has
 ## already emitted its one `player_dodged(player, true)`.
 var _dodge_was_perfect: bool = false
+## Seconds since the running dodge roll started, in roll time (scaled delta, so
+## a TimeManager slow stretches the roll but not the perfect-dodge window).
+## The Dodge state steps it; `begin_dodge` zeroes it and `_on_dodge_blocked`
+## reads it against `DodgeClock.is_perfect_dodge_frame`. Host and predicting
+## owner each run their own dodge.
+var dodge_elapsed: float = 0.0
 
 ## Host-written pose, replicated by StateSync. Clients reconcile or
 ## interpolate toward it; nobody replicates `position` directly.
@@ -554,6 +560,7 @@ func begin_dodge() -> void:
 		stat_value = stats.get_value(StatBlock.Stat.DODGE_COOLDOWN)
 	dodge_clock.spend(stat_value)
 	_dodge_was_perfect = false
+	dodge_elapsed = 0.0
 	if hurtbox != null:
 		hurtbox.invulnerable = true
 		hurtbox.dodge_invulnerable = true
@@ -572,13 +579,17 @@ func end_dodge() -> void:
 	_dodge_was_perfect = false
 
 
-## A hit landed on the dodge's i-frames and was avoided: the perfect-dodge
-## window opens (SPEC-player-controller). Host only; Hurtbox emits it there. The
+## A hit landed on the dodge's i-frames and was avoided. Only one blocked in the
+## first 0.12 s of the roll is a perfect dodge: the window opens (SPEC
+## player-controller). A later blocked hit is just the i-frames working — no
+## window, no `player_dodged(true)`. Host only; Hurtbox emits it there. The
 ## host freezes the dodger for 3 frames and pings it on every peer
 ## (CombatFeedback), and tells the owning client so it can predict the skill.
-## `player_dodged` is emitted once per dodge: `true` here at the first blocked hit,
-## or `false` when a dodge ends without one.
+## `player_dodged` is emitted once per dodge: `true` here at the first perfect
+## block, or `false` when a dodge ends without one.
 func _on_dodge_blocked(_hit: HitInfo) -> void:
+	if not dodge_clock.is_perfect_dodge_frame(dodge_elapsed):
+		return
 	open_perfect_dodge_window()
 	if multiplayer.is_server() and not _dodge_was_perfect:
 		Events.player_dodged.emit(self, true)

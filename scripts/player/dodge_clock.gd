@@ -15,6 +15,10 @@ extends RefCounted
 const DURATION_SECONDS: float = 0.28
 ## I-frames cover the whole roll (SPEC: "I-frames for the full roll").
 const IFRAME_SECONDS: float = DURATION_SECONDS
+## A blocked hit is a perfect dodge only in the first 0.12 s of the roll
+## (SPEC: "if an enemy hitbox would have hit the player during the first
+## 0.12 s of the roll"). Later blocked hits are just the i-frames working.
+const PERFECT_DODGE_QUALIFY_SECONDS: float = 0.12
 ## Roll speed as a multiple of move speed.
 const SPEED_MULT: float = 2.6
 ## No modifier can push the recharge below this (Player's old floor).
@@ -37,6 +41,13 @@ var _cooldown_seconds: float = 0.0
 ## (base 0.8 s plus its modifiers), floored at MIN_COOLDOWN_SECONDS.
 func cooldown_seconds(stat_value: float) -> float:
 	return maxf(stat_value, MIN_COOLDOWN_SECONDS)
+
+
+## True while a blocked hit still counts as a perfect dodge: the first
+## PERFECT_DODGE_QUALIFY_SECONDS of the roll, measured in roll time
+## (a slow from TimeManager stretches the roll but not the window).
+func is_perfect_dodge_frame(elapsed: float) -> bool:
+	return elapsed <= PERFECT_DODGE_QUALIFY_SECONDS
 
 
 ## True when a dodge can start: a charge is left. The cooldown gates the

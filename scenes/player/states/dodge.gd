@@ -1,8 +1,9 @@
 extends PlayerState
 ## A dodge roll: a fixed-speed burst whose i-frames cover the whole roll
 ## (SPEC-player-controller `Dodge`). A hit that lands during the i-frames is
-## blocked, which opens the perfect-dodge window on `Player` (set by
-## `Hurtbox.blocked_during_dodge`).
+## blocked; one blocked in the first `DodgeClock.PERFECT_DODGE_QUALIFY_SECONDS`
+## of the roll opens the perfect-dodge window on `Player` (set by
+## `Hurtbox.blocked_during_dodge`, gated on `Player.dodge_elapsed`).
 ## Owned by player-controller (W2-A8). Sync: like Move, it runs on the host and
 ## the owning client; the host's Hurtbox flags decide what is blocked.
 ##
@@ -32,6 +33,7 @@ func exit(_to: StringName) -> void:
 
 func physics_update(delta: float) -> void:
 	_elapsed += delta
+	player.dodge_elapsed = _elapsed
 	player.velocity = _dir * player.move_speed() * DodgeClock.SPEED_MULT * player.dodge_distance_mult * machine.effective_scale
 	player.apply_coop_clamp(delta)
 	player.move_and_slide()

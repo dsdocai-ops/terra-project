@@ -25,6 +25,26 @@ func test_the_roll_speed_is_a_multiple_of_move_speed() -> void:
 	assert_eq(DodgeClock.SPEED_MULT, 2.6)
 
 
+## Perfect-dodge qualifying window (SPEC: "during the first 0.12 s of the roll")
+
+
+func test_the_perfect_dodge_window_is_the_spec_value() -> void:
+	assert_eq(DodgeClock.PERFECT_DODGE_QUALIFY_SECONDS, 0.12)
+
+
+func test_the_first_frame_of_the_roll_is_a_perfect_dodge() -> void:
+	assert_true(_clock.is_perfect_dodge_frame(0.0))
+
+
+func test_the_perfect_window_edge_counts_inside_but_not_outside() -> void:
+	assert_true(_clock.is_perfect_dodge_frame(0.1199), "just inside")
+	assert_true(_clock.is_perfect_dodge_frame(DodgeClock.PERFECT_DODGE_QUALIFY_SECONDS),
+		"the boundary frame itself is inside")
+	assert_false(_clock.is_perfect_dodge_frame(0.1201), "just outside")
+	assert_false(_clock.is_perfect_dodge_frame(DodgeClock.DURATION_SECONDS),
+		"a late blocked hit is plain i-frames")
+
+
 ## Cooldown from the DODGE_COOLDOWN stat
 
 
