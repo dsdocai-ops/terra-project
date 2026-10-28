@@ -15,17 +15,22 @@ extends RefCounted
 ##    Lantern, minion taunt node): the nearest among the taunting ones. How
 ##    long a taunt lasts is the taunt source's clock — the candidate only
 ##    reports that it is taunting now.
-## 2. Otherwise the nearest live candidate. Untargetable candidates (Smoke
-##    Step / Smoke Bomb / Vanish / Ghost Wrap set the `untargetable` property)
-##    are not candidates at all, and when nothing live remains `pick` returns
-##    null — that is "drop aggro".
-## 3. Spread (co-op): an enemy keeps its current target while that target
-##    stays within SPREAD_FACTOR of the nearest live distance, so a pack that
-##    picked different players holds them instead of collapsing onto one. A
-##    fresh enemy, or one whose target left the window, picks the nearest.
+## 2. Otherwise the spread (co-op, SPEC "spread aggro so one player is not
+##    focused unless taunting"): among the live candidates inside
+##    SPREAD_FACTOR of the nearest distance, the one carried by the fewest
+##    `targeters` wins — distance breaks the tie, then input order. The
+##    caller fills `targeters` from the pack's current targets, not counting
+##    this enemy's own hold, so a fresh enemy joins the player the pack is
+##    not focused on instead of piling onto the nearest one, and a pack that
+##    picked different players holds them instead of collapsing onto one.
+## 3. Hysteresis: the current target is kept while it sits inside the same
+##    spread window and no candidate inside it is carried by fewer enemies.
+##    Untargetable candidates (Smoke Step / Smoke Bomb / Vanish / Ghost Wrap
+##    set the `untargetable` property) are not candidates at all, and when
+##    nothing live remains `pick` returns null — that is "drop aggro".
 
-## How much farther than the nearest a kept target may sit and still be kept
-## (the spread hysteresis, rule 3 above).
+## How much farther than the nearest a candidate may sit and still compete in
+## the spread (rules 2 and 3 above).
 const SPREAD_FACTOR: float = 1.25
 
 class Candidate:
@@ -42,6 +47,10 @@ class Candidate:
 	var untargetable: bool = false
 	## A taunt in force right now; its duration is the taunt source's clock.
 	var taunting: bool = false
+	## How many enemies of the pack currently hold this candidate, not
+	## counting the picking enemy's own hold (the caller's job — see rule 2).
+	## 0 is the unloaded, joinable target.
+	var targeters: int = 0
 
 
 ## Builds a candidate duck-typed from any target node: `is_dead` and
@@ -58,8 +67,8 @@ static func candidate(node: Node2D) -> Candidate:
 
 
 ## The chosen candidate, or null when nothing live and targetable remains.
-## `current` is this enemy's target from the last pick (the spread keeps it);
-## ties break by input order, deterministically.
+## `current` is this enemy's target from the last pick (the hysteresis keeps
+## it); ties break by input order, deterministically.
 static func pick(from: Vector2, current: Node2D, candidates: Array[Candidate]) -> Candidate:
 	var live: Array[Candidate] = []
 	for c: Candidate in candidates:
@@ -77,13 +86,27 @@ static func pick(from: Vector2, current: Node2D, candidates: Array[Candidate]) -
 	for c: Candidate in live:
 		if _dist(from, c) < _dist(from, nearest):
 			nearest = c
-	if current != null:
-		for c: Candidate in live:
-			if c.node == current:
-				if _dist(from, c) <= _dist(from, nearest) * SPREAD_FACTOR:
-					return c
-				break
-	return nearest
+	var window_range: float = _dist(from, nearest) * SPREAD_FACTOR
+	var best: Candidate = null
+	for c: Candidate in live:
+		if _dist(from, c) > window_range:
+			continue
+		if best == null or c.targeters < best.targeters \
+				or (c.targeters == best.targeters and _dist(from, c) < _dist(from, best)):
+			best = c
+	var held := _held(live, current)
+	if held != null and _dist(from, held) <= window_range and held.targeters <= best.targeters:
+		return held
+	return best
+
+
+static func _held(live: Array[Candidate], current: Node2D) -> Candidate:
+	if current == null:
+		return null
+	for c: Candidate in live:
+		if c.node == current:
+			return c
+	return null
 
 
 static func _dist(from: Vector2, c: Candidate) -> float:

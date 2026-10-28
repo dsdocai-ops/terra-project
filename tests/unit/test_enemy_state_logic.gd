@@ -66,6 +66,31 @@ func test_the_attack_gate_needs_range_and_a_spent_cooldown() -> void:
 	assert_false(EnemyStateLogic.chase_attack(40.0, 40.0, 0.2), "the cooldown is still running")
 
 
+# --- Attack: the aim, the rush velocity and the post-attack cooldown -------------
+
+
+func test_the_aim_is_the_normalized_direction_at_the_target() -> void:
+	assert_almost_eq(EnemyStateLogic.aim(Vector2.ZERO, Vector2(300, 0)).x, 1.0, 0.0001)
+	assert_almost_eq(EnemyStateLogic.aim(Vector2(100, 100), Vector2(100, -40)).y, -1.0, 0.0001, "straight up along the target")
+	var diagonal := EnemyStateLogic.aim(Vector2.ZERO, Vector2(30, 40))
+	assert_almost_eq(diagonal.length(), 1.0, 0.0001, "always a unit vector")
+	assert_almost_eq(diagonal.x, 0.6, 0.0001)
+
+
+func test_the_aim_at_the_same_spot_falls_back_to_the_facing_default() -> void:
+	assert_eq(EnemyStateLogic.aim(Vector2(5, 5), Vector2(5, 5)), Vector2.DOWN)
+
+
+func test_the_rush_velocity_rides_the_pattern_speed_and_the_time_scale() -> void:
+	var v := EnemyStateLogic.rush_velocity(Vector2(1, 0), 200.0, 0.5)
+	assert_almost_eq(v.x, 100.0, 0.0001, "the scale halves the speed")
+	assert_almost_eq(v.y, 0.0, 0.0001)
+
+
+func test_the_post_attack_cooldown_is_a_named_constant() -> void:
+	assert_eq(EnemyStateLogic.ATTACK_COOLDOWN_SECONDS, 0.2)
+
+
 # --- HitStun: the knockback maths --------------------------------------------------
 
 
@@ -160,6 +185,39 @@ func test_chase_hands_over_to_attack_in_the_trigger_range() -> void:
 	assert_eq(_enemy.next_attack, pattern)
 
 
+func test_the_attack_state_aims_through_the_pure_logic() -> void:
+	NetworkManager.players[1] = _player
+	var pattern: AttackPattern = _enemy.data.attacks[0]
+	_player.global_position = Vector2(pattern.trigger_range * 0.5, 0)
+	_enemy.machine.physics_update(FRAME)
+	_step(FRAME)
+	assert_eq(_enemy.machine.current_name(), &"Attack")
+	var expected := EnemyStateLogic.aim(_enemy.global_position, _player.global_position)
+	assert_almost_eq(_enemy.aim_dir.x, expected.x, 0.0001, "the windup aims along the pure aim")
+	assert_almost_eq(_enemy.aim_dir.y, expected.y, 0.0001)
+
+
+func test_the_attack_state_sets_its_cooldown_through_the_pure_constant() -> void:
+	NetworkManager.players[1] = _player
+	var pattern: AttackPattern = _enemy.data.attacks[0]
+	_player.global_position = Vector2(pattern.trigger_range * 0.5, 0)
+	_enemy.machine.physics_update(FRAME)
+	_step(FRAME)
+	assert_eq(_enemy.machine.current_name(), &"Attack")
+	# Run the attack out one frame at a time and catch the frame it hands back
+	# to the Chase: that is the frame the pure cooldown is set.
+	var cooldown_at_handback := -1.0
+	var guard := 0
+	while guard < 600 and cooldown_at_handback < 0.0:
+		_enemy._physics_process(FRAME)
+		_enemy.machine.physics_update(FRAME)
+		guard += 1
+		if _enemy.machine.current_name() == &"Chase":
+			cooldown_at_handback = _enemy.attack_cooldown_left
+	assert_true(cooldown_at_handback >= 0.0, "the attack ran out inside the guard")
+	assert_almost_eq(cooldown_at_handback, EnemyStateLogic.ATTACK_COOLDOWN_SECONDS, 0.0001)
+
+
 func test_chase_returns_to_idle_when_the_target_vanishes() -> void:
 	NetworkManager.players[1] = _player
 	_player.global_position = Vector2(100, 0)
@@ -181,6 +239,21 @@ func test_a_hit_enters_hit_stun_and_returns_to_chase() -> void:
 	_step(0.3)
 	assert_eq(_enemy.machine.current_name(), &"Chase", "the pure clock ran the stun out")
 	assert_lte(_enemy.hit_stun_left, 0.0)
+
+
+func test_the_enemy_scene_decays_knockback_through_the_pure_maths() -> void:
+	NetworkManager.players[1] = _player
+	_player.global_position = _out_of_trigger_position()
+	_enemy.machine.physics_update(FRAME)
+	_enemy.apply_knockback(Vector2(120, 0), 0.2)
+	var start: Vector2 = _enemy.knockback_velocity
+	assert_true(start.length() > 0.0, "the impulse took (resist and all)")
+	var expected: Vector2 = start
+	for step_index: int in range(20):
+		expected = EnemyStateLogic.decayed_knockback(expected, _enemy._knockback_decel, FRAME)
+		_enemy.decay_knockback(FRAME)
+		assert_almost_eq(_enemy.knockback_velocity.x, expected.x, 0.0001, "the scene's decay is the pure decay, step for step")
+	assert_almost_eq(_enemy.knockback_velocity.length(), 0.0, 0.0001, "the impulse is dead at the pure decay time")
 
 
 func test_the_stagger_state_runs_its_data_seconds_and_refills_poise() -> void:

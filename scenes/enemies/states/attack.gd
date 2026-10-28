@@ -8,9 +8,14 @@ extends EnemyState
 ## combat-core `AttackDriver`: the hitbox arms only from its `active_started`,
 ## which only a windup that ran to completion — on screen for at least one
 ## frame — can fire, and the driver is disarmed on every re-entry, so a
-## reused, interrupted or hitched attack cannot hit without a telegraph.
+## reused, interrupted or hitched attack cannot hit without a telegraph. The
+## decisions around it — the aim direction, the rush velocity and the
+## post-attack cooldown — are the pure `EnemyStateLogic`; this state applies
+## them to the Enemy.
 
 const MELEE_ARC_STEPS: int = 6
+## A rush's live hitbox reaches this far past the enemy's body radius.
+const RUSH_HITBOX_PADDING: float = 6.0
 
 var _driver := AttackDriver.new()
 
@@ -35,7 +40,7 @@ func enter(_from: StringName) -> void:
 		return
 	_dir = Vector2.DOWN
 	if is_instance_valid(enemy.target):
-		_dir = (enemy.target.global_position - enemy.global_position).normalized()
+		_dir = EnemyStateLogic.aim(enemy.global_position, enemy.target.global_position)
 	enemy.aim_dir = _dir
 	enemy.telegraph.configure(_pattern, _dir)
 	enemy.telegraph_progress = 0.0
@@ -63,7 +68,7 @@ func physics_update(delta: float) -> void:
 			enemy.telegraph_progress = _driver.telegraph_progress()
 		AttackDriver.Phase.ACTIVE:
 			if _pattern.kind == AttackPattern.Kind.RUSH:
-				enemy.velocity = _dir * _pattern.speed * machine.effective_scale
+				enemy.velocity = EnemyStateLogic.rush_velocity(_dir, _pattern.speed, machine.effective_scale)
 				enemy.move_and_slide()
 			else:
 				enemy.stop_moving(delta)
@@ -74,7 +79,7 @@ func physics_update(delta: float) -> void:
 	# The frame the clock runs out is the frame the state hands back to the
 	# chase, after the recovery behaviour above has run.
 	if _driver.phase() == AttackDriver.Phase.DONE:
-		enemy.attack_cooldown_left = 0.2
+		enemy.attack_cooldown_left = EnemyStateLogic.ATTACK_COOLDOWN_SECONDS
 		machine.change_to(&"Chase")
 
 
@@ -90,7 +95,7 @@ func _on_driver_active() -> void:
 			enemy.hitbox.active = true
 		AttackPattern.Kind.RUSH:
 			var circle := CircleShape2D.new()
-			circle.radius = enemy.data.radius + 6.0
+			circle.radius = enemy.data.radius + RUSH_HITBOX_PADDING
 			enemy.hitbox_shape.shape = circle
 			enemy.hitbox.rotation = 0.0
 			enemy.hitbox.template = hit

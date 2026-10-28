@@ -8,8 +8,9 @@ extends RefCounted
 ## no tree access, no physics, no clock of its own. The scene states under
 ## `scenes/enemies/states/` call these and apply the results (velocity,
 ## `move_and_slide`, `machine.change_to`), so the scene stays wiring and this
-## file is the one source of the decisions. The Attack state's phase timing is
-## the combat-core `AttackDriver` (`scripts/combat/attack_driver.gd`); the
+## file is the one source of the decisions — the Attack state's aim, rush
+## speed and post-attack cooldown included; its phase timing is the
+## combat-core `AttackDriver` (`scripts/combat/attack_driver.gd`), and the
 ## target choice is `Targeting` (`scripts/enemies/targeting.gd`). Movement is
 ## time-scaled by the caller: the state machine passes the TimeManager-scaled
 ## delta, and the enemy's own timers run on `TimeManager.scale_for(self)` —
@@ -25,6 +26,9 @@ const KNOCKBACK_DECAY_SECONDS: float = 0.2
 const STAGGER_DAMAGE_TAKEN: float = 1.25
 ## Stagger length when the enemy has no data to read one from.
 const DEFAULT_STAGGER_SECONDS: float = 0.8
+## Cooldown an enemy sets when its attack runs out, which the Chase gate then
+## spends before the next one.
+const ATTACK_COOLDOWN_SECONDS: float = 0.2
 
 ## One timer step: `left` after `delta`, and whether the timer ran out this
 ## step (equal counts as out). The HitStun and Stagger clocks, the Idle scan
@@ -92,3 +96,17 @@ static func knockback_after_wall(velocity: Vector2, on_wall: bool) -> Vector2:
 ## default when the enemy has no data (`has_data` false).
 static func stagger_length(has_data: bool, data_seconds: float) -> float:
 	return data_seconds if has_data else DEFAULT_STAGGER_SECONDS
+
+
+## The aim direction toward a target position: normalized, or Vector2.DOWN
+## (the enemy's facing default) when the target sits on the same spot. The
+## Attack state's windup and its hit both run along this.
+static func aim(from: Vector2, to: Vector2) -> Vector2:
+	var offset := to - from
+	return Vector2.DOWN if offset.length_squared() <= 0.0 else offset.normalized()
+
+
+## A rush attack's velocity for one frame: the pattern speed along the aim,
+## time-scaled by the caller (the state machine's effective scale).
+static func rush_velocity(dir: Vector2, speed: float, scale: float) -> Vector2:
+	return dir * speed * scale

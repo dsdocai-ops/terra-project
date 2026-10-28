@@ -216,16 +216,33 @@ func _draw() -> void:
 
 ## The target to chase (SPEC-enemies-ai "Targeting"): the pure `Targeting.pick`
 ## over the players — a taunt overrides the distance, an `untargetable` player
-## is invisible (aggro drops when that leaves nothing), the current target is
-## kept while it stays near the nearest. Null when nothing is targetable.
-## Host only.
+## is invisible (aggro drops when that leaves nothing), the spread joins the
+## player the pack is not focused on, and the current target is kept while it
+## stays near the nearest. Null when nothing is targetable. Host only.
 func pick_target() -> Node2D:
 	var candidates: Array[Targeting.Candidate] = []
 	for player: Player in NetworkManager.players.values():
 		if is_instance_valid(player):
 			candidates.append(Targeting.candidate(player))
+	_count_targeters(candidates)
 	var picked := Targeting.pick(global_position, target, candidates)
 	return picked.node if picked != null else null
+
+
+## The spread's load: how many enemies of the pack currently hold each
+## candidate, so a fresh pick joins the player the pack is not already focused
+## on. This enemy's own hold does not count — it is the hysteresis, not load.
+## Host only.
+func _count_targeters(candidates: Array[Targeting.Candidate]) -> void:
+	for c: Targeting.Candidate in candidates:
+		c.targeters = 0
+	for node: Node in get_tree().get_nodes_in_group(GROUP):
+		var enemy := node as Enemy
+		if enemy == null or enemy == self or not is_instance_valid(enemy.target):
+			continue
+		for c: Targeting.Candidate in candidates:
+			if c.node == enemy.target:
+				c.targeters += 1
 
 
 ## Steers toward `point` along the floor's A* path (direct when there is no
@@ -371,7 +388,7 @@ func _shove(scaled_delta: float) -> void:
 
 
 func decay_knockback(delta: float) -> void:
-	knockback_velocity = knockback_velocity.move_toward(Vector2.ZERO, _knockback_decel * delta)
+	knockback_velocity = EnemyStateLogic.decayed_knockback(knockback_velocity, _knockback_decel, delta)
 
 
 func _on_damaged(_hit: HitInfo) -> void:

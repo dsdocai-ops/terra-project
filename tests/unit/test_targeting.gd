@@ -1,8 +1,9 @@
 extends GutTest
 ## The pure `Targeting.pick` (SPEC-enemies-ai "Targeting"): nearest by
 ## default, a taunt overrides, an untargetable candidate is invisible and
-## empty-handed picks drop aggro, and the current target is kept while it
-## stays within the spread window of the nearest. The closing cases run the
+## empty-handed picks drop aggro, the spread joins the player the pack is not
+## focused on (fewest `targeters` inside the spread window), and the current
+## target is kept while it stays within that window. The closing cases run the
 ## real `Enemy.pick_target` through `Targeting` with real players in
 ## `NetworkManager.players`. Owned by enemies-ai.
 
@@ -108,6 +109,60 @@ func test_a_taunt_beats_the_spread() -> void:
 	assert_eq(picked.position, Vector2(400, 0), "taunting wins unless taunting")
 
 
+# --- spread aggro: the pack's load -----------------------------------------------
+
+
+func test_a_fresh_enemy_joins_the_player_the_pack_is_not_focused_on() -> void:
+	var focused := _c(Vector2(100, 0))
+	focused.targeters = 2
+	var open := _c(Vector2(110, 0))
+	var picked := Targeting.pick(ORIGIN, null, [focused, open])
+	assert_eq(picked, open, "the open player inside the spread window wins over the focused nearer one")
+
+
+func test_an_enemy_leaves_a_focused_current_target_for_the_open_one() -> void:
+	var current: Node2D = autofree(Node2D.new())
+	var held := _c(Vector2(100, 0), true, false, false, current)
+	held.targeters = 1
+	var open := _c(Vector2(115, 0))
+	var picked := Targeting.pick(ORIGIN, current, [held, open])
+	assert_eq(picked, open, "another enemy joined the current target: switch to the open one")
+
+
+func test_the_current_target_holds_when_nobody_else_carries_it() -> void:
+	var current: Node2D = autofree(Node2D.new())
+	var nearer := _c(Vector2(100, 0))
+	nearer.targeters = 1
+	var held := _c(Vector2(118, 0), true, false, false, current)
+	var picked := Targeting.pick(ORIGIN, current, [nearer, held])
+	assert_eq(picked, held, "the other player is focused instead: keep the current one")
+
+
+func test_the_load_only_competes_inside_the_spread_window() -> void:
+	var focused := _c(Vector2(100, 0))
+	focused.targeters = 3
+	var open := _c(Vector2(200, 0))
+	var picked := Targeting.pick(ORIGIN, null, [focused, open])
+	assert_eq(picked, focused, "the open player is 2x the nearest: outside the window, the focused nearest wins")
+
+
+func test_an_equal_load_breaks_the_tie_by_distance() -> void:
+	var a := _c(Vector2(100, 0))
+	a.targeters = 1
+	var b := _c(Vector2(110, 0))
+	b.targeters = 1
+	var picked := Targeting.pick(ORIGIN, null, [b, a])
+	assert_eq(picked, a, "same load: the nearer one wins")
+
+
+func test_a_taunt_beats_the_pack_load() -> void:
+	var focused := _c(Vector2(100, 0))
+	focused.targeters = 5
+	var taunted := _c(Vector2(400, 0), true, false, true)
+	var picked := Targeting.pick(ORIGIN, null, [focused, taunted])
+	assert_eq(picked, taunted, "the spec: one player is not focused unless taunting")
+
+
 # --- the candidate adapter --------------------------------------------------------
 
 
@@ -209,3 +264,23 @@ func test_pick_target_keeps_its_current_target_inside_the_spread_window() -> voi
 	_player_b.global_position = Vector2(118, 0)
 	_enemy.target = _player_b
 	assert_eq(_enemy.pick_target(), _player_b, "the current target holds against a mildly nearer player")
+
+
+func test_pick_target_spreads_the_pack_across_the_players() -> void:
+	_wire_players()
+	_player_a.global_position = Vector2(100, 0)
+	_player_b.global_position = Vector2(110, 0)
+	var other := (load(ENEMY_SCENE) as PackedScene).instantiate() as Enemy
+	assert_true(other.setup(&"hollow_miner"))
+	add_child_autofree(other)
+	other.global_position = Vector2(90, 0)
+	other.target = _player_a
+	assert_eq(_enemy.pick_target(), _player_b, "the pack is focused on player_a: the fresh enemy joins player_b")
+
+
+func test_pick_target_does_not_count_its_own_hold_as_load() -> void:
+	_wire_players()
+	_player_a.global_position = Vector2(100, 0)
+	_player_b.global_position = Vector2(110, 0)
+	_enemy.target = _player_a
+	assert_eq(_enemy.pick_target(), _player_a, "only this enemy holds player_a: the hysteresis keeps it")
