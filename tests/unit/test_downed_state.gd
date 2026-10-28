@@ -8,8 +8,8 @@ extends GutTest
 ##
 ## The machine and the combat timers are stepped by hand and the bus events
 ## are recorded by named methods — no lambda connects, no awaits. The clock's
-## own numbers are `test_downed.gd`'s; the revive hold's wiring is G13b1 and
-## G13b2. The host ticks the clock from `Player._tick_combat_timers` because a
+## own numbers are `test_downed_clock.gd`'s; the revive hold's wiring is G13b1
+## and G13b2. The host ticks the clock from `Player._tick_combat_timers` because a
 ## downed player's machine is stopped (`Player.simulates` is false — pinned by
 ## test_player_sync.gd), so the tick is proven through the timer path too.
 
