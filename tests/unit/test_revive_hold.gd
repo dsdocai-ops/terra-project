@@ -161,6 +161,33 @@ func test_in_range_reads_the_revive_range_at_both_edges() -> void:
 	assert_false(_hold.in_range(), "a step past it is out")
 
 
+func test_in_range_measures_global_positions_like_the_query_does() -> void:
+	# `find_target`'s physics query filters on global positions — the space
+	# knows no parents — so `in_range` reads the same measure. Here the pair is
+	# exactly 48 px apart in the world but 148 px apart in local coordinates,
+	# because the two players sit under parents at different origins.
+	var reviver: Player = _scene.instantiate() as Player
+	var reviver_parent := Node2D.new()
+	reviver_parent.position = Vector2(100.0, 0.0)
+	add_child_autofree(reviver_parent)
+	reviver_parent.add_child(reviver)
+	autofree(reviver)
+	reviver.peer_id = 0
+	reviver.position = Vector2.ZERO
+	var target: Player = _scene.instantiate() as Player
+	add_child_autofree(target)
+	target.peer_id = 0
+	target.position = Vector2(100.0 + ReviveHold.REVIVE_RANGE, 0.0)
+	target.is_downed = true
+	var hold := ReviveHold.new()
+	autofree(hold)
+	assert_true(hold.bind(reviver, target), "a valid pair binds")
+	assert_almost_eq(reviver.global_position.distance_to(target.global_position),
+		ReviveHold.REVIVE_RANGE, 0.001, "the world distance is the 48 px")
+	assert_true(hold.in_range(),
+		"in_range reads the world distance, like the query that found the target")
+
+
 # --- start_hold and release_hold ----------------------------------------------
 
 
@@ -430,3 +457,74 @@ func test_dying_drops_the_interactable() -> void:
 	target.is_dead = true
 	await wait_physics_frames(REGISTRATION_FRAMES)
 	assert_null(_downed_interactable_of(target), "Dead is Dead for the floor: no offer")
+
+
+# --- the live prompt's reach (lane B's InteractPrompt, read through, not edited)
+# The downed Interactable sits on layer 6, the one layer both the hold's query
+# and `scenes/ui/interact_prompt.gd` scan — the component cannot be visible to
+# one and hidden from the other. So the prompt offers the revive at its own
+# 56 px REACH, the press edge on that offer does nothing (a hold needs the
+# held state, which the press cannot carry), and a farther interactable is
+# hidden behind the downed body while it is nearer. These tests pin that live
+# overlap as it stands; deciding what the prompt should do about it is the
+# lane-B decision recorded as BLOCKED-ASK in the run log.
+
+
+func test_the_prompts_56_px_reach_offers_a_teammate_the_holds_48_cannot() -> void:
+	# 52 px is inside the prompt's REACH and outside the hold's REVIVE_RANGE:
+	# the band where the prompt shows "[F] Revive" and the hold cannot yet run.
+	var pair := _scene_pair(52.0)
+	var reviver := pair[0]
+	var target := pair[1]
+	_down_in_tree(target)
+	await wait_physics_frames(REGISTRATION_FRAMES)
+	var component := _downed_interactable_of(target)
+	assert_not_null(component)
+	assert_eq(InteractPrompt.nearest(reviver, reviver.global_position), component,
+		"the prompt's own query offers the downed teammate at 52 px")
+	assert_eq(ReviveHold.find_target(reviver), null,
+		"while the hold's 48 px reach cannot run on the same offer")
+
+
+func test_the_prompt_press_on_the_revive_offer_does_nothing_yet() -> void:
+	# The prompt's press path is `_target.call(&"interact", player)` on the
+	# press edge. The base component's `interact` only emits `interacted`, and
+	# nothing is connected — so the press is a no-op: the teammate stays down
+	# with an untouched clock. (The revive runs on the held action, G13b2b's
+	# routing; the press handling is the lane-B decision.)
+	var pair := _scene_pair(45.0)
+	var reviver := pair[0]
+	var target := pair[1]
+	_down_in_tree(target)
+	await wait_physics_frames(REGISTRATION_FRAMES)
+	var component := _downed_interactable_of(target)
+	assert_not_null(component)
+	component.interact(reviver)
+	assert_true(target.is_downed, "the press stood nobody up")
+	assert_false(target.downed_clock.holding(), "and started no hold")
+	assert_eq(target.downed_clock.hold_banked, 0.0, "and banked nothing")
+
+
+func test_the_downed_body_hides_a_farther_interactable_from_the_prompt() -> void:
+	# The prompt takes the single nearest usable area: with the downed body at
+	# 25 px and a chest at 50 px, both inside the 56 px REACH, the chest is
+	# not what the prompt offers. Pinned as live behaviour for the lane-B
+	# decision; the hold's own duck-typed-in-front shape is the mirror case.
+	var pair := _scene_pair(25.0)
+	var reviver := pair[0]
+	var target := pair[1]
+	_down_in_tree(target)
+	var chest: Area2D = InteractableStub.new()
+	chest.set(&"prompt_text", "Open")
+	chest.collision_layer = Interactable.INTERACTABLE_LAYER
+	chest.position = Vector2(50.0, 0.0)
+	var shape := CollisionShape2D.new()
+	var circle := CircleShape2D.new()
+	circle.radius = 10.0
+	shape.shape = circle
+	chest.add_child(shape)
+	add_child_autofree(chest)
+	await wait_physics_frames(REGISTRATION_FRAMES)
+	assert_eq(InteractPrompt.nearest(reviver, reviver.global_position),
+		_downed_interactable_of(target),
+		"the prompt offers the downed body, not the chest behind it")

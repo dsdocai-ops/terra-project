@@ -15,6 +15,13 @@ extends RefCounted
 ## rule takes `held` as a plain bool — the input half (G13b2b) routes the live
 ## `interact` action into it, so the whole driver is testable with no input
 ## event.
+##
+## Known limit, deliberate until W3-B4: the driver runs on every peer's local
+## player, but only the host's `tick_downed` ticks a clock. A client's hold
+## banks onto the client's own copy of the teammate's clock, which nothing
+## ticks there — a client-side hold looks live and can never reach
+## `hold_complete`, so it emits no `completed` and stands nobody up. The
+## client route (the local hold feeding a revive request) is W3-B4's.
 
 ## Emitted once per completed hold: the teammate the hold stood up and the
 ## reviver that held it. The revive itself (the 40% restore, the broadcast to
@@ -90,11 +97,13 @@ func is_bound() -> bool:
 	return reviver != null and target != null
 
 
-## True while the reviver stands within REVIVE_RANGE of the target.
+## True while the reviver stands within REVIVE_RANGE of the target. Global
+## positions, the same measure `find_target`'s query filters on — plain
+## `position` agrees only while both players' parent sits at the origin.
 func in_range() -> bool:
 	if not is_bound():
 		return false
-	return reviver.position.distance_to(target.position) <= REVIVE_RANGE
+	return reviver.global_position.distance_to(target.global_position) <= REVIVE_RANGE
 
 
 ## The reviver starts holding: the target's clock banks against the reviver's

@@ -597,6 +597,9 @@ func _tick_combat_timers(delta: float) -> void:
 		# The local revive hold (W3-A5): the reviver's own machine reads the
 		# held `interact` action every frame — the prompt's press edge cannot
 		# carry a hold — and drives the downed teammate's clock through it.
+		# Only the host's clock is ticked (`tick_downed` above), so a client's
+		# local hold banks onto a clock nothing ticks there and cannot complete
+		# until W3-B4 wires the client route.
 		revive_hold.step(self, Input.is_action_pressed(&"interact"))
 
 
