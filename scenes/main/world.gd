@@ -40,6 +40,7 @@ func _ready() -> void:
 	NetworkManager.floor_layout_ready.connect(_on_floor_layout_ready)
 	NetworkManager.player_joined.connect(_on_player_joined)
 	_build_combat_feedback()
+	_build_projectile_pool()
 	var prompt := InteractPrompt.new()
 	prompt.name = "InteractPrompt"
 	add_child(prompt)
@@ -56,6 +57,17 @@ func _build_combat_feedback() -> void:
 	combat_feedback.name = "CombatFeedback"
 	add_child(combat_feedback)
 	combat_feedback.setup(fx, camera)
+
+
+## combat-core's projectile pool (W2-A6): made here, not in world.tscn, so the
+## shared scene stays untouched (the CombatFeedback pattern). It warms the base
+## projectile scene's set at load and flies acquired bolts out of the Entities
+## container; acquire and release are host-side node recycling, nothing on the
+## pool is replicated.
+func _build_projectile_pool() -> void:
+	var pool := ProjectilePool.attach(self)
+	pool.spawn_root = entities
+	pool.warm(load(ProjectilePool.COMMON_SCENE_PATH) as PackedScene)
 
 
 ## Clears both layers, paints a `size` x `size` floor from (0, 0) and a one

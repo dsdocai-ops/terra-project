@@ -5,8 +5,10 @@ extends Hitbox
 ## Owned by combat-core. Sync: the host owns flight and damage; StateSync
 ## replicates `synced_position`, `synced_velocity`, `owner_peer_id` and
 ## `hostile`, and clients only present that pose. The flight math itself lives
-## in the pure `ProjectileFlight` core; the pool that recycles these nodes is
-## the next perf pass — bolts are spawned and freed through ProjectileSpawner.
+## in the pure `ProjectileFlight` core, and the `ProjectilePool` recycles the
+## nodes on the host. Replicated bolts still spawn and despawn through
+## ProjectileSpawner (W2-B3), whose despawn frees the client copies — so a
+## pooled instance is never handed to it.
 ## Placeholder art: a small coloured diamond.
 
 const WALL_MASK: int = 1
@@ -36,9 +38,17 @@ var lifetime_seconds: float = ProjectileFlight.NO_LIFETIME
 ## the projectile back at the other team (SPEC-combat-core `reflectable`).
 var reflectable: bool = false
 
+## combat-core's pool when this projectile is pooled; null flies free and dies
+## with the old queue_free.
+var pool: ProjectilePool = null
+
 var _pierce_left: int = 0
 var _flight: ProjectileFlight = null
 var _body: Polygon2D = null
+## Set the frame the projectile retires: the hand-back to the pool is deferred,
+## so until it lands no further frame may step a dead projectile. The pool
+## clears it on acquire.
+var _retired: bool = false
 
 
 func _ready() -> void:
@@ -122,11 +132,27 @@ func flight_velocity() -> Vector2:
 
 
 func _physics_process(delta: float) -> void:
+	if _retired:
+		return
 	if not multiplayer.is_server():
 		position = synced_position
 		return
 	_ensure_flight()
 	_host_step(delta)
+
+
+## End of flight — a wall with no bounce left, a spent budget, pierce run out:
+## a pooled projectile hands itself back to its pool (deferred, because this
+## runs inside physics), and only an unpooled one dies with queue_free. The
+## retirement lands this frame either way, so nothing dead keeps flying.
+func _retire() -> void:
+	if _retired:
+		return
+	_retired = true
+	if pool != null and is_instance_valid(pool):
+		pool.release_deferred(self)
+	else:
+		queue_free()
 
 
 ## Host. One frame of flight: steer, step, die on an empty budget, bounce off
@@ -143,7 +169,7 @@ func _host_step(delta: float) -> void:
 		var wall: Dictionary = _wall_normal_ahead(step)
 		if not wall.is_empty():
 			if not _flight.hit_wall(wall["normal"], delta, time_scale):
-				queue_free()
+				_retire()
 				return
 			# The bounce spends this frame turning; the next step flies out.
 			# The frame's time still passes (`hit_wall` burns the lifetime),
@@ -153,7 +179,7 @@ func _host_step(delta: float) -> void:
 	if not bounced:
 		_flight.commit(step, delta, time_scale)
 	if _flight.is_expired():
-		queue_free()
+		_retire()
 		return
 	if step != Vector2.ZERO:
 		position += step
@@ -190,7 +216,7 @@ func _ensure_flight() -> void:
 
 func _on_hit_connected(_hurtbox: Hurtbox, _hit: HitInfo) -> void:
 	if _pierce_left <= 0:
-		queue_free()
+		_retire()
 		return
 	_pierce_left -= 1
 
