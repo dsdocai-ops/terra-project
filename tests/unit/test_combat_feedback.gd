@@ -262,7 +262,39 @@ func test_the_rpc_is_unreliable_and_called_locally() -> void:
 
 func test_a_missing_target_is_ignored() -> void:
 	_feedback.play_feedback({"target_path": NodePath("Nope"), "final_damage": 5})
-	assert_eq(_fx.get_child_count(), 0)
+	# The pool node now also sits under FX, so count spawned feedback, not children.
+	var spawned: int = 0
+	for child: Node in _fx.get_children():
+		if child is DamageNumber or child is HitSpark:
+			spawned += 1
+	assert_eq(spawned, 0, "nothing spawned for a missing target")
+
+
+# --- damage number pool -------------------------------------------------------------------
+
+func test_setup_attaches_the_pool_under_the_fx_root() -> void:
+	assert_not_null(_feedback.number_pool, "setup attached it")
+	assert_same(_feedback.number_pool.get_parent(), _fx, "it lives in World/FX")
+
+
+func test_feedback_numbers_reuse_the_same_label_across_hits() -> void:
+	var enemy: Enemy = _enemy()
+	_feedback.play_feedback(_feedback.make_payload(_hit(null, enemy, false, false, 4), enemy))
+	var first: DamageNumber = null
+	for child: Node in _fx.get_children():
+		if child is DamageNumber:
+			first = child
+	assert_not_null(first, "the first hit spawned one")
+	(first as DamageNumber)._finish()
+	var warm: int = _feedback.number_pool.created_count
+	_feedback.play_feedback(_feedback.make_payload(_hit(null, enemy, false, false, 6), enemy))
+	var second: DamageNumber = null
+	for child: Node in _fx.get_children():
+		if child is DamageNumber:
+			second = child
+	assert_same(second, first, "the second hit reused the pooled label")
+	assert_eq(second.text, "6")
+	assert_eq(_feedback.number_pool.created_count, warm, "and no new label was made")
 
 
 # --- flash -----------------------------------------------------------------------------------

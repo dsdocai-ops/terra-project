@@ -28,6 +28,9 @@ const PERFECT_DODGE_SFX: StringName = &"perfect_dodge"
 var fx_root: Node = null
 ## Where shake goes. Null skips shake (tests, headless).
 var camera: GameCamera = null
+## The label pool under `fx_root` that every number goes through.
+## Null until setup runs.
+var number_pool: DamageNumberPool = null
 
 
 func _ready() -> void:
@@ -38,6 +41,7 @@ func _ready() -> void:
 func setup(p_fx_root: Node, p_camera: GameCamera) -> void:
 	fx_root = p_fx_root
 	camera = p_camera
+	number_pool = DamageNumberPool.attach(p_fx_root)
 
 
 # --- host: decide hit-stop, then replicate ----------------------------------------
@@ -150,10 +154,10 @@ func play_feedback(payload: Dictionary) -> void:
 	var staggered: bool = payload.get("staggered", false)
 	var on_player: bool = target is Player
 	if fx_root != null:
-		DamageNumber.spawn(fx_root, target.global_position - Vector2(0.0, CombatFeedbackConstants.NUMBER_LIFT_PX), payload.get("final_damage", 0), crit, on_player)
+		_spawn_number(target.global_position - Vector2(0.0, CombatFeedbackConstants.NUMBER_LIFT_PX), payload.get("final_damage", 0), crit, on_player)
 		HitSpark.spawn(fx_root, payload.get("point", target.global_position), heavy or staggered)
 		if staggered:
-			DamageNumber.spawn_text(fx_root, target.global_position - Vector2(0.0, CombatFeedbackConstants.NUMBER_LIFT_PX * 1.8), STAGGER_TEXT)
+			_spawn_word(target.global_position - Vector2(0.0, CombatFeedbackConstants.NUMBER_LIFT_PX * 1.8), STAGGER_TEXT)
 	var flash: HitFlash = target.get_node_or_null("HitFlash") as HitFlash
 	if flash != null:
 		flash.flash(_flash_color(crit, on_player), CombatFeedbackConstants.FLASH_STAGGER_FRAMES if staggered else CombatFeedbackConstants.FLASH_FRAMES)
@@ -165,6 +169,22 @@ static func _flash_color(crit: bool, on_player: bool) -> Color:
 	if on_player:
 		return HitFlash.RED
 	return HitFlash.GOLD if crit else HitFlash.WHITE
+
+
+## Numbers go through the World/FX pool when there is one; the direct spawn
+## keeps standalone uses (no setup) working.
+func _spawn_number(at: Vector2, amount: int, crit: bool, on_player: bool) -> void:
+	if number_pool != null:
+		number_pool.spawn_number(at, amount, crit, on_player)
+	else:
+		DamageNumber.spawn(fx_root, at, amount, crit, on_player)
+
+
+func _spawn_word(at: Vector2, word: String) -> void:
+	if number_pool != null:
+		number_pool.spawn_text(at, word)
+	else:
+		DamageNumber.spawn_text(fx_root, at, word)
 
 
 ## Shake is local: a hit on another player never shakes this camera.
