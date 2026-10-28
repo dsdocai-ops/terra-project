@@ -5,8 +5,9 @@ extends RefCounted
 ## `generate()` on the host's seed and the `layout_hash` assertion compares.
 ##
 ## All randomness comes from one RandomNumberGenerator seeded with
-## `layout_seed(run_seed, floor_index)`: no global rolls, no unseeded shuffles.
-## Populators run on the host after the live `Floor` paints.
+## `layout_seed(run_seed, floor_index)`: every roll and every ordering draw
+## goes through that one RNG. Populators run on the host after the live
+## `Floor` paints.
 
 enum RoomType {
 	START, EXIT, COMBAT, ELITE_COMBAT, TREASURE, SHRINE, RUNE, ANVIL, SHOP,
@@ -21,7 +22,8 @@ const LOCKING_TYPES: Array[int] = [RoomType.COMBAT, RoomType.ELITE_COMBAT, RoomT
 const GRID: int = 96
 const MIN_ROOMS: int = 8
 const MAX_ROOMS: int = 14
-const ROOM_GAP: int = 4
+## Rejection-sampling clearance (SPEC-floor-generation step 2: a 2-tile gap).
+const ROOM_GAP: int = 2
 const EDGE_MARGIN: int = 3
 const CORRIDOR_HALF: int = 1
 const MAX_FLOOR_ATTEMPTS: int = 20
@@ -326,7 +328,7 @@ static func _assign_types(rng: RandomNumberGenerator, adjacency: Array[PackedInt
 			break
 		var chosen: int = 0
 		if type == RoomType.TREASURE:
-			# A dead end suits a treasure room; the shuffle breaks ties.
+			# A dead end suits a treasure room; the Fisher-Yates draw breaks ties.
 			for slot: int in pool.size():
 				if adjacency[pool[slot]].size() < adjacency[pool[chosen]].size():
 					chosen = slot

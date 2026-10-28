@@ -17,13 +17,19 @@ func test_rooms_never_overlap_and_keep_the_gap() -> void:
 				assert_false(grown.intersects(layout.rooms[b].rect), "seed %d rooms %d/%d too close" % [run_seed, a, b])
 
 
-func test_rooms_are_at_least_the_biome_minimum() -> void:
+func test_rooms_stay_inside_the_spec_size_range() -> void:
+	# Re-pinned to the SPEC-floor-generation defaults (9x7..17x13): commit
+	# 7403477 had enlarged the authored range to 12x10..22x16 with no recorded
+	# reason, and the W3-A1 acceptance sizes are the spec's.
 	var biome: BiomeData = BiomeData.for_index(1)
+	assert_eq(biome.room_size_min, Vector2i(9, 7), "the authored biome uses the spec minimum")
+	assert_eq(biome.room_size_max, Vector2i(17, 13), "the authored biome uses the spec maximum")
 	for run_seed: int in SEEDS:
 		for room: RoomSpec in _layout(run_seed).rooms:
-			assert_gte(room.rect.size.x, 9)
-			assert_gte(room.rect.size.y, 7)
-	assert_gte(biome.room_size_min.x, 12, "rooms were enlarged")
+			assert_gte(room.rect.size.x, biome.room_size_min.x)
+			assert_gte(room.rect.size.y, biome.room_size_min.y)
+			assert_lte(room.rect.size.x, biome.room_size_max.x)
+			assert_lte(room.rect.size.y, biome.room_size_max.y)
 
 
 func test_corridor_turns_have_a_full_corner() -> void:
