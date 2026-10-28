@@ -30,10 +30,22 @@ const DEFAULT_WEAPON_PATHS: Array[String] = [
 	"res://data/weapons/crossbow.tres",
 ]
 const PROJECTILE_ID: StringName = &"bolt"
+## Where the per-weapon attack node scenes live (SPEC-weapons data model,
+## `scenes/player/weapons/<id>.tscn`). A weapon without a scene there runs the
+## no-op base hooks.
+const ATTACK_SCENE_DIR: String = "res://scenes/player/weapons/"
 
 var slots: Array[WeaponData] = []
 var active_slot: int = 0
 var combo_step: int = 0
+## The 0-based light combo step now playing: `take_light` records it before the
+## swing runs and the attack hook passes it through.
+var last_light_step: int = 0
+
+## One attack node (SPEC-weapons `WeaponAttack`) per weapon id, made on first
+## use and kept for the run; the active weapon's entry is what `begin_swing`
+## routes through.
+var _attack_nodes: Dictionary = {}
 
 ## One hitbox shape per AttackSpec and charge bucket, built the first time it is
 ## swung and reused after that: swinging allocates no shapes once warm. (Per
@@ -140,7 +152,9 @@ func take_light() -> AttackSpec:
 	var weapon: WeaponData = active_weapon()
 	if weapon == null or weapon.light_combo.is_empty():
 		return null
-	var spec: AttackSpec = weapon.light_combo[combo_step % weapon.light_combo.size()]
+	var step: int = combo_step % weapon.light_combo.size()
+	last_light_step = step
+	var spec: AttackSpec = weapon.light_combo[step]
 	combo_step = weapon.next_step(combo_step)
 	_combo_timer = 0.0
 	return spec
@@ -228,6 +242,7 @@ func build_hit(spec: AttackSpec, dir: Vector2, charge: float, heavy: bool, perfe
 ## when the window closes.
 func begin_swing(spec: AttackSpec, dir: Vector2, charge: float, heavy: bool, perfect: bool = false) -> void:
 	var hit: HitInfo = build_hit(spec, dir, charge, heavy, perfect)
+	_run_attack_hook(spec, dir, charge, heavy)
 	if spec.shape == AttackSpec.Shape.PROJECTILE:
 		_fire_projectile(spec, dir, hit)
 		return
@@ -244,6 +259,51 @@ func end_swing() -> void:
 		_hitbox.active = false
 	if _slash_arc != null:
 		_slash_arc.stop()
+
+
+## Routes the swing to the active weapon's attack node (SPEC-weapons
+## `WeaponAttack`): the skill hook for a weapon skill, `heavy(charge)` for a
+## heavy, `light(step)` for a light combo step. The generic hitbox above is
+## untouched.
+func _run_attack_hook(spec: AttackSpec, dir: Vector2, charge: float, heavy: bool) -> void:
+	var weapon: WeaponData = active_weapon()
+	var node: WeaponAttack = _attack_node_for(weapon)
+	if node == null:
+		return
+	node.aim_dir = dir
+	if weapon != null and weapon.skill == spec:
+		node.skill()
+	elif heavy:
+		node.heavy(charge)
+	else:
+		node.light(last_light_step)
+
+
+## The attack node for `weapon`, made on first use and kept for the run:
+## instanced from the weapon's scene in `ATTACK_SCENE_DIR`, or the no-op base
+## while a weapon has no scene yet.
+func _attack_node_for(weapon: WeaponData) -> WeaponAttack:
+	if weapon == null:
+		return null
+	if _attack_nodes.has(weapon.id):
+		return _attack_nodes[weapon.id] as WeaponAttack
+	var node: WeaponAttack = _make_attack_node(weapon)
+	_attack_nodes[weapon.id] = node
+	return node
+
+
+func _make_attack_node(weapon: WeaponData) -> WeaponAttack:
+	var node: WeaponAttack = null
+	var path := ATTACK_SCENE_DIR + String(weapon.id) + ".tscn"
+	if ResourceLoader.exists(path):
+		node = (load(path) as PackedScene).instantiate() as WeaponAttack
+	if node == null:
+		node = WeaponAttack.new()
+	node.name = "WeaponAttack_" + String(weapon.id)
+	node.weapons = self
+	node.player = _player
+	add_child(node)
+	return node
 
 
 ## Forward reach of a melee swing in px, including the heavy's charge bonus.
