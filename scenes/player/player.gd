@@ -118,6 +118,18 @@ var dodge_clock: DodgeClock = DodgeClock.new()
 ## the host's combat timers step it (a downed player's machine is stopped —
 ## see `simulates` — so the state cannot tick it itself).
 var downed_clock: DownedClock = DownedClock.new()
+## The local revive-hold driver (W3-A5, `scripts/player/revive_hold.gd`): the
+## local player's machine steps it each frame with the held `interact` state,
+## it finds the downed teammate through the Interactable query and banks the
+## hold on the teammate's `downed_clock`. `completed` is what the revive path
+## (W3-B4) connects; nothing here applies a revive.
+var revive_hold: ReviveHold = ReviveHold.new()
+## The Interactable this copy carries while down (W3-A5): the offer the
+## reviving teammate's hold targets and the prompt reads. Attached and dropped
+## by `_apply_downed_state`, so it exists on every peer whichever route the
+## replicated flag arrived by. Presentation and layer registration only — the
+## downed flag itself is the replicated state.
+var _revive_interactable: Interactable = null
 ## Charges left. A synergy that adds a charge (Phantom Dancer's 2) raises
 ## `dodge_clock.max_charges` and the clock recharges up to it.
 var dodge_charges: int:
@@ -348,8 +360,33 @@ func _apply_downed_state() -> void:
 	refresh_authority()
 	velocity = Vector2.ZERO
 	_apply_downed_tint()
+	_sync_revive_interactable()
 	if is_downed:
 		downed.emit()
+
+
+## Attaches the downed Interactable this copy offers while down and drops it
+## when the player stands or dies. The hold_seconds is the base 3 s offer; the
+## hold a reviver banks runs on the downed clock at the reviver's own
+## revive_speed_mult, so this value is what the prompt shows, not the timer.
+func _sync_revive_interactable() -> void:
+	if not is_downed:
+		if _revive_interactable != null:
+			_revive_interactable.queue_free()
+			_revive_interactable = null
+		return
+	if _revive_interactable != null:
+		return
+	var component := Interactable.new()
+	component.prompt_text = ReviveHold.PROMPT_TEXT
+	component.hold_seconds = DownedClock.REVIVE_HOLD_SECONDS
+	var shape := CollisionShape2D.new()
+	var circle := CircleShape2D.new()
+	circle.radius = ReviveHold.INTERACTABLE_SHAPE_RADIUS
+	shape.shape = circle
+	component.add_child(shape)
+	add_child(component)
+	_revive_interactable = component
 
 
 ## Simulating copies move on physics ticks and are drawn interpolated
@@ -556,6 +593,11 @@ func _tick_combat_timers(delta: float) -> void:
 			_perfect_dodge_window_open = false
 	if multiplayer.is_server() and is_downed and not is_dead:
 		tick_downed(delta)
+	if is_local and not is_downed and not is_dead:
+		# The local revive hold (W3-A5): the reviver's own machine reads the
+		# held `interact` action every frame — the prompt's press edge cannot
+		# carry a hold — and drives the downed teammate's clock through it.
+		revive_hold.step(self, Input.is_action_pressed(&"interact"))
 
 
 ## Host. One tick of the downed clock: the 30 s bleed-out counts down and a
