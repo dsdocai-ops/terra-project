@@ -63,6 +63,8 @@ func test_a_crossbow_light_fires_a_real_armed_bolt() -> void:
 		"flying at the spec's speed")
 	assert_almost_eq(bolt.range_left(), crossbow.light_combo[0].projectile_range, 0.01,
 		"armed with the spec's range")
+	assert_eq(bolt.pierce_left(), crossbow.light_combo[0].pierce,
+		"armed with the spec's pierce — the launch passes it whole (G16d1 live row)")
 	assert_almost_eq(bolt.scale.x, 1.0, 0.001, "a light bolt is the base size")
 
 
@@ -76,6 +78,7 @@ func test_a_charged_crossbow_heavy_fires_a_bigger_bolt() -> void:
 	assert_almost_eq(bolt.scale.x, 1.0 + CrossbowAttack.FULL_CHARGE_SCALE_BONUS, 0.001,
 		"the full charge's bolt is the bigger one, on the node that flies")
 	assert_almost_eq(bolt.range_left(), crossbow.heavy.projectile_range, 0.01, "at the heavy's range")
+	assert_eq(bolt.pierce_left(), crossbow.heavy.pierce, "at the heavy's pierce")
 	assert_gt(bolt.template.base_damage, crossbow.light_combo[0].base_damage,
 		"and carrying the charged heavy's damage")
 

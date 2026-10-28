@@ -127,6 +127,12 @@ func range_left() -> float:
 	return _flight.distance_left
 
 
+## Test and seam read of the pierce budget left (the hits the bolt may still
+## fly past before its flight ends).
+func pierce_left() -> int:
+	return _pierce_left
+
+
 ## Test and seam read of the flight's current velocity (post turn or bounce).
 func flight_velocity() -> Vector2:
 	_ensure_flight()

@@ -82,6 +82,8 @@ func test_the_wisps_attack_fires_a_real_armed_fireball() -> void:
 	# frame of range (speed / 60) has already burned by the read.
 	assert_almost_eq(bolt.range_left(), 420.0, fireball.speed * FRAME + 0.01,
 		"armed with the fire range the attack state gives it")
+	assert_eq(bolt.pierce_left(), 0,
+		"the enemy launch passes no pierce — the plain fireball (G4d's live caller)")
 	var to_player: Vector2 = _player.global_position - _wisp.global_position
 	assert_gt(bolt.flight_velocity().normalized().dot(to_player.normalized()), 0.9,
 		"flying at the player it aimed at (margin, no exact position)")
