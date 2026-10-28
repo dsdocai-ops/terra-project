@@ -63,3 +63,24 @@ func test_enemy_base_scene_loads_wired() -> void:
 	for state_name: String in ["Idle", "Chase", "Attack", "HitStun", "Stagger"]:
 		assert_not_null(machine.get_node_or_null(NodePath(state_name)), "state %s" % state_name)
 	enemy.free()
+
+
+## The W2-A10 placeholder sprites: each enemy's SpriteFrames under assets/
+## load, and every animation's frame texture loads with them (G8a adds the
+## Hollow Miner; G8b appends the other two). The drawing itself — the enemy
+## shows its frames instead of the placeholder polygon — is the
+## test_v2_sprites suite.
+func test_w2_a10_enemy_placeholder_sprites_load() -> void:
+	var paths: Array[String] = [
+		"res://assets/sprites/enemies/hollow_miner_frames.tres",
+	]
+	for path: String in paths:
+		var frames: SpriteFrames = load(path) as SpriteFrames
+		assert_not_null(frames, "%s loads as SpriteFrames" % path)
+		if frames == null:
+			continue
+		var animations := frames.get_animation_names()
+		assert_gt(animations.size(), 0, "%s has animations" % path)
+		for animation: String in animations:
+			var texture: Texture2D = frames.get_frame_texture(StringName(animation), 0)
+			assert_not_null(texture, "%s / %s frame 0 loads" % [path, animation])
