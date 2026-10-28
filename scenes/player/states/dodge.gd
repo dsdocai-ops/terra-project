@@ -1,13 +1,15 @@
 extends PlayerState
-## A dodge roll: a fixed-speed burst with i-frames (SPEC-player-controller
-## `Dodge`). A hit that lands during the i-frames is blocked, which opens the
-## perfect-dodge window on `Player` (set by `Hurtbox.blocked_during_dodge`).
+## A dodge roll: a fixed-speed burst whose i-frames cover the whole roll
+## (SPEC-player-controller `Dodge`). A hit that lands during the i-frames is
+## blocked, which opens the perfect-dodge window on `Player` (set by
+## `Hurtbox.blocked_during_dodge`).
 ## Owned by player-controller (W2-A8). Sync: like Move, it runs on the host and
 ## the owning client; the host's Hurtbox flags decide what is blocked.
-
-const DURATION_SECONDS: float = 0.28
-const IFRAME_SECONDS: float = 0.22
-const SPEED_MULT: float = 2.6
+##
+## The duration, i-frame, speed and cooldown numbers live on `DodgeClock`
+## (`scripts/player/dodge_clock.gd`); this state runs them. The charge spend
+## and the cooldown start happen in `Player.begin_dodge` on entry, and the
+## recharge steps in `Player._tick_combat_timers`.
 
 var _dir: Vector2 = Vector2.DOWN
 var _elapsed: float = 0.0
@@ -30,14 +32,10 @@ func exit(_to: StringName) -> void:
 
 func physics_update(delta: float) -> void:
 	_elapsed += delta
-	if _elapsed >= IFRAME_SECONDS and player.hurtbox != null:
-		player.hurtbox.dodge_invulnerable = false
-		if player.hit_iframes_left <= 0.0:
-			player.hurtbox.invulnerable = false
-	player.velocity = _dir * player.move_speed() * SPEED_MULT * player.dodge_distance_mult * machine.effective_scale
+	player.velocity = _dir * player.move_speed() * DodgeClock.SPEED_MULT * player.dodge_distance_mult * machine.effective_scale
 	player.apply_coop_clamp(delta)
 	player.move_and_slide()
-	if _elapsed >= DURATION_SECONDS:
+	if _elapsed >= DodgeClock.DURATION_SECONDS:
 		var next: StringName = &"Move" if player.move_input != Vector2.ZERO else &"Idle"
 		if machine.change_to(next):
 			machine.current.physics_update(0.0)

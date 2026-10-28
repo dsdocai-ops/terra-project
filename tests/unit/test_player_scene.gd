@@ -166,3 +166,41 @@ func test_component_slots_are_wired() -> void:
 	assert_eq(_player.health, _player.get_node("Health"))
 	assert_eq(_player.hurtbox, _player.get_node("Hurtbox"))
 	assert_eq(_player.state_machine, _player.get_node("StateMachine"))
+
+
+# Dodge clock wiring (scripts/player/dodge_clock.gd, W2-A8 logic half)
+
+
+func test_begin_dodge_spends_a_charge_and_gates_the_next() -> void:
+	assert_true(_player.can_dodge())
+	_player.begin_dodge()
+	assert_eq(_player.dodge_charges, 0, "the charge is spent")
+	assert_false(_player.can_dodge(), "the cooldown runs")
+
+
+func test_reset_dodge_cooldown_refills_the_charge() -> void:
+	_player.begin_dodge()
+	_player.reset_dodge_cooldown()
+	assert_true(_player.can_dodge(), "the cooldown is cleared")
+	assert_eq(_player.dodge_charges, 1, "the recharge finished with it")
+
+
+func test_the_spent_charge_refills_on_the_tick() -> void:
+	_player.begin_dodge()
+	_player._tick_combat_timers(0.8)
+	assert_eq(_player.dodge_charges, 1, "the scene's 0.8 s base elapsed")
+	assert_true(_player.can_dodge())
+
+
+func test_the_player_cooldown_rides_a_stat_modifier_and_its_handle() -> void:
+	var stats := _player.stat_block as StatBlock
+	var handle := stats.add_modifier(StatBlock.Stat.DODGE_COOLDOWN, -0.3, 0.0, &"test_dodge")
+	_player.begin_dodge()
+	_player._tick_combat_timers(0.5)
+	assert_eq(_player.dodge_charges, 1, "the modifier's 0.5 s recharge elapsed")
+	stats.remove_modifier(handle)
+	_player.begin_dodge()
+	_player._tick_combat_timers(0.5)
+	assert_eq(_player.dodge_charges, 0, "the base's 0.8 s has not passed")
+	_player._tick_combat_timers(0.31)
+	assert_eq(_player.dodge_charges, 1, "removed by handle, the base is back")

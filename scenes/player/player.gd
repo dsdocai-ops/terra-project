@@ -107,7 +107,18 @@ var simulates: bool:
 	get:
 		return is_inside_tree() and not is_downed and not is_dead and (multiplayer.is_server() or is_local)
 
-var dodge_charges: int = 1
+## The dodge cooldown and charge bookkeeping (SPEC-player-controller "Dodge
+## roll"). Pure logic on `scripts/player/dodge_clock.gd`; this node steps it
+## and reads it. Host and predicting owner run their own copy — the cooldown
+## gates the owner's input.
+var dodge_clock: DodgeClock = DodgeClock.new()
+## Charges left. A synergy that adds a charge (Phantom Dancer's 2) raises
+## `dodge_clock.max_charges` and the clock recharges up to it.
+var dodge_charges: int:
+	get:
+		return dodge_clock.charges
+	set(value):
+		dodge_clock.charges = value
 var dodge_distance_mult: float = 1.0
 var revive_speed_mult: float = 1.0
 
@@ -116,7 +127,6 @@ var revive_speed_mult: float = 1.0
 ## Dodge states. Host-owned like the rest of the hit resolution.
 const BLEED_OUT_SECONDS: float = 30.0
 const PERFECT_DODGE_SECONDS: float = 0.5
-const MIN_DODGE_COOLDOWN: float = 0.1
 const REVIVE_IFRAME_SECONDS: float = 1.5
 var pending_attack: Dictionary = {}
 ## Seconds of hold already banked when HeavyCharge starts from a buffered press.
@@ -177,7 +187,6 @@ var _predictions: Dictionary[int, Vector2] = {}
 var _last_reconciled_tick: int = -1
 
 var _perfect_dodge_window_open: bool = false
-var _dodge_cooldown_left: float = 0.0
 
 ## Hit reactions (SPEC-combat-core, "Hit reactions"). `hit_stun_left` runs the
 ## HitStun state; the knockback velocity decays to zero over
@@ -492,6 +501,7 @@ func reset_for_run() -> void:
 	is_dead = false
 	is_downed = false
 	hit_iframes_left = 0.0
+	dodge_clock.reset()
 	var healthy := health as Health
 	if healthy != null:
 		healthy.revive(healthy.max_hp)
@@ -516,7 +526,7 @@ func _apply_downed_tint() -> void:
 ## Dodge, perfect-dodge and bleed-out timers, counted on the host and the
 ## predicting owner alike (the dodge cooldown gates the owner's input).
 func _tick_combat_timers(delta: float) -> void:
-	_dodge_cooldown_left = maxf(_dodge_cooldown_left - delta, 0.0)
+	dodge_clock.tick(delta)
 	if _perfect_window_left > 0.0:
 		_perfect_window_left -= delta
 		if _perfect_window_left <= 0.0:
@@ -527,17 +537,22 @@ func _tick_combat_timers(delta: float) -> void:
 			_die()
 
 
+## A charge left on the clock (a spent charge recharges on the
+## DODGE_COOLDOWN stat), and a standing player. The cooldown gates the
+## recharge, not the spend.
 func can_dodge() -> bool:
-	return _dodge_cooldown_left <= 0.0 and not is_downed and not is_dead
+	return dodge_clock.can_dodge() and not is_downed and not is_dead
 
 
-## Dodge state entry: starts the cooldown and the i-frames.
+## Dodge state entry: spends a charge, starts its recharge from the
+## DODGE_COOLDOWN stat (through whatever modifiers are on the StatBlock —
+## never a base edit) and raises the i-frames.
 func begin_dodge() -> void:
-	var cooldown: float = MIN_DODGE_COOLDOWN
+	var stat_value: float = DodgeClock.MIN_COOLDOWN_SECONDS
 	var stats := stat_block as StatBlock
 	if stats != null:
-		cooldown = maxf(stats.get_value(StatBlock.Stat.DODGE_COOLDOWN), MIN_DODGE_COOLDOWN)
-	_dodge_cooldown_left = cooldown
+		stat_value = stats.get_value(StatBlock.Stat.DODGE_COOLDOWN)
+	dodge_clock.spend(stat_value)
 	_dodge_was_perfect = false
 	if hurtbox != null:
 		hurtbox.invulnerable = true
@@ -639,7 +654,7 @@ func consume_perfect_dodge_window() -> void:
 
 
 func reset_dodge_cooldown() -> void:
-	_dodge_cooldown_left = 0.0
+	dodge_clock.reset_dodge_cooldown()
 
 
 ## Plays `<anim>_<dir>` for the current facing, e.g. "walk" becomes "walk_ne".
