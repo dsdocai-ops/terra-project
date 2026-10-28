@@ -342,26 +342,30 @@ static func _assign_types(rng: RandomNumberGenerator, adjacency: Array[PackedInt
 
 
 ## L-shaped corridors, three tiles wide, between every edge's room centres.
+## An edge whose centres share an x or a y is a straight corridor: only its
+## band is carved, with no perpendicular overshoot past the far centre.
 static func _carve_corridors(rects: Array[Rect2i], edges: Array[Vector2i]) -> Array[Vector2i]:
 	var cells: Dictionary[Vector2i, bool] = {}
 	for edge: Vector2i in edges:
 		var from: Vector2i = _center_of(rects[edge.x])
 		var to: Vector2i = _center_of(rects[edge.y])
-		var step_x: int = 1 if to.x >= from.x else -1
-		var x: int = from.x
-		while true:
-			_carve_column(cells, Vector2i(x, from.y), true)
-			if x == to.x:
-				break
-			x += step_x
-		var step_y: int = 1 if to.y >= from.y else -1
-		var y: int = from.y
-		while true:
-			_carve_column(cells, Vector2i(to.x, y), false)
-			if y == to.y:
-				break
-			y += step_y
-		_carve_corner(cells, Vector2i(to.x, from.y))
+		if to.x != from.x:
+			var step_x: int = 1 if to.x >= from.x else -1
+			var x: int = from.x
+			while true:
+				_carve_column(cells, Vector2i(x, from.y), true)
+				if x == to.x:
+					break
+				x += step_x
+		if to.y != from.y:
+			var step_y: int = 1 if to.y >= from.y else -1
+			var y: int = from.y
+			while true:
+				_carve_column(cells, Vector2i(to.x, y), false)
+				if y == to.y:
+					break
+				y += step_y
+			_carve_corner(cells, Vector2i(to.x, from.y))
 	var ordered: Array[Vector2i] = []
 	for y: int in GRID:
 		for x: int in GRID:
