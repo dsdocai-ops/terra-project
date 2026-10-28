@@ -198,3 +198,60 @@ func test_room_at_reads_the_tile_under_a_position_not_the_exact_center() -> void
 	for offset: Vector2 in offsets:
 		assert_same(floor_node.room_at(centre + offset), room,
 			"offset %s lands on the same tile" % str(offset))
+
+
+# --- the START, EXIT and ROPE placeholder markers (W3-A2, G10b2) -------------
+# The marker construction itself (diamond + label) and the scene wiring are
+# tests/integration/test_scenes_load.gd's; these cover the placement.
+
+
+func test_paint_places_start_and_exit_markers_on_floor_1() -> void:
+	for run_seed: int in SEEDS:
+		var floor_node := _painted_floor(_make_world(), run_seed)
+		var layout: FloorLayout = floor_node.layout
+		assert_eq(floor_node.markers.size(), 2, "seed %d places exactly the two markers" % run_seed)
+		var start: FloorMarker = floor_node.marker_of_type(FloorGenerator.RoomType.START)
+		assert_not_null(start, "seed %d start marker" % run_seed)
+		if start != null:
+			assert_eq(start.position, Iso.to_screen(layout.start_room.anchor),
+				"seed %d start marker sits on the Start room's anchor" % run_seed)
+			assert_eq(start.text(), "START", "seed %d start marker text" % run_seed)
+		var exit_marker: FloorMarker = floor_node.marker_of_type(FloorGenerator.RoomType.EXIT)
+		assert_not_null(exit_marker, "seed %d exit marker" % run_seed)
+		if exit_marker != null:
+			assert_eq(exit_marker.position, Iso.to_screen(layout.exit_room.anchor),
+				"seed %d exit marker sits on the Exit room's anchor" % run_seed)
+			assert_eq(exit_marker.text(), "EXIT", "seed %d exit marker text" % run_seed)
+		assert_null(floor_node.marker_of_type(FloorGenerator.RoomType.ROPE),
+			"seed %d: rope is floor 2 of a biome only" % run_seed)
+
+
+func test_paint_places_the_rope_marker_on_floor_2() -> void:
+	for run_seed: int in SEEDS:
+		var layout: FloorLayout = FloorGenerator.generate(run_seed, 2, BiomeData.for_index(1), [] as Array[int])
+		assert_eq(layout.rooms_of_type(FloorGenerator.RoomType.ROPE).size(), 1,
+			"seed %d floor 2 has exactly one rope room" % run_seed)
+		var floor_node := _painted_floor_with_layout(_make_world(), layout)
+		assert_eq(floor_node.markers.size(), 3, "seed %d places all three markers" % run_seed)
+		var rope_spec: RoomSpec = layout.rooms_of_type(FloorGenerator.RoomType.ROPE)[0]
+		var rope: FloorMarker = floor_node.marker_of_type(FloorGenerator.RoomType.ROPE)
+		assert_not_null(rope, "seed %d rope marker" % run_seed)
+		if rope != null:
+			assert_eq(rope.position, Iso.to_screen(rope_spec.anchor),
+				"seed %d rope marker sits on the rope room's anchor" % run_seed)
+			assert_eq(rope.text(), "ROPE", "seed %d rope marker text" % run_seed)
+
+
+func test_a_repaint_replaces_the_markers_with_the_new_floors() -> void:
+	var world := _make_world()
+	var floor_node := _painted_floor(world, 7)
+	var first: Array[FloorMarker] = []
+	for marker: FloorMarker in floor_node.markers:
+		first.append(marker)
+	var second_layout: FloorLayout = FloorGenerator.generate(42, 2, BiomeData.for_index(1), [] as Array[int])
+	floor_node.paint(second_layout, BiomeData.for_index(1), world)
+	assert_eq(floor_node.markers.size(), 3, "the new layout's markers")
+	for stale: FloorMarker in first:
+		assert_false(floor_node.markers.has(stale), "the stale %s was not kept" % str(stale.name))
+	for type: int in Floor.MARKER_TYPES:
+		assert_not_null(floor_node.marker_of_type(type), "the new floor's %s marker" % str(type))

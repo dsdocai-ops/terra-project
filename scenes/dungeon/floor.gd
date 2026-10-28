@@ -16,12 +16,19 @@ signal room_visited(index: int)
 const FLOOR_TILE_TINT_NODE: StringName = &"Floor"
 const FOG_SHADER: String = "res://scenes/dungeon/fog.gdshader"
 const FOG_MAX_ROOMS: int = 16
+## The special rooms that get a placeholder marker (W3-A2). The ROPE marker is
+## placed only when the layout has a rope room, so only on floor 2 of a biome.
+const MARKER_TYPES: Array[int] = [
+	FloorGenerator.RoomType.START, FloorGenerator.RoomType.EXIT, FloorGenerator.RoomType.ROPE,
+]
 
 var layout: FloorLayout = null
 var astar: AStarGrid2D = null
 var rooms: Array[Room] = []
 ## Room index -> that room's Door nodes.
 var doors_by_room: Dictionary[int, Array] = {}
+## The START, EXIT and ROPE placeholder markers, in room order.
+var markers: Array[FloorMarker] = []
 
 ## Local presentation only: which rooms this peer's player has entered, and the
 ## room they stand in now (-1 in a corridor). Never synced.
@@ -46,6 +53,7 @@ func paint(p_layout: FloorLayout, biome: BiomeData, world: World) -> void:
 	_paint_tiles(world, biome)
 	_build_astar()
 	_build_rooms()
+	_build_markers()
 	_write_exit_rule()
 	_build_fog()
 	painted.emit(layout)
@@ -67,6 +75,7 @@ func _clear_children() -> void:
 		child.queue_free()
 	rooms.clear()
 	doors_by_room.clear()
+	markers.clear()
 	visited.clear()
 	_fog = null
 	_edge_cells.clear()
@@ -120,6 +129,27 @@ func _build_rooms() -> void:
 			add_child(door)
 			doors.append(door)
 		doors_by_room[spec.index] = doors
+
+
+## Builds the START, EXIT and ROPE placeholder markers on their rooms' anchors.
+func _build_markers() -> void:
+	for spec: RoomSpec in layout.rooms:
+		if not MARKER_TYPES.has(spec.type):
+			continue
+		var marker := FloorMarker.new()
+		marker.setup(spec.type)
+		marker.position = Iso.to_screen(spec.anchor)
+		add_child(marker)
+		markers.append(marker)
+
+
+## The first marker of `type` this floor placed, or null — the ROPE marker only
+## exists on floor 2 of a biome.
+func marker_of_type(type: int) -> FloorMarker:
+	for marker: FloorMarker in markers:
+		if marker.kind == type:
+			return marker
+	return null
 
 
 ## Host. Runs every registered populator for every room (chests, shrines,

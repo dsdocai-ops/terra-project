@@ -109,6 +109,45 @@ func test_room_and_door_nodes_load() -> void:
 ## Hollow Miner; G8b appends the other two). The drawing itself — the enemy
 ## shows its frames instead of the placeholder polygon — is the
 ## test_v2_sprites suite.
+## The W3-A2 floor scene (G10b2): loads, instantiates as the `Floor` script, and
+## the World builds its live floor from it. A floor 2 layout painted through the
+## scene places the START, EXIT and ROPE placeholder markers on their rooms'
+## anchors — the START marker on the very anchor the players teleport around.
+## The marker placement logic alone (repaints, floor 1's two markers, no rope
+## on floor 1) is tests/unit/test_floor_logic.gd's.
+func test_floor_scene_loads_and_places_the_start_exit_and_rope_markers() -> void:
+	var packed := load("res://scenes/dungeon/floor.tscn") as PackedScene
+	assert_not_null(packed, "floor.tscn loads")
+	var scene_floor := packed.instantiate() as Floor
+	assert_not_null(scene_floor, "floor.tscn instantiates as the Floor script")
+	if scene_floor != null:
+		scene_floor.free()
+	var world := (load("res://scenes/main/world.tscn") as PackedScene).instantiate() as World
+	world.debug_test_floor = false
+	add_child_autofree(world)
+	var layout: FloorLayout = FloorGenerator.generate(42, 2, BiomeData.for_index(1), [] as Array[int])
+	world.build_floor(layout)
+	assert_eq(world.floor_node.scene_file_path, "res://scenes/dungeon/floor.tscn",
+		"the World's live floor is the scene, not a bare Floor.new()")
+	assert_eq(world.floor_node.markers.size(), 3, "all three markers are placed")
+	var start: FloorMarker = world.floor_node.marker_of_type(FloorGenerator.RoomType.START)
+	assert_not_null(start, "the START marker is placed")
+	var exit_marker: FloorMarker = world.floor_node.marker_of_type(FloorGenerator.RoomType.EXIT)
+	assert_not_null(exit_marker, "the EXIT marker is placed")
+	var rope: FloorMarker = world.floor_node.marker_of_type(FloorGenerator.RoomType.ROPE)
+	assert_not_null(rope, "the ROPE marker is placed on floor 2")
+	if start != null:
+		assert_eq(start.position, world.floor_node.start_position(),
+			"the START marker sits where the players spawn")
+		assert_eq(start.text(), "START", "the START marker's placeholder text")
+		assert_eq(start.get_child_count(), 2, "the START marker built its diamond and its label")
+
+
+## The W2-A10 placeholder sprites: each enemy's SpriteFrames under assets/
+## load, and every animation's frame texture loads with them (G8a adds the
+## Hollow Miner; G8b appends the other two). The drawing itself — the enemy
+## shows its frames instead of the placeholder polygon — is the
+## test_v2_sprites suite.
 func test_w2_a10_enemy_placeholder_sprites_load() -> void:
 	var paths: Array[String] = [
 		"res://assets/sprites/enemies/hollow_miner_frames.tres",

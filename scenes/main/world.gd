@@ -120,6 +120,9 @@ func is_walkable(tile: Vector2i) -> bool:
 
 ## Players spawn on a ring this far (px) around the Start room anchor.
 const START_RING_RADIUS: float = 40.0
+## The live floor scene (W3-A2): the Floor script as a scene, so the .tscn
+## collector sees it and the built floor is the scene, not a bare `.new()`.
+const FLOOR_SCENE: String = "res://scenes/dungeon/floor.tscn"
 
 ## The live floor, created with the first generated layout.
 var floor_node: Floor = null
@@ -138,7 +141,7 @@ func _on_floor_layout_ready(layout: RefCounted) -> void:
 func build_floor(layout: FloorLayout) -> void:
 	debug_test_floor = false
 	if floor_node == null:
-		floor_node = Floor.new()
+		floor_node = (load(FLOOR_SCENE) as PackedScene).instantiate() as Floor
 		floor_node.name = "FloorRoot"
 		add_child(floor_node)
 	if multiplayer.is_server():
