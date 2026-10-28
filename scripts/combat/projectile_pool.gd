@@ -35,9 +35,17 @@ var created_count: int = 0
 var spawn_root: Node = null
 
 ## Scene resource path -> the idle projectiles of that type, parked hidden
-## under this node. Keyed by path so a freed list never holds a scene alive;
-## values are `Array[Projectile]` (nested typed collections do not parse).
-var _free: Dictionary = {}
+## under this node. Keyed by path so a freed list never holds a scene alive.
+## A typed dictionary's value cannot itself be an `Array[Projectile]` (nested
+## typed collections do not parse), so each list rides in a `FreeList` holder
+## and the dictionary stays fully typed.
+var _free: Dictionary[String, FreeList] = {}
+
+
+## One scene type's idle-projectile list, the holder that lets a typed
+## dictionary carry an `Array[Projectile]`.
+class FreeList:
+	var items: Array[Projectile] = []
 
 
 ## Attaches one pool named `POOL_NODE_NAME` under `parent`, reusing an existing
@@ -130,6 +138,6 @@ func _make(scene: PackedScene) -> Projectile:
 ## The free list of one scene type, made on first ask.
 func _free_list(path: String) -> Array[Projectile]:
 	if not _free.has(path):
-		var fresh: Array[Projectile] = []
-		_free[path] = fresh
-	return _free[path] as Array[Projectile]
+		_free[path] = FreeList.new()
+	var list: FreeList = _free[path]
+	return list.items

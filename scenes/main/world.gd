@@ -139,9 +139,10 @@ func build_floor(layout: FloorLayout) -> void:
 
 
 ## Host. Frees enemies, pickups and interactables of the previous floor; the
-## spawners and drop logic stay. Pooled projectiles in flight are not here to
-## be freed: they live under `POOLED_PROJECTILES_NAME`, outside this sweep,
-## and a floor change hands them back through the pool, never queue_free.
+## spawners and drop logic stay. Pooled projectiles in flight are not touched
+## here: they live under `POOLED_PROJECTILES_NAME`, outside this sweep, so a
+## floor change leaves them flying and each one hands itself back through the
+## pool when it retires on its own.
 func _clear_floor_entities() -> void:
 	for child: Node in entities.get_children():
 		if child is MultiplayerSpawner or child == loot_drops:
