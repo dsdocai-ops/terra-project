@@ -39,9 +39,9 @@ var rooms_cleared_no_hit: int = 0
 var time_started: int = 0
 ## Rooms cleared on the current floor, written by the host.
 var rooms_cleared: int = 0
-## How many rooms must be cleared before the Exit opens. This is the seam
-## Dev A's Exit rule writes into (blocked on Dev A, W3-A2); until it does, the
-## host sets it from the generated floor.
+## How many rooms must be cleared before the Exit opens. The host's
+## `Floor._write_exit_rule` writes it at paint, from the layout's
+## `required_rooms` (the W3-A2 Exit rule, `ExitRule.required_clears`).
 var required_rooms_cleared: int = 0
 ## True once the current floor's exit requirement is met.
 var exit_open: bool:
