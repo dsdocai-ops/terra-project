@@ -123,6 +123,17 @@ func release_hold() -> void:
 		target.downed_clock.break_hold()
 
 
+## The reviver can no longer hold — downed or dead mid-hold. Breaks the hold
+## and drops the pair, exactly as a released hold does. The Player calls this
+## when its own `step` stops running (a downed reviver's `_tick_combat_timers`
+## no longer reaches it): the host keeps ticking a downed teammate's clock, so
+## a hold left running there would bank time nobody held and complete the
+## revive the moment the reviver stood back up.
+func abandon() -> void:
+	release_hold()
+	unbind()
+
+
 ## One frame of the hold. With `held`, keeps a bound, in-range hold running
 ## (starting one if none is) and reports a completion; without it, or when the
 ## reviver left the range or the target is no longer revivable, breaks the

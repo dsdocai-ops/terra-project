@@ -229,6 +229,31 @@ func test_a_broken_hold_banks_nothing() -> void:
 	assert_eq(_target.downed_clock.hold_progress(), 0.0, "and the next attempt starts from zero")
 
 
+func test_a_reviver_downed_mid_hold_abandons_and_banks_nothing_after() -> void:
+	# The judge's case: the reviver takes the hit that downs them mid-hold.
+	# Nothing steps the hold while they are down, but the host keeps ticking
+	# the downed teammate's clock — and `tick` advances any running hold. The
+	# abandon (what `Player._tick_combat_timers` calls) must break the hold,
+	# or the banked time completes the revive when the reviver stands up.
+	_pair()
+	_hold.completed.connect(_recorder.record)
+	assert_true(_hold.start_hold())
+	_target.downed_clock.tick(1.0)
+	_reviver.is_downed = true
+	_hold.abandon()
+	_target.downed_clock.tick(3.0)  # the host keeps ticking the teammate's clock
+	assert_false(_target.downed_clock.holding(), "the hold broke with the reviver down")
+	assert_eq(_target.downed_clock.hold_progress(), 0.0, "and banked nothing after")
+	assert_false(_hold.is_bound(), "the pair dropped with the hold")
+	assert_false(_hold.poll(), "the abandoned hold never completes")
+	assert_true(_recorder.revived.is_empty(), "and emitted nothing")
+	# Standing back up, a fresh attempt starts from zero.
+	_reviver.is_downed = false
+	assert_true(_hold.bind(_reviver, _target), "the reviver may bind again")
+	assert_true(_hold.start_hold())
+	assert_eq(_target.downed_clock.hold_progress(), 0.0, "the fresh hold starts from zero")
+
+
 # --- poll: the completed hold --------------------------------------------------
 
 
@@ -308,6 +333,37 @@ func test_step_letting_go_banks_nothing_and_unbinds() -> void:
 	assert_false(reviver.revive_hold.is_bound(), "and the pair is dropped")
 	reviver.revive_hold.step(reviver, true)
 	assert_eq(target.downed_clock.hold_progress(), 0.0, "a new hold starts from zero")
+
+
+func test_a_local_reviver_downed_mid_hold_breaks_the_hold_on_the_live_tick() -> void:
+	# The wiring half of the abandon, through the caller the game uses: the
+	# player's `_tick_combat_timers`, which the reviver's `_physics_process`
+	# steps. The reviver is the local player here; a downed reviver must reach
+	# the abandon branch, not skip the hold until standing up.
+	var pair := _scene_pair(45.0)
+	var reviver := pair[0]
+	var target := pair[1]
+	reviver.peer_id = multiplayer.get_unique_id()
+	_down_in_tree(target)
+	await wait_physics_frames(REGISTRATION_FRAMES)
+	assert_false(reviver.revive_hold.step(reviver, true),
+		"a fresh hold is not complete, so the first step reports false")
+	assert_true(target.downed_clock.holding(), "but the hold runs on the teammate's clock")
+	target.downed_clock.tick(1.0)
+	# The reviver takes the hit that downs them, mid-hold: the bleed-out entry
+	# the Downed state's `_down_in_tree` mirrors.
+	reviver.is_downed = true
+	reviver.downed_clock.start_bleed_out()
+	reviver._tick_combat_timers(1.0 / 60.0)
+	assert_false(target.downed_clock.holding(), "the live tick abandoned the hold")
+	assert_eq(target.downed_clock.hold_progress(), 0.0, "and banked nothing")
+	assert_false(reviver.revive_hold.is_bound())
+	# Standing back up: no completion on time nobody held, and a fresh
+	# attempt starts from zero.
+	reviver.is_downed = false
+	reviver.downed_clock.stop_bleed_out()
+	reviver.revive_hold.step(reviver, true)
+	assert_eq(target.downed_clock.hold_progress(), 0.0, "the fresh attempt starts from zero")
 
 
 func test_step_walk_out_breaks_the_hold_and_the_pair_stays_bound() -> void:
@@ -421,10 +477,10 @@ func test_find_target_skips_a_duck_typed_interactable_in_front() -> void:
 	chest.add_child(shape)
 	add_child_autofree(chest)
 	await wait_physics_frames(REGISTRATION_FRAMES)
+	assert_eq(Interactable.nearest(reviver, reviver.global_position, ReviveHold.REVIVE_RANGE),
+		chest, "the chest stands in front and wins the query as the nearest area")
 	assert_eq(ReviveHold.find_target(reviver), null,
-		"the chest resolved to no Player: no hold")
-	assert_eq(ReviveHold.find_target(reviver), null,
-		"and the chest stays the nearest while it stands in front")
+		"and still resolves to no Player: the hold skips it, no hold")
 
 
 func test_find_target_ignores_a_teammate_who_is_not_down() -> void:

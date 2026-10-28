@@ -593,14 +593,23 @@ func _tick_combat_timers(delta: float) -> void:
 			_perfect_dodge_window_open = false
 	if multiplayer.is_server() and is_downed and not is_dead:
 		tick_downed(delta)
-	if is_local and not is_downed and not is_dead:
-		# The local revive hold (W3-A5): the reviver's own machine reads the
-		# held `interact` action every frame — the prompt's press edge cannot
-		# carry a hold — and drives the downed teammate's clock through it.
-		# Only the host's clock is ticked (`tick_downed` above), so a client's
-		# local hold banks onto a clock nothing ticks there and cannot complete
-		# until W3-B4 wires the client route.
-		revive_hold.step(self, Input.is_action_pressed(&"interact"))
+	if is_local:
+		if is_downed or is_dead:
+			# A reviver downed or killed mid-hold cannot keep holding: the
+			# hold breaks and banks nothing. Without this, the host keeps
+			# ticking the downed teammate's clock, the abandoned hold keeps
+			# banking on it, and standing back up completes a revive on time
+			# nobody held.
+			revive_hold.abandon()
+		else:
+			# The local revive hold (W3-A5): the reviver's own machine reads
+			# the held `interact` action every frame — the prompt's press edge
+			# cannot carry a hold — and drives the downed teammate's clock
+			# through it. Only the host's clock is ticked (`tick_downed`
+			# above), so a client's local hold banks onto a clock nothing
+			# ticks there and cannot complete until W3-B4 wires the client
+			# route.
+			revive_hold.step(self, Input.is_action_pressed(&"interact"))
 
 
 ## Host. One tick of the downed clock: the 30 s bleed-out counts down and a
