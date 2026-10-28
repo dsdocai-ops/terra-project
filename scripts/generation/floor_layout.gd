@@ -21,7 +21,9 @@ var corridors: Array[Vector2i] = []
 var edges: Array[Vector2i] = []
 var start_room: RoomSpec = null
 var exit_room: RoomSpec = null
-## Combat rooms on the shortest Start to Exit path: the Exit-opens rule.
+## Fewest locking rooms (COMBAT/ELITE_COMBAT) of any simple Start-Exit path,
+## computed by `ExitRule.required_clears`: the count of clears the Exit-opens
+## rule demands. One more than the locking count when no Start-Exit path exists.
 var required_rooms: int = 0
 var layout_hash: int = 0
 var source: StringName = SOURCE

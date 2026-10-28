@@ -120,11 +120,12 @@ func next_floor() -> void:
 
 ## True when the live run's current floor may be left: a run exists and its
 ## exit is open. The room-clear counters behind this are written by the host
-## (`_on_room_cleared`), and `required_rooms_cleared` is the seam Dev A's Exit
-## rule writes into — blocked on Dev A (W3-A2) for the concrete determinant
-## (all COMBAT/ELITE_COMBAT rooms on a Start-Exit path), so until it lands the
-## field is whatever the generated floor sets and 0 means "nothing required".
-## Reading it on a client is safe; only the host's next_floor() acts on it.
+## (`_on_room_cleared`), and `required_rooms_cleared` is the seam the Exit rule
+## writes into — the host's `Floor._write_exit_rule` sets it at paint time to
+## `ExitRule.required_clears` (the fewest locking rooms of any simple
+## Start-Exit path, so an unreachable Exit demands more clears than the floor
+## has and can never open). Reading it on a client is safe; only the host's
+## next_floor() acts on it.
 func can_advance_floor() -> bool:
 	return run != null and run.exit_open
 
