@@ -7,16 +7,19 @@ extends RefCounted
 ## `telegraph_progress` and `aim_dir`.
 ##
 ## The contract it enforces: **no hit without a telegraph.** The only way into
-## ACTIVE is the windup boundary crossing inside `advance()`, and `may_hit()`
-## also demands the telegraph ran to completion, so a driver that was stopped,
-## reused or somehow poked into the ACTIVE phase still cannot arm a hit.
+## ACTIVE is the windup boundary crossing inside `advance()`, the crossing
+## waits until a whole step has been spent inside the windup — the step in
+## which the caller actually drew the telegraph — and `may_hit()` also demands
+## the telegraph ran to completion, so a driver that was stopped, reused,
+## poked into the ACTIVE phase, or handed one frame that swallows the entire
+## windup still cannot arm a hit.
 ##
 ## `advance()` crosses at most one phase boundary per call and drops the time
-## past it, so a hitch frame cannot run the whole attack inside one step: every
-## phase change lands on its own physics frame and the active window is never
-## entered and left in the same one. The caller hands in time already scaled
-## (the state machine multiplies the delta by `effective_scale`), so time stops
-## and slows hold the clock for free.
+## past it, so a hitch frame cannot run the whole attack inside one step:
+## every phase change lands on its own physics frame and the active window is
+## never entered and left in the same one. The caller hands in time already
+## scaled (the state machine multiplies the delta by `effective_scale`), so
+## time stops and slows hold the clock for free.
 
 signal windup_started
 signal active_started
@@ -32,6 +35,12 @@ var _elapsed: float = 0.0
 ## Set only when the windup boundary is crossed inside `advance()`. This is the
 ## telegraph gate: without it the phase alone proves nothing.
 var _telegraph_done: bool = false
+## Set once a full `advance()` step has been spent inside the windup without
+## crossing it — the step in which the caller drew the telegraph. The boundary
+## crossing refuses to fire before this, so a single step can never jump from
+## windup start to an armed hit: the telegraph is on screen for at least one
+## frame first.
+var _telegraph_drawn: bool = false
 
 
 func phase() -> Phase:
@@ -47,6 +56,7 @@ func start(new_pattern: AttackPattern) -> void:
 	_phase = Phase.WINDUP
 	_elapsed = 0.0
 	_telegraph_done = false
+	_telegraph_drawn = false
 	windup_started.emit()
 
 
@@ -55,26 +65,38 @@ func stop() -> void:
 	_phase = Phase.DONE
 	_elapsed = 0.0
 	_telegraph_done = false
+	_telegraph_drawn = false
 
 
-## Steps the clock by an already-scaled `delta` and returns the phase after the
-## step. At most one boundary is crossed per call.
+## Steps the clock by an already-scaled `delta` and returns the phase whose
+## behaviour this frame runs: the phase the driver was in when the step began.
+## A boundary crossed inside the call takes effect on the next call, so each
+## phase's behaviour covers exactly its own frames and none is skipped or run
+## one frame early; the crossing's signal still fires at once, so the caller
+## can arm and disarm on the crossing frame itself. At most one boundary is
+## crossed per call.
 func advance(delta: float) -> Phase:
 	if pattern == null or _phase == Phase.DONE:
 		return _phase
+	var running: Phase = _phase
 	_elapsed += delta
 	match _phase:
 		Phase.WINDUP:
-			if _elapsed >= pattern.windup_seconds:
+			if _elapsed >= pattern.windup_seconds and _telegraph_drawn:
 				_telegraph_done = true
 				_enter(Phase.ACTIVE, active_started)
+			if _phase == Phase.WINDUP:
+				# This step drew the telegraph. A step big enough to swallow
+				# the whole windup holds at the boundary here instead, so the
+				# fill is on screen for at least one frame before any hit.
+				_telegraph_drawn = true
 		Phase.ACTIVE:
 			if _elapsed >= pattern.active_seconds:
 				_enter(Phase.RECOVERY, recovery_started)
 		Phase.RECOVERY:
 			if _elapsed >= pattern.recovery_seconds:
 				_enter(Phase.DONE, attack_finished)
-	return _phase
+	return running
 
 
 ## The telegraph fill for the current step: 0..1 over the windup, -1 once the

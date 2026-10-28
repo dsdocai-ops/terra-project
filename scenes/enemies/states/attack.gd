@@ -6,8 +6,9 @@ extends EnemyState
 ##
 ## The phase timing and the "no hit without a telegraph" gate live in the
 ## combat-core `AttackDriver`: the hitbox arms only from its `active_started`,
-## which only a completed windup can fire, and the driver is disarmed on every
-## re-entry, so a reused or interrupted attack cannot hit without a telegraph.
+## which only a windup that ran to completion — on screen for at least one
+## frame — can fire, and the driver is disarmed on every re-entry, so a
+## reused, interrupted or hitched attack cannot hit without a telegraph.
 
 const MELEE_ARC_STEPS: int = 6
 
@@ -51,6 +52,11 @@ func exit(_to: StringName) -> void:
 func physics_update(delta: float) -> void:
 	if _pattern == null:
 		return
+	# `advance` returns the phase whose behaviour this frame runs: a boundary
+	# crossed inside the call takes effect on the next one, so every phase's
+	# movement covers exactly its own frames — the same frame layout the
+	# hand-rolled clock had — and the crossing's signal arms or disarms the
+	# hitbox on the crossing frame itself.
 	match _driver.advance(delta):
 		AttackDriver.Phase.WINDUP:
 			enemy.stop_moving(delta)
@@ -65,8 +71,11 @@ func physics_update(delta: float) -> void:
 			enemy.stop_moving(delta)
 		AttackDriver.Phase.DONE:
 			enemy.stop_moving(delta)
-			enemy.attack_cooldown_left = 0.2
-			machine.change_to(&"Chase")
+	# The frame the clock runs out is the frame the state hands back to the
+	# chase, after the recovery behaviour above has run.
+	if _driver.phase() == AttackDriver.Phase.DONE:
+		enemy.attack_cooldown_left = 0.2
+		machine.change_to(&"Chase")
 
 
 func _on_driver_active() -> void:
