@@ -24,11 +24,35 @@ const SEED_MIX: int = 7919
 ## SPEC-enemies-ai budget, `Scaling.enemies_per_room(floor)` (the stats-status
 ## curve — its base, step and cap constants are the budget table), floored at
 ## `MIN_ENEMIES` so the shallowest room never fields fewer than the wave needs.
-## v1 spawns the whole budget as one wave; the 1-to-3 wave split is v2 (G12a2's
-## single-wave rule owns the v1 shape). Pure: the floor goes in, the count comes
-## out, nothing reads the tree.
+## v1 spawns the whole budget as one wave on the room's activation (the
+## single-wave rule); the 1-to-3 wave split — next wave at 40% remaining — is
+## the v2 shape. Pure: the floor goes in, the count comes out, nothing reads
+## the tree.
 static func room_budget(floor_index: int) -> int:
 	return maxi(Scaling.enemies_per_room(floor_index), MIN_ENEMIES)
+
+
+## Pure: which of `spawn_points` stand at least `safe_radius` px from every
+## player position (SPEC-enemies-ai: "Spawn positions avoid 160 px around
+## players" — a cell exactly at the radius is outside it and stays safe). When
+## fewer than `minimum` cells survive, every spawn point comes back, so a room
+## too small to be safe still fills. Nothing reads the tree: the caller feeds
+## the live player positions in.
+static func safe_cells(spawn_points: Array[Vector2i], player_positions: Array[Vector2], \
+		safe_radius: float, minimum: int) -> Array[Vector2i]:
+	var safe: Array[Vector2i] = []
+	for cell: Vector2i in spawn_points:
+		var pos: Vector2 = Iso.to_screen(cell)
+		var clear: bool = true
+		for player_pos: Vector2 in player_positions:
+			if player_pos.distance_to(pos) < safe_radius:
+				clear = false
+				break
+		if clear:
+			safe.append(cell)
+	if safe.size() < minimum:
+		return spawn_points.duplicate()
+	return safe
 
 
 ## Registers the combat populators with the floor generator. Safe to call more
@@ -51,7 +75,11 @@ static func _on_room_activated(room: Room) -> void:
 	fill_room(room)
 
 
-## Spawns the room's wave. Returns the enemies created.
+## Spawns the room's wave. Returns the enemies created. v1's shape: one call
+## spawns the whole budget as a single wave — nothing is held back for a later
+## trigger — and no enemy spawns within `SAFE_RADIUS` of a player unless the
+## room is too small to be safe (the fallback). Deterministic given the run
+## seed and the room's index.
 static func fill_room(room: Room) -> Array[Enemy]:
 	var spawned: Array[Enemy] = []
 	var world: World = GameState.world
@@ -108,20 +136,14 @@ static func _pick_kind(rng: RandomNumberGenerator, room: Room) -> StringName:
 	return StringName(pool[0][0])
 
 
-## Spawn cells at least SAFE_RADIUS (px) from every player, shuffled by the
-## room's rng; falls back to every cell when the room is too small to be safe.
+## The wiring around `safe_cells`: the live players' positions go in, the
+## surviving cells come back shuffled by the room's rng.
 static func _spawn_cells(room: Room, rng: RandomNumberGenerator) -> Array[Vector2i]:
-	var safe: Array[Vector2i] = []
-	for cell: Vector2i in room.spec.spawn_points:
-		var pos: Vector2 = Iso.to_screen(cell)
-		var clear: bool = true
-		for player: Player in NetworkManager.players.values():
-			if is_instance_valid(player) and player.position.distance_to(pos) < SAFE_RADIUS:
-				clear = false
-				break
-		if clear:
-			safe.append(cell)
-	var cells: Array[Vector2i] = safe if safe.size() >= MIN_ENEMIES else room.spec.spawn_points.duplicate()
+	var players: Array[Vector2] = []
+	for player: Player in NetworkManager.players.values():
+		if is_instance_valid(player):
+			players.append(player.position)
+	var cells: Array[Vector2i] = safe_cells(room.spec.spawn_points, players, SAFE_RADIUS, MIN_ENEMIES)
 	for i: int in range(cells.size() - 1, 0, -1):
 		var j: int = rng.randi_range(0, i)
 		var swap: Vector2i = cells[i]
