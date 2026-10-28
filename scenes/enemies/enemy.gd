@@ -62,9 +62,14 @@ var _last_position: Vector2 = Vector2.ZERO
 var _sprite_height: float = 0.0
 
 ## The per-frame shared separation hash: the first `_separation` this physics
-## frame collects the whole group (self included) into it, every push this
-## frame then reads only its own nine cells — never a group-wide scan.
-## Host-only AI over plain positions, nothing to sync.
+## frame collects the whole group (self included, by instance id) into it,
+## every push this frame then reads only its own nine cells — never a
+## group-wide scan. It is a snapshot: a body that moved earlier in the frame
+## (the flinch shove's `move_and_slide` runs before a state's `_separation`)
+## is read at its snapshot position, up to one frame stale — the old live
+## group scan read positions as they were. The query's own entry is dropped
+## by id at the lookup, so a stale self never pushes the body along its own
+## shove. Host-only AI over plain positions, nothing to sync.
 static var _frame_hash: EnemySeparation = null
 static var _hash_frame: int = -1
 static var _hash_group_size: int = -1
@@ -310,8 +315,8 @@ func _separation() -> Vector2:
 		for node: Node in get_tree().get_nodes_in_group(GROUP):
 			var enemy := node as Enemy
 			if enemy != null:
-				_frame_hash.insert(enemy.global_position)
-	return EnemySeparation.push_for(global_position, _frame_hash.nearby(global_position), SEPARATION_RADIUS, SEPARATION_PUSH)
+				_frame_hash.insert(enemy.global_position, enemy.get_instance_id())
+	return EnemySeparation.push_for(global_position, _frame_hash.nearby(global_position, get_instance_id()), SEPARATION_RADIUS, SEPARATION_PUSH)
 
 
 # --- hit reactions and death ---------------------------------------------------

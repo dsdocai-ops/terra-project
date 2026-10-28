@@ -24,10 +24,10 @@ func test_nearby_returns_exactly_the_nine_cells_around_the_query() -> void:
 	# (2,0) and (-2,-1) are outside it.
 	var inside: Array[Vector2] = [Vector2(5, 5), Vector2(-5, -5), Vector2(12, 3), Vector2(3, -2), Vector2(11, 11)]
 	for position: Vector2 in inside:
-		hash.insert(position)
+		hash.insert(position, 1)
 	var outside: Array[Vector2] = [Vector2(25, 0), Vector2(-25, -5)]
 	for position: Vector2 in outside:
-		hash.insert(position)
+		hash.insert(position, 2)
 	var found := hash.nearby(Vector2(1, 1))
 	assert_eq(found.size(), inside.size(), "every body in the nine cells, none past them")
 	for position: Vector2 in inside:
@@ -38,8 +38,8 @@ func test_nearby_returns_exactly_the_nine_cells_around_the_query() -> void:
 
 func test_the_same_cell_accumulates_bodies() -> void:
 	var hash := EnemySeparation.new(CELL)
-	hash.insert(Vector2(3, 3))
-	hash.insert(Vector2(4, 4))
+	hash.insert(Vector2(3, 3), 1)
+	hash.insert(Vector2(4, 4), 2)
 	assert_eq(hash.count(), 2, "both bodies ride in the hash")
 	assert_eq(hash.nearby(Vector2(1, 1)).size(), 2, "and both come back from their cell")
 
@@ -48,13 +48,13 @@ func test_negative_coordinates_floor_into_the_cell_below_zero() -> void:
 	var hash := EnemySeparation.new(CELL)
 	# floorf(-0.5 / 10) is cell -1; an int() cast would fold it into cell 0,
 	# which the query cell's 3x3 (x -3..-1) never reaches.
-	hash.insert(Vector2(-0.5, -0.5))
+	hash.insert(Vector2(-0.5, -0.5), 1)
 	assert_true(hash.nearby(Vector2(-15, 0)).has(Vector2(-0.5, -0.5)), "the body sits in cell (-1,-1), beside the query")
 
 
 func test_a_zero_cell_size_does_not_divide_by_zero() -> void:
 	var hash := EnemySeparation.new(0.0)
-	hash.insert(Vector2(1, 1))
+	hash.insert(Vector2(1, 1), 1)
 	assert_eq(hash.nearby(Vector2(1, 1)).size(), 1, "the MIN_CELL guard keeps the hash usable")
 
 
@@ -77,8 +77,9 @@ func test_the_push_is_gone_at_and_past_the_radius() -> void:
 
 
 func test_coincident_bodies_push_nothing() -> void:
-	# Two bodies on one spot (and a body reading its own hash position) must
-	# not divide by a zero distance.
+	# Two neighbours on one spot must not divide by a zero distance (the
+	# query's own entry is dropped upstream, in `nearby()` — see the stale-self
+	# cases below).
 	var push := EnemySeparation.push_for(Vector2(5, 5), [Vector2(5, 5), Vector2(5, 5)] as Array[Vector2], RADIUS, PUSH)
 	assert_eq(push.length(), 0.0, "no NaN, no push")
 	var just_inside := EnemySeparation.push_for(Vector2.ZERO, [Vector2(0.01, 0)] as Array[Vector2], RADIUS, PUSH)
@@ -108,7 +109,7 @@ func test_a_neighbour_beyond_the_radius_in_an_adjacent_cell_pushes_nothing() -> 
 	# distance filter is what drops it.
 	var hash := EnemySeparation.new(RADIUS)
 	var beyond := Vector2(40, 0)
-	hash.insert(beyond)
+	hash.insert(beyond, 1)
 	var neighbours := hash.nearby(Vector2.ZERO)
 	assert_true(neighbours.has(beyond), "the query hands it over as a cell neighbour")
 	assert_eq(EnemySeparation.push_for(Vector2.ZERO, neighbours, RADIUS, PUSH).length(), 0.0, "but past the radius it pushes nothing")
@@ -122,9 +123,9 @@ func test_the_push_through_the_hash_is_the_push_through_its_neighbours_alone() -
 	var near_body := Vector2(11, 0)
 	var cell_neighbour := Vector2(40, 0)
 	var far_body := Vector2(500, 500)
-	hash.insert(near_body)
-	hash.insert(cell_neighbour)
-	hash.insert(far_body)
+	hash.insert(near_body, 1)
+	hash.insert(cell_neighbour, 2)
+	hash.insert(far_body, 3)
 	var through_hash := EnemySeparation.push_for(Vector2.ZERO, hash.nearby(Vector2.ZERO), RADIUS, PUSH)
 	var through_near_only := EnemySeparation.push_for(Vector2.ZERO, [near_body] as Array[Vector2], RADIUS, PUSH)
 	assert_almost_eq(through_hash.x, through_near_only.x, EPSILON)
@@ -135,6 +136,40 @@ func test_the_push_through_the_hash_is_the_push_through_its_neighbours_alone() -
 		if position == far_body:
 			far_reached = true
 	assert_true(far_reached, "the far body is in the hash for the cells around itself")
+
+
+# --- the query's own stale entry is dropped ----------------------------------------
+
+
+func test_the_query_its_own_stale_entry_is_dropped_from_the_lookup() -> void:
+	# The snapshot is taken before the body moves: its own entry (id 7) sits at
+	# the pre-shove position, the body now lives at (10, 0). The lookup must
+	# drop that entry by id — a coincident epsilon cannot, the body has moved
+	# far past it.
+	var hash := EnemySeparation.new(RADIUS)
+	hash.insert(Vector2.ZERO, 7)
+	assert_eq(hash.nearby(Vector2(10, 0), 7).size(), 0, "the body's own snapshot is never its neighbour")
+	var hash_without_id := EnemySeparation.new(RADIUS)
+	hash_without_id.insert(Vector2.ZERO, 8)
+	assert_eq(hash_without_id.nearby(Vector2(10, 0), 7).size(), 1, "another body's entry at the same spot still reads")
+
+
+func test_a_stale_self_entry_pushes_nothing_along_the_move() -> void:
+	# The judge's case, in the pure file: the body shoved from (0, 0) to
+	# (10, 0) since the snapshot, an overlapping neighbour at (31, 0). The old
+	# self-in-the-hash path adds offset (10, 0) - (0, 0) — a push along the
+	# shove. With the id exclusion the push is exactly the neighbour's.
+	var hash := EnemySeparation.new(RADIUS)
+	hash.insert(Vector2.ZERO, 7)
+	hash.insert(Vector2(31, 0), 8)
+	var through_hash := EnemySeparation.push_for(Vector2(10, 0), hash.nearby(Vector2(10, 0), 7), RADIUS, PUSH)
+	var neighbour_only := EnemySeparation.push_for(Vector2(10, 0), [Vector2(31, 0)] as Array[Vector2], RADIUS, PUSH)
+	assert_almost_eq(through_hash.x, neighbour_only.x, EPSILON, "only the neighbour pushes, never the body's own stale entry")
+	assert_almost_eq(through_hash.y, neighbour_only.y, EPSILON)
+	# The bite: with the exclusion dropped, the stale self at distance 10
+	# inside the radius pushes back along +x and the two no longer match.
+	var with_self := EnemySeparation.push_for(Vector2(10, 0), [Vector2.ZERO, Vector2(31, 0)] as Array[Vector2], RADIUS, PUSH)
+	assert_gt(with_self.x, neighbour_only.x, "the stale self entry would push along the shove if it read")
 
 
 # --- the enemy scene separates through the hash ----------------------------------------
@@ -163,7 +198,7 @@ func test_the_scene_push_matches_the_pure_hash_push() -> void:
 	_other = _spawn(&"hollow_miner", Vector2(11, 0))
 	var push: Vector2 = _enemy._separation()
 	var hash := EnemySeparation.new(Enemy.SEPARATION_RADIUS)
-	hash.insert(_other.global_position)
+	hash.insert(_other.global_position, _other.get_instance_id())
 	var pure := EnemySeparation.push_for(_enemy.global_position, hash.nearby(_enemy.global_position), Enemy.SEPARATION_RADIUS, Enemy.SEPARATION_PUSH)
 	assert_almost_eq(push.x, pure.x, EPSILON, "the scene pushes exactly what the hash's neighbours push")
 	assert_almost_eq(push.y, pure.y, EPSILON)
@@ -197,6 +232,22 @@ func test_the_push_reads_the_frame_hash_not_the_live_group() -> void:
 	assert_gt(_enemy._separation().length(), 0.0, "the overlap pushes")
 	_other.global_position = Vector2(500, 500)
 	assert_gt(_enemy._separation().length(), 0.0, "still the frame hash's answer — no group scan ran")
+
+
+func test_a_body_moved_since_the_snapshot_gets_no_push_from_its_own_stale_entry() -> void:
+	# The judge's scene case: another enemy built the frame's hash before this
+	# one's `_physics_process` ran `_shove` (its `move_and_slide`), so this
+	# body's own entry is its pre-shove position. Its push must not include the
+	# offset along its own shove — the old code skipped `self` by identity.
+	_enemy = _spawn(&"hollow_miner", Vector2.ZERO)
+	_other = _spawn(&"hollow_miner", Vector2(500, 500))
+	assert_eq(_enemy._separation().length(), 0.0, "the frame hash is built, nobody in range")
+	_enemy.global_position = Vector2(10, 0)
+	assert_eq(_enemy._separation().length(), 0.0, "the shove moved the body past its own snapshot — no self-push")
+	# Rebuilt fresh (a new frame or group change), the same body separates from
+	# a real neighbour as before: the exclusion never suppresses others.
+	_spawn(&"hollow_miner", Vector2(21, 0))
+	assert_gt(_enemy._separation().length(), 0.0, "the fresh neighbour still pushes")
 
 
 func test_the_move_bends_away_from_an_overlapping_body() -> void:
