@@ -10,6 +10,7 @@ const ENEMY_SCENE := "res://scenes/enemies/enemy.tscn"
 const PLAYER_SCENE := "res://scenes/player/player.tscn"
 const FRAME := 1.0 / 60.0
 const ORIGIN := Vector2.ZERO
+const FLINCH_STOP_SOURCE: StringName = &"g7a1-flinch-stop"
 
 
 # --- the shared timer tick ------------------------------------------------------
@@ -139,6 +140,7 @@ func before_each() -> void:
 
 func after_each() -> void:
 	NetworkManager.players.erase(1)
+	TimeManager.clear_source(FLINCH_STOP_SOURCE)
 
 
 ## Steps the enemy and its state machine `seconds` of game time.
@@ -254,6 +256,27 @@ func test_the_enemy_scene_decays_knockback_through_the_pure_maths() -> void:
 		_enemy.decay_knockback(FRAME)
 		assert_almost_eq(_enemy.knockback_velocity.x, expected.x, 0.0001, "the scene's decay is the pure decay, step for step")
 	assert_almost_eq(_enemy.knockback_velocity.length(), 0.0, 0.0001, "the impulse is dead at the pure decay time")
+
+
+## A flinch (a hit that broke no poise) shoves through `_physics_process`
+## without a state change, so the shove velocity itself must carry the
+## TimeManager scale — a time stop on this enemy moves it nothing and the
+## impulse waits out the stop.
+func test_a_flinch_under_a_time_stop_moves_nothing() -> void:
+	var hit := HitInfo.new()
+	hit.staggered = false
+	_enemy.apply_knockback(Vector2(120, 0), 0.0, hit)
+	assert_eq(_enemy.machine.current_name(), &"Idle", "a flinch is a shove, not a state change")
+	TimeManager.set_entity_scale(_enemy, 0.0, 1.0, FLINCH_STOP_SOURCE)
+	var start: Vector2 = _enemy.global_position
+	_step(0.1)
+	assert_almost_eq(_enemy.global_position.x, start.x, 0.0001, "a flinch under a time stop moves nothing")
+	assert_almost_eq(_enemy.global_position.y, start.y, 0.0001)
+	assert_lte(_enemy.velocity.length(), 0.0001, "the shove velocity is scaled to nothing")
+	assert_gt(_enemy.knockback_velocity.length(), 0.0, "the impulse did not decay while time was stopped")
+	TimeManager.clear_source(FLINCH_STOP_SOURCE)
+	_enemy._physics_process(FRAME)
+	assert_gt(_enemy.velocity.length(), 0.0, "with time restored the flinch shoves again")
 
 
 func test_the_stagger_state_runs_its_data_seconds_and_refills_poise() -> void:

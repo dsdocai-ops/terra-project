@@ -372,8 +372,10 @@ func _refill_poise(scaled_delta: float) -> void:
 		poise = minf(poise + poise_max * POISE_REFILL_PER_SECOND * scaled_delta, poise_max)
 
 
-## A flinch moves the enemy without changing its state. HitStun and Stagger move
-## themselves from the same impulse.
+## A flinch moves the enemy without changing its state, at TimeManager's scale
+## for this enemy so a time stop or hit-stop holds the shove too (the decay
+## above already runs on the scaled delta). HitStun and Stagger move themselves
+## from the same impulse.
 func _shove(scaled_delta: float) -> void:
 	if knockback_velocity.is_zero_approx() or machine == null:
 		return
@@ -381,7 +383,7 @@ func _shove(scaled_delta: float) -> void:
 	if current == &"HitStun" or current == &"Stagger":
 		return
 	decay_knockback(scaled_delta)
-	velocity = knockback_velocity
+	velocity = knockback_velocity * _time_scale()
 	move_and_slide()
 	if is_on_wall():
 		knockback_velocity = Vector2.ZERO
