@@ -26,7 +26,7 @@ extends Node
 
 ## SWAP, HEAVY (the release) and the four buffered kinds. New kinds go at the
 ## end: they travel over the wire as ints.
-enum Kind { LIGHT, HEAVY, SWAP, DODGE, HEAVY_PRESS, SKILL }
+enum Kind { LIGHT, HEAVY, SWAP, DODGE, HEAVY_PRESS, SKILL, WEAPON_1, WEAPON_2 }
 
 ## A heavy released sooner than this fires uncharged.
 const TAP_SECONDS: float = 0.15
@@ -65,6 +65,10 @@ func _physics_process(delta: float) -> void:
 		release_heavy()
 	if Input.is_action_just_pressed(&"swap_weapon"):
 		send(Kind.SWAP, 0.0)
+	if Input.is_action_just_pressed(&"weapon_1"):
+		send(Kind.WEAPON_1, 0.0)
+	if Input.is_action_just_pressed(&"weapon_2"):
+		send(Kind.WEAPON_2, 0.0)
 	if Input.is_action_just_pressed(&"dodge"):
 		send(Kind.DODGE, 0.0)
 
@@ -240,6 +244,8 @@ func apply(kind: int, aim: Vector2, charge: float, perfect: bool = false) -> voi
 			_release_heavy(aim, charge, perfect)
 		Kind.SWAP:
 			_weapons.swap()
+		Kind.WEAPON_1, Kind.WEAPON_2:
+			_weapons.select_slot(0 if kind == Kind.WEAPON_1 else 1)
 
 
 # --- heavy --------------------------------------------------------------------------------

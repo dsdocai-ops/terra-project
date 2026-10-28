@@ -115,9 +115,16 @@ func can_swap() -> bool:
 ## Swaps to the other slot unless the 0.2 s lockout is running. Returns whether
 ## it swapped.
 func swap() -> bool:
-	if not can_swap():
+	return select_slot((active_slot + 1) % SLOT_COUNT)
+
+
+## Equips a slot directly (the `weapon_1` / `weapon_2` inputs): the same 0.2 s
+## lockout as a swap, and a no-op when that slot is already live. Selecting the
+## live slot neither moves nor restarts the lockout.
+func select_slot(index: int) -> bool:
+	if index < 0 or index >= SLOT_COUNT or not can_swap() or index == active_slot:
 		return false
-	active_slot = (active_slot + 1) % SLOT_COUNT
+	active_slot = index
 	_swap_lockout = SWAP_LOCKOUT_SECONDS
 	combo_step = 0
 	weapon_changed.emit(active_slot, slots[active_slot])

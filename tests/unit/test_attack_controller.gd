@@ -13,6 +13,7 @@ var _player: Player
 var _controller: AttackController
 var _weapons: WeaponController
 var _released: Array[float] = []
+var _swapped: Array[int] = []
 
 
 func before_each() -> void:
@@ -22,6 +23,7 @@ func before_each() -> void:
 	_controller = _player.get_node("AttackController") as AttackController
 	_weapons = _player.get_node("WeaponController") as WeaponController
 	_released.clear()
+	_swapped.clear()
 	Events.heavy_attack_released.connect(_on_heavy_released)
 
 
@@ -394,3 +396,122 @@ func test_the_host_clamps_a_reported_charge_to_what_it_saw() -> void:
 	assert_almost_eq(_controller.validated_charge(0.3), 0.3, 0.0001, "an honest value passes")
 	assert_eq(_controller.validated_charge(7.0) <= 1.0, true, "never above 1")
 	assert_eq(_controller.validated_charge(-1.0), 0.0, "never below 0")
+
+
+# --- swap with lockout ------------------------------------------------------------------
+
+func _on_weapon_changed(slot: int, _weapon: WeaponData) -> void:
+	_swapped.append(slot)
+
+
+func test_a_swap_changes_the_slot_and_resets_the_combo() -> void:
+	_weapons.weapon_changed.connect(_on_weapon_changed)
+	_weapons.take_light()
+	assert_eq(_weapons.combo_step, 1, "setup: a light was taken")
+	assert_true(_weapons.can_swap())
+	assert_true(_weapons.swap())
+	assert_eq(_weapons.active_slot, 1, "the other slot is live")
+	assert_ne(_weapons.active_weapon(), _weapons.slots[0], "and it is the other weapon")
+	assert_eq(_weapons.combo_step, 0, "a swap resets the combo")
+	assert_eq(_swapped, [1] as Array[int], "weapon_changed fired once with the new slot")
+
+
+func test_the_swap_lockout_blocks_a_second_swap_for_two_tenths_of_a_second() -> void:
+	assert_true(_weapons.swap(), "the first swap goes through")
+	var slot_after_first: int = _weapons.active_slot
+	assert_false(_weapons.can_swap(), "the lockout is running")
+	assert_false(_weapons.swap(), "a swap during the lockout does nothing")
+	assert_eq(_weapons.active_slot, slot_after_first, "and the slot did not move")
+	_tick(WeaponController.SWAP_LOCKOUT_SECONDS - 0.01)
+	assert_false(_weapons.swap(), "still locked just inside the 0.2 s")
+	assert_eq(_weapons.active_slot, slot_after_first)
+	_tick(0.02)
+	assert_true(_weapons.can_swap(), "open again at 0.2 s")
+	assert_true(_weapons.swap(), "and the next swap goes through")
+	assert_ne(_weapons.active_slot, slot_after_first)
+
+
+func test_a_swap_press_during_the_lockout_is_swallowed_not_buffered() -> void:
+	assert_true(_weapons.swap())
+	_controller.apply(AttackController.Kind.SWAP, Vector2.RIGHT, 0.0)
+	assert_false(_weapons.can_swap())
+	assert_eq(_weapons.active_slot, 1, "the locked swap press did nothing")
+	assert_eq(_controller.buffered_kind(), -1, "and a swap never waits in the buffer")
+	_tick(WeaponController.SWAP_LOCKOUT_SECONDS + 0.01)
+	_controller.apply(AttackController.Kind.SWAP, Vector2.RIGHT, 0.0)
+	assert_eq(_weapons.active_slot, 0, "once the lockout is over the press swaps at once")
+
+
+# --- weapon_1 / weapon_2 ----------------------------------------------------------------
+
+func test_the_slot_keys_select_their_slot_through_the_same_lockout() -> void:
+	_controller.apply(AttackController.Kind.WEAPON_2, Vector2.RIGHT, 0.0)
+	assert_eq(_weapons.active_slot, 1, "weapon_2 equips the crossbow slot")
+	assert_false(_weapons.can_swap(), "under the same 0.2 s lockout as a swap")
+	_controller.apply(AttackController.Kind.WEAPON_1, Vector2.RIGHT, 0.0)
+	assert_eq(_weapons.active_slot, 1, "weapon_1 during the lockout does nothing")
+	_tick(WeaponController.SWAP_LOCKOUT_SECONDS + 0.01)
+	_controller.apply(AttackController.Kind.WEAPON_1, Vector2.RIGHT, 0.0)
+	assert_eq(_weapons.active_slot, 0, "and once it is over it selects at once")
+
+
+func test_selecting_the_live_slot_is_a_no_op_that_burns_no_lockout() -> void:
+	assert_true(_weapons.swap(), "to the crossbow")
+	_tick(WeaponController.SWAP_LOCKOUT_SECONDS + 0.01)
+	assert_false(_weapons.select_slot(1), "selecting the live slot does nothing")
+	assert_eq(_weapons.active_slot, 1)
+	_tick(WeaponController.SWAP_LOCKOUT_SECONDS - 0.01)
+	assert_true(_weapons.select_slot(0), "and it did not restart the lockout: the swap still fits inside it")
+
+
+func test_a_slot_key_press_is_never_buffered() -> void:
+	_start_attack(_long_spec())
+	_controller.apply(AttackController.Kind.WEAPON_1, Vector2.RIGHT, 0.0)
+	assert_eq(_controller.buffered_kind(), -1, "like a swap, a slot select waits for nothing")
+
+
+# --- attack speed -------------------------------------------------------------------------
+
+## Doubles the player's ATTACK_SPEED through a StatBlock modifier (never a base
+## edit), the way a relic or a status would.
+func _set_attack_speed(percent: float, source: StringName = &"test_haste") -> void:
+	(_player.stat_block as StatBlock).add_modifier(StatBlock.Stat.ATTACK_SPEED, 0.0, percent, source)
+
+
+func test_attack_speed_scales_the_attack_clock_and_the_cancel_windows() -> void:
+	_set_attack_speed(1.0)
+	_start_attack(_long_spec())
+	_tick(0.1)
+	assert_almost_eq(_attack_state().elapsed(), 0.2, 0.02, "0.1 s of real time is 0.2 s of attack clock")
+	assert_false(_attack_state().can_combo_cancel(), "not yet even so")
+	_tick(0.2)
+	assert_almost_eq(_attack_state().elapsed(), 0.6, 0.02, "past the 0.55 s cancel point")
+	assert_true(_attack_state().can_combo_cancel(), "the combo window opened early on the fast attack")
+
+
+func test_a_fast_attack_ends_its_full_timeline_in_half_the_real_time() -> void:
+	_set_attack_speed(1.0)
+	_start_attack(_long_spec())
+	_tick(0.55)
+	assert_eq(_state(), &"Attack", "1.1 s of clock is not the full 1.15 s yet")
+	_tick(0.05)
+	assert_eq(_state(), &"Idle", "the 1.15 s attack is over after 0.6 s of real time")
+
+
+func test_a_slow_attack_stretches_the_same_way() -> void:
+	_set_attack_speed(-0.5, &"test_slow")
+	_start_attack(_long_spec())
+	_tick(0.2)
+	assert_almost_eq(_attack_state().elapsed(), 0.1, 0.01, "half speed halves the clock")
+	assert_false(_attack_state().can_dodge_cancel(), "the slow attack keeps its dodge window shut")
+
+
+func test_a_crushing_slow_clamps_to_the_attack_speed_floor() -> void:
+	# StatBlock clamps ATTACK_SPEED at 0.2, so a -95% modifier cannot freeze a
+	# player in an attack forever.
+	assert_gt(StatBlock.ATTACK_SPEED_MIN, 0.0, "the floor is above zero")
+	_set_attack_speed(-0.95, &"test_freeze")
+	_start_attack(_long_spec())
+	_tick(0.1)
+	assert_almost_eq(_attack_state().elapsed(), 0.02, 0.01, "0.1 s of real time at the 0.2 floor")
+	assert_false(_attack_state().can_combo_cancel())
