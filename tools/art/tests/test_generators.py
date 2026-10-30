@@ -36,9 +36,8 @@ def _pngs(root: Path) -> list[Path]:
 
 def test_registry_covers_every_generator_module() -> None:
     names = {g.name for g in build_all.GENERATORS}
-    assert {"font", "ui_icons", "relic_icons_pickups", "props", "character:miner", "enemies"} <= names
-    assert {f"tiles:{b}" for b in gen_tiles.BIOMES} <= names
-    assert {f"tiles_v2:{b}" for b in gen_tiles_v2.BIOMES} | {"sprites_v2"} <= names
+    # Art direction v3: gen_v3 supersedes the v1/v2 sprite, icon, prop, tile, town and portrait generators.
+    assert names == {"font", "character:miner", "v3"}
     assert len(names) == len(build_all.GENERATORS), "generator names are unique"
 
 
@@ -97,13 +96,14 @@ def test_check_is_clean_right_after_build(built: Path) -> None:
 
 
 def test_character_and_enemy_sheets_draw_all_eight_directions(built: Path) -> None:
-    sheets = [built / gen_character.OUT_REL] + [built / gen_enemies.OUT_DIR / f"{e}_sheet.png" for e in gen_enemies.ENEMIES if e not in gen_sprites_v2.V2_ENEMIES]
+    sheets = [built / gen_character.OUT_REL] + [built / gen_enemies.OUT_DIR / f"{e}_sheet.png" for e in gen_enemies.ENEMIES]
     for sheet_path in sheets:
         with Image.open(sheet_path) as img:
-            assert img.size == (FRAME * COLUMNS, FRAME * DIRECTIONS), sheet_path.name
+            fw, fh = img.width // COLUMNS, img.height // DIRECTIONS
+            assert (fw * COLUMNS, fh * DIRECTIONS) == img.size and fw in (FRAME, 64) and fh in (FRAME, 64, 96), sheet_path.name
             rgba = img.convert("RGBA")
             for row in range(DIRECTIONS):
-                cell = rgba.crop((0, row * FRAME, FRAME, (row + 1) * FRAME))
+                cell = rgba.crop((0, row * fh, fw, (row + 1) * fh))
                 assert cell.getbbox() is not None, f"{sheet_path.name} row {row} is empty"
 
 
@@ -136,10 +136,12 @@ def test_tile_atlas_layout_matches_tiles_gd(built: Path) -> None:
             assert len(set(floors)) == gen_tiles.FLOOR_VARIANTS, "%s floor variants differ" % biome
 
 
-def test_tile_colors_come_from_the_biome_palette_only(built: Path) -> None:
+def test_tile_colors_come_from_the_biome_palette_only(tmp_path: Path) -> None:
+    """The v1 tile generator (no longer registered since v3) still keeps to its biome palette."""
     for biome in gen_tiles.BIOMES:
+        gen_tiles.build(tmp_path, biome)
         allowed = palette.biome(biome).rgb()
-        png = built / gen_tiles.OUT_DIR / biome / "atlas.png"
+        png = tmp_path / gen_tiles.OUT_DIR / biome / "atlas.png"
         assert build_all._off_palette(png, allowed) == [], biome
 
 
