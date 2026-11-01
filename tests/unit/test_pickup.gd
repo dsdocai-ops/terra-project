@@ -310,6 +310,10 @@ func test_the_room_wide_read_is_an_effect_host_id_not_a_player_flag() -> void:
 
 func test_a_player_with_no_effect_host_keeps_the_scene_radius() -> void:
 	var player: Player = make_player(NEAR_PEER, Vector2(0.0, TEST_RADIUS + 100.0))
+	var auto_host: Node = player.get_node_or_null(NodePath(EffectHost.NODE_NAME))
+	if auto_host != null:
+		player.remove_child(auto_host)
+		auto_host.free()
 	assert_null(player.get_node_or_null(NodePath(EffectHost.NODE_NAME)), "this player carries no host")
 	assert_eq(_pickup.magnet_radius(player), TEST_RADIUS)
 	assert_eq(_pickup.magnet_radius(null), TEST_RADIUS, "and neither does a missing player widen it")

@@ -287,7 +287,11 @@ func _open_choice(ids: Array[StringName]) -> void:
 
 func _on_choice_picked(index: int) -> void:
 	choice_popup.close()
-	NetworkManager.send_pick_relic_request(index)
+	var sent: bool = NetworkManager.send_pick_relic_request(index)
+	# A refused pick leaves the host's offer pending, and the poll would reopen it
+	# forever; drop it instead.
+	if NetworkManager.is_host and not sent:
+		RelicFlow.decline(NetworkManager.local_peer_id)
 
 
 ## The player left the relic choice. The host drops its own offer so the poll

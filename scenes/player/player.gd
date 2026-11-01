@@ -253,6 +253,7 @@ var _missing_anims: Dictionary[StringName, bool] = {}
 
 
 func _ready() -> void:
+	_ensure_effect_host()
 	refresh_authority()
 	if sprite != null:
 		HitFlash.attach(self, [sprite])
@@ -794,3 +795,14 @@ func request_revive(target: Player) -> void:
 		push_warning("Player.request_revive: no target named")
 		return
 	NetworkManager.send_revive_request(target.peer_id)
+
+
+## Relic picks attach through the player's `EffectHost` on the host. The scene
+## does not carry one, so without this every shrine pick was refused
+## (REFUSAL_NO_EFFECT_HOST) and the offer stayed open.
+func _ensure_effect_host() -> void:
+	if not NetworkManager.is_host or has_node(NodePath(EffectHost.NODE_NAME)):
+		return
+	var effect_host := EffectHost.new()
+	effect_host.name = EffectHost.NODE_NAME
+	add_child(effect_host)
