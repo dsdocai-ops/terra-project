@@ -83,5 +83,6 @@ def test_wren_portrait_is_96(built: Path) -> None:
 
 
 def test_town_generators_are_registered() -> None:
+    """Since art direction v3, gen_v3 owns the town tiles, buildings and portraits."""
     names = {g.name for g in build_all.GENERATORS}
-    assert {"town_tiles", "town_buildings", "portraits"} <= names
+    assert "v3" in names

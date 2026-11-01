@@ -5,7 +5,7 @@ extends Node
 ## Owned by foundation. Sync: none; NetworkManager owns connection state.
 
 const WORLD_SCENE: PackedScene = preload("res://scenes/main/world.tscn")
-const VOID_COLOR: Color = Color(0.055, 0.043, 0.035, 1.0)
+const VOID_COLOR: Color = Color(0.085, 0.095, 0.115, 1.0)
 ## How often the floor-sync smoke driver looks for the client before starting
 ## the run, and how long it waits for one before starting it alone.
 const SMOKE_FLOOR_POLL_SECONDS: float = 0.25

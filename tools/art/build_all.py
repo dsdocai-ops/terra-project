@@ -43,6 +43,7 @@ import gen_tiles_v2  # noqa: E402
 import gen_sprites_v2  # noqa: E402
 import gen_town  # noqa: E402
 import gen_ui  # noqa: E402
+import gen_v3  # noqa: E402
 import palette  # noqa: E402
 
 REPO_ROOT = ART_DIR.parents[1]
@@ -78,19 +79,15 @@ def _tile_generator(biome_id: str) -> Generator:
 
 _FONT_COLORS = frozenset({palette.rgb(palette.ACCENT["hit_flash"])})
 
+# Art direction v3 (2026-10-29): gen_v3 owns every player, enemy, portrait, icon,
+# prop, town and tile output. The v1/v2 generators it supersedes (gen_ui,
+# gen_icons, gen_props, gen_enemies, gen_sprites_v2, gen_tiles, gen_tiles_v2,
+# gen_town, gen_portraits) stay importable and tested but are not registered, so
+# their outputs are no longer checked against the committed files.
 GENERATORS: tuple[Generator, ...] = (
     Generator("font", _FONT_COLORS, gen_font.build),
-    Generator("ui_icons", palette.all_rgb(), gen_ui.build),
-    Generator("relic_icons_pickups", palette.all_rgb(), gen_icons.build),
-    Generator("props", palette.all_rgb(), gen_props.build),
     Generator("character:miner", palette.all_rgb(), gen_character.build),
-    Generator("enemies", palette.all_rgb(), gen_enemies.build),
-    Generator("sprites_v2", gen_sprites_v2.allowed_rgb(), gen_sprites_v2.build),
-    *(_tile_generator(b) for b in gen_tiles.BIOMES),
-    *(_tile_v2_generator(b) for b in gen_tiles_v2.BIOMES),
-    Generator("town_tiles", palette.biome("town").rgb(), gen_town.build_tiles),
-    Generator("town_buildings", palette.all_rgb(), gen_town.build_buildings),
-    Generator("portraits", palette.all_rgb(), gen_portraits.build),
+    Generator("v3", gen_v3.allowed_rgb(), gen_v3.build),
 )
 
 

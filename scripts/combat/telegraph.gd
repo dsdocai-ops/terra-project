@@ -3,7 +3,7 @@ extends Node2D
 ## The ground shape that shows an enemy attack coming (SPEC-combat-core
 ## "Telegraph"): an outline that fills from 0 to 100% over the windup. Owned by
 ## combat-core. Sync: none; every peer draws it from the enemy's replicated
-## `telegraph_progress` and `aim_dir`. Placeholder art: flat red shapes.
+## `telegraph_progress` and `aim_dir`. Drawn as a faint danger zone with a charging fill and a glowing leading edge.
 ## Shapes: circle, cone, line and ring (a band between two radii that fills
 ## outward).
 
@@ -75,43 +75,64 @@ static func line_geometry(size: Vector2, fill: float) -> Dictionary:
 	return {"length": length, "width": maxf(size.y, 0.0), "filled_to": length * clampf(fill, 0.0, 1.0)}
 
 
+
 func _draw() -> void:
 	if progress < 0.0:
 		return
 	var fill: float = clampf(progress, 0.0, 1.0)
 	draw_count += 1
 	last_drawn = shape
+	# The danger zone darkens and brightens as the strike nears, and the edge of
+	# the fill glows so the windup reads as a charge rather than a debug shape.
+	var body := Color(FILL_COLOR.r, FILL_COLOR.g, FILL_COLOR.b, lerpf(0.16, 0.5, fill))
+	var zone := Color(FILL_COLOR.r, FILL_COLOR.g, FILL_COLOR.b, 0.12)
+	var rim := Color(1.0, lerpf(0.35, 0.8, fill), lerpf(0.25, 0.5, fill), lerpf(0.55, 1.0, fill))
+	var outline_color := Color(OUTLINE_COLOR.r, OUTLINE_COLOR.g, OUTLINE_COLOR.b, lerpf(0.5, 0.95, fill))
 	match shape:
 		AttackPattern.TelegraphShape.CIRCLE:
-			var circle: Dictionary = circle_geometry(size, fill)
-			draw_arc(Vector2.ZERO, circle["radius"], 0.0, TAU, 24, OUTLINE_COLOR, OUTLINE_WIDTH)
-			draw_circle(Vector2.ZERO, circle["filled_to"], FILL_COLOR)
+			draw_circle(Vector2.ZERO, size.x, zone)
+			draw_circle(Vector2.ZERO, size.x * fill, body)
+			draw_arc(Vector2.ZERO, size.x, 0.0, TAU, 32, outline_color, OUTLINE_WIDTH)
+			draw_arc(Vector2.ZERO, size.x * fill, 0.0, TAU, 32, rim, 2.0)
 		AttackPattern.TelegraphShape.CONE:
-			var cone: Dictionary = cone_geometry(size, fill)
-			var half: float = deg_to_rad(cone["half_angle_deg"])
+			var half: float = deg_to_rad(size.y) * 0.5
 			var base: float = direction.angle()
-			draw_colored_polygon(_sector(base, half, cone["filled_to"]), FILL_COLOR)
-			draw_polyline(_sector(base, half, cone["length"]) + PackedVector2Array([Vector2.ZERO]), OUTLINE_COLOR, OUTLINE_WIDTH)
+			draw_colored_polygon(_sector(base, half, size.x), zone)
+			if fill > 0.02:
+				draw_colored_polygon(_sector(base, half, size.x * fill), body)
+			draw_polyline(_sector(base, half, size.x) + PackedVector2Array([Vector2.ZERO]), outline_color, OUTLINE_WIDTH)
+			draw_polyline(_arc_points(base, half, size.x * fill), rim, 2.0)
 		AttackPattern.TelegraphShape.LINE:
-			var line: Dictionary = line_geometry(size, fill)
-			var across: Vector2 = direction.orthogonal() * line["width"] * 0.5
-			var far: Vector2 = direction * line["length"]
-			var near_fill: Vector2 = direction * line["filled_to"]
-			draw_polyline(PackedVector2Array([-across, -across + far, across + far, across, -across]), OUTLINE_COLOR, OUTLINE_WIDTH)
-			draw_colored_polygon(PackedVector2Array([-across, -across + near_fill, across + near_fill, across]), FILL_COLOR)
+			var across: Vector2 = direction.orthogonal() * size.y * 0.5
+			var far: Vector2 = direction * size.x
+			var near_fill: Vector2 = direction * size.x * fill
+			draw_colored_polygon(PackedVector2Array([-across, -across + far, across + far, across]), zone)
+			if fill > 0.02:
+				draw_colored_polygon(PackedVector2Array([-across, -across + near_fill, across + near_fill, across]), body)
+			draw_polyline(PackedVector2Array([-across, -across + far, across + far, across, -across]), outline_color, OUTLINE_WIDTH)
+			draw_line(-across + near_fill, across + near_fill, rim, 2.0)
 		AttackPattern.TelegraphShape.RING:
 			var ring: Dictionary = ring_geometry(size, fill)
-			draw_arc(Vector2.ZERO, ring["outer"], 0.0, TAU, 32, OUTLINE_COLOR, OUTLINE_WIDTH)
-			if ring["inner"] > 0.0:
-				draw_arc(Vector2.ZERO, ring["inner"], 0.0, TAU, 32, OUTLINE_COLOR, OUTLINE_WIDTH)
-			var swept: float = ring["filled_to"] - ring["inner"]
+			var outer_r: float = ring["outer"]
+			var inner_r: float = ring["inner"]
+			var filled_r: float = ring["filled_to"]
+			draw_arc(Vector2.ZERO, outer_r, 0.0, TAU, 40, outline_color, OUTLINE_WIDTH)
+			if inner_r > 0.0:
+				draw_arc(Vector2.ZERO, inner_r, 0.0, TAU, 40, outline_color, OUTLINE_WIDTH)
+			var swept: float = filled_r - inner_r
 			if swept > 0.5:
-				draw_arc(Vector2.ZERO, ring["inner"] + swept * 0.5, 0.0, TAU, 32, FILL_COLOR, swept)
+				draw_arc(Vector2.ZERO, inner_r + swept * 0.5, 0.0, TAU, 40, body, swept)
+				draw_arc(Vector2.ZERO, filled_r, 0.0, TAU, 40, rim, 2.0)
+
+
+func _arc_points(base: float, half: float, length: float) -> PackedVector2Array:
+	var points := PackedVector2Array()
+	for step: int in range(ARC_STEPS + 1):
+		points.append(Vector2.RIGHT.rotated(base + lerpf(-half, half, float(step) / float(ARC_STEPS))) * length)
+	return points
 
 
 func _sector(base: float, half: float, length: float) -> PackedVector2Array:
 	var points := PackedVector2Array([Vector2.ZERO])
-	for step: int in range(ARC_STEPS + 1):
-		var angle: float = base + lerpf(-half, half, float(step) / float(ARC_STEPS))
-		points.append(Vector2.RIGHT.rotated(angle) * length)
+	points.append_array(_arc_points(base, half, length))
 	return points
