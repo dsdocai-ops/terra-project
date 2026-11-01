@@ -171,7 +171,7 @@ func _visit(index: int) -> void:
 	room_visited.emit(index)
 
 
-## Solid black over the whole floor; the shader clears entered rooms and a small
+## Drifting murky fog over the whole floor; the shader clears entered rooms and a small
 ## lamp around the player in hallways. Local presentation only.
 func _build_fog() -> void:
 	var span: float = float(FloorGenerator.GRID) * Iso.HALF_W * 2.0
@@ -179,7 +179,7 @@ func _build_fog() -> void:
 	_fog.name = "Fog"
 	_fog.position = Vector2(-span * 0.5 - 200.0, -200.0)
 	_fog.size = Vector2(span + 400.0, span * 0.5 + 400.0)
-	_fog.color = Color.BLACK
+	_fog.color = Color.WHITE
 	_fog.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_fog.z_index = 40
 	var material := ShaderMaterial.new()

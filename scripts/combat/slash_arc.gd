@@ -96,11 +96,57 @@ func outline() -> PackedVector2Array:
 func _draw() -> void:
 	if _seconds_left <= 0.0:
 		return
-	var fade: float = clampf(_seconds_left / _seconds_total, 0.0, 1.0)
-	var points: PackedVector2Array = outline()
-	if points.size() < 3:
-		return
-	draw_colored_polygon(points, Color(color.r, color.g, color.b, FILL_ALPHA * fade))
-	var closed: PackedVector2Array = points.duplicate()
-	closed.append(points[0])
-	draw_polyline(closed, Color(color.r, color.g, color.b, EDGE_ALPHA * fade), 1.5)
+	var elapsed: float = clampf(1.0 - _seconds_left / _seconds_total, 0.0, 1.0)
+	var fade: float = 1.0 - elapsed
+	if shape == AttackSpec.Shape.CIRCLE:
+		_draw_shockwave(elapsed, fade)
+	else:
+		_draw_swoosh(elapsed, fade)
+
+
+## A crescent that sweeps across the arc: a bright leading edge and a tail that
+## fades behind it, so the swing reads as motion rather than a hitbox outline.
+func _draw_swoosh(elapsed: float, fade: float) -> void:
+	var half: float = deg_to_rad(arc_degrees) * 0.5
+	var sweep: float = 1.0 - pow(1.0 - clampf(elapsed * 2.2, 0.0, 1.0), 3.0)
+	var head: float = lerpf(-half, half, sweep)
+	var tail: float = -half
+	var steps: int = ARC_SEGMENTS
+	var bright: Color = color.lerp(Color.WHITE, 0.65)
+	var outer := PackedVector2Array()
+	var inner := PackedVector2Array()
+	var outer_colors := PackedColorArray()
+	var inner_colors := PackedColorArray()
+	for index: int in range(steps + 1):
+		var along: float = float(index) / float(steps)
+		var angle: float = lerpf(tail, head, along)
+		var dir: Vector2 = Vector2.RIGHT.rotated(angle)
+		# The band is thick at the head and thins to nothing at the tail.
+		var thickness: float = reach * lerpf(0.04, 0.5, along)
+		outer.append(dir * reach)
+		inner.append(dir * (reach - thickness))
+		var alpha: float = along * along * fade
+		outer_colors.append(Color(bright.r, bright.g, bright.b, alpha * 0.95))
+		inner_colors.append(Color(color.r, color.g, color.b, alpha * 0.1))
+	for index: int in range(steps):
+		var quad := PackedVector2Array([outer[index], outer[index + 1], inner[index + 1], inner[index]])
+		var quad_colors := PackedColorArray([outer_colors[index], outer_colors[index + 1], inner_colors[index + 1], inner_colors[index]])
+		draw_polygon(quad, quad_colors)
+	# Faint ghost of the real hit area so the reach still reads, then the cutting edge.
+	var area: PackedVector2Array = outline()
+	if area.size() >= 3:
+		draw_colored_polygon(area, Color(color.r, color.g, color.b, FILL_ALPHA * 0.25 * fade))
+	var lead: Vector2 = Vector2.RIGHT.rotated(head)
+	draw_line(lead * reach * 0.55, lead * reach, Color(1.0, 1.0, 1.0, EDGE_ALPHA * fade), 2.0)
+	draw_polyline(outer, Color(bright.r, bright.g, bright.b, EDGE_ALPHA * 0.7 * fade), 1.5)
+
+
+## A ring that bursts outward from the attacker with a bright flash at the centre.
+func _draw_shockwave(elapsed: float, fade: float) -> void:
+	var burst: float = 1.0 - pow(1.0 - clampf(elapsed * 1.8, 0.0, 1.0), 3.0)
+	var radius: float = reach * lerpf(0.35, 1.0, burst)
+	var bright: Color = color.lerp(Color.WHITE, 0.6)
+	draw_circle(Vector2.ZERO, reach, Color(color.r, color.g, color.b, FILL_ALPHA * 0.3 * fade))
+	draw_circle(Vector2.ZERO, radius * 0.7, Color(color.r, color.g, color.b, FILL_ALPHA * 0.5 * fade))
+	draw_arc(Vector2.ZERO, radius, 0.0, TAU, ARC_SEGMENTS * 3, Color(bright.r, bright.g, bright.b, EDGE_ALPHA * fade), 3.0 * fade + 1.0)
+	draw_arc(Vector2.ZERO, radius * 0.8, 0.0, TAU, ARC_SEGMENTS * 3, Color(color.r, color.g, color.b, 0.5 * fade), 1.5)
