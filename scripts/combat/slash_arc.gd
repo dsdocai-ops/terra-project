@@ -128,7 +128,8 @@ func _draw_swoosh(elapsed: float, fade: float) -> void:
 		var alpha: float = along * along * fade
 		outer_colors.append(Color(bright.r, bright.g, bright.b, alpha * 0.95))
 		inner_colors.append(Color(color.r, color.g, color.b, alpha * 0.1))
-	for index: int in range(steps):
+	# The first frame has no sweep yet; its quads would be degenerate slivers.
+	for index: int in range(steps if sweep > 0.03 else 0):
 		var quad := PackedVector2Array([outer[index], outer[index + 1], inner[index + 1], inner[index]])
 		var quad_colors := PackedColorArray([outer_colors[index], outer_colors[index + 1], inner_colors[index + 1], inner_colors[index]])
 		draw_polygon(quad, quad_colors)
