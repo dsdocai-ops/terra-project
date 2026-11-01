@@ -20,6 +20,7 @@ var _commands: Dictionary[StringName, CommandEntry] = {}
 var _history: Array[String] = []
 var _god_peers: Dictionary[int, bool] = {}
 var _fps_overlay: bool = false
+var _effects_overlay: bool = false
 ## The object that owns the core command handlers. Held here so the bound
 ## callables never dangle (a locally-created RefCounted would be freed once
 ## nothing referenced it).
@@ -28,6 +29,7 @@ var commands: DebugCommands
 var _input: LineEdit
 var _scrollback: RichTextLabel
 var _fps_label: Label
+var _effects_label: Label
 
 
 func _ready() -> void:
@@ -40,6 +42,7 @@ func _ready() -> void:
 	commands.console = self
 	commands.register_all()
 	NetworkManager.debug_command_requested.connect(_on_debug_command_requested)
+	Events.run_started.connect(_on_run_started)
 	hide()
 
 
@@ -50,6 +53,8 @@ func _process(_delta: float) -> void:
 		_toggle()
 	if _fps_overlay and _fps_label != null:
 		_fps_label.text = "fps %d" % Engine.get_frames_per_second()
+	if _effects_overlay and _effects_label != null:
+		_effects_label.text = effects_overlay_text()
 
 
 ## Registers a command. `callable` receives (args: PackedStringArray,
@@ -105,6 +110,23 @@ func is_fps_overlay() -> bool:
 	return _fps_overlay
 
 
+## The effects command's toggle, same shape as toggle_fps. Returns the new state.
+func toggle_effects() -> bool:
+	_effects_overlay = not _effects_overlay
+	if _effects_label != null:
+		_effects_label.visible = _effects_overlay
+	return _effects_overlay
+
+
+func is_effects_overlay() -> bool:
+	return _effects_overlay
+
+
+## The overlay's text: the last procs from ProcLog, newest first.
+func effects_overlay_text() -> String:
+	return ProcLog.format_lines(ProcLog.recent())
+
+
 ## Toggles god mode for one peer. God mode is debug-local state until
 ## combat-core's Health lands and consumes it.
 func toggle_god(peer_id: int) -> void:
@@ -153,6 +175,14 @@ func _build_ui() -> void:
 	_fps_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
 	add_child(_fps_label)
 
+	_effects_label = Label.new()
+	_effects_label.visible = false
+	_effects_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+	_effects_label.set_anchors_and_offsets_preset(Control.PRESET_TOP_RIGHT)
+	_effects_label.offset_top = 8.0
+	_effects_label.offset_right = -8.0
+	add_child(_effects_label)
+
 
 ## LineEdit submit: run locally as the host, or send the line to the host when
 ## this peer is a client so commands always execute where gameplay runs.
@@ -173,6 +203,12 @@ func _submit_command(text: String) -> void:
 ## Host side of a request_debug from any peer: execute the line for that peer.
 func _on_debug_command_requested(line: String, peer_id: int) -> void:
 	_execute(line, peer_id)
+
+
+## A new run starts with an empty effects overlay: the previous run's procs
+## are dropped here, not left to scroll out past ProcLog.CAPACITY.
+func _on_run_started(_run_seed: int) -> void:
+	ProcLog.clear()
 
 
 func _execute(line: String, peer_id: int) -> void:

@@ -71,7 +71,7 @@ Biome 6 "corrupted versions of all previous enemies": `EnemyData.corrupted_of` p
 
 ## Interfaces provided
 
-- `Enemy` base: `data: EnemyData`, `owner_player` (for friendlies), `is_elite`, `affix`, `target: Node`, `setup(data, is_elite, affix)`, signals `spawned`, `died(hit)`.
+- `Enemy` base: `data: EnemyData`, `owner_player` (for friendlies), `is_elite`, `affix`, `target: Node`, `setup(kind, is_elite, affix)` (takes the `EnemyData` id as `StringName` and looks up `data`; changed at reflection 4 of the Week 4 goal run, because every spawn caller and test already passes a kind), signals `spawned`, `died(hit)`.
 - `SpawnDirector.fill_room(room, biome, floor_index)` and `spawn_one(data, pos, is_elite := false) -> Enemy` (used by bosses, Necromancer, debug console).
 - `FriendlyUnit`, `EscortNpc`.
 - `Targeting` static.

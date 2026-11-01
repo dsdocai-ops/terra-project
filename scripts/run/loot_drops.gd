@@ -41,11 +41,11 @@ extends Node
 ## shape), so a client rolls nothing, spawns nothing and pays nothing; it learns
 ## the totals from the replicated run state.
 ##
-## **Blocked on Dev A.** `EnemyData` (`W2-A9`) and the production
-## `enemy_killed` / `elite_killed` emitters (`W4-A4`) are `enemies-ai`'s and are
-## not in the tree, so the two fields are read off whatever enemy node the signal
-## carries (`enemy.data.loot_table`) and the cases drive spec-shaped doubles. The
-## swap is mechanical and recorded in `HANDOFF.md`.
+## The two fields are read off whatever enemy node the signal carries
+## (`enemy.data.loot_table`). `EnemyData` (`scripts/data/enemy_data.gd`) and the
+## production `enemy_killed` / `elite_killed` emitters (`scenes/enemies/enemy.gd`)
+## are both in the tree, so the live path is the real one; the unit cases still
+## drive spec-shaped doubles to keep the table under their control.
 
 ## Where the pickup spawner is, when it is not handed in. `world.tscn` puts the
 ## two side by side under `Entities`.
@@ -101,6 +101,34 @@ func _can_roll() -> bool:
 func on_enemy_killed(enemy: Node, hit: HitInfo) -> bool:
 	if not _can_roll():
 		return false
+	# An elite's table is rolled on `elite_killed` instead, once (see on_elite_killed).
+	if enemy.get(&"is_elite") == true:
+		return false
+	return _roll_table(enemy, hit)
+
+
+## Host only. Pays the flat elite reward (the run counts the kill, the party's
+## shared pool gains the biome's ore, the killer's Echo Shard total gains 1 to 2)
+## and rolls the elite's own `loot_table` once. An elite is announced on both
+## `enemy_killed` and `elite_killed`; `on_enemy_killed` skips elites, so the table
+## is rolled exactly once, here. Returns true when the host paid.
+func on_elite_killed(enemy: Node, hit: HitInfo) -> bool:
+	if not _can_roll():
+		return false
+	var run: RunState = GameState.run
+	if run == null:
+		return false
+	var killer: Player = killer_of(hit)
+	run.elites_killed += 1
+	OrePayout.award(run, killer, OrePayout.KIND_ELITE)
+	EchoShards.award(run, killer, EchoShards.for_elite())
+	_roll_table(enemy, hit)
+	return true
+
+
+## Rolls the dead enemy's table once and spawns and credits every drop it carries.
+## Host only. Returns false when there is no run or no table to roll.
+func _roll_table(enemy: Node, hit: HitInfo) -> bool:
 	var run: RunState = GameState.run
 	var table: LootTable = loot_table_of(enemy)
 	if run == null or table == null:
@@ -117,33 +145,13 @@ func on_enemy_killed(enemy: Node, hit: HitInfo) -> bool:
 	return true
 
 
-## Host only. Pays the flat elite reward: the run counts the kill, the party's
-## shared pool gains the biome's ore, and the killer's own Echo Shard total gains
-## 1 to 2 through the multiplier table. Returns true when the host paid.
-##
-## The table's own drops are deliberately **not** rolled here: the game announces
-## an elite's death on `enemy_killed` too, and rolling in both places would pay
-## the table twice.
-func on_elite_killed(enemy: Node, hit: HitInfo) -> bool:
-	if not _can_roll():
-		return false
-	var run: RunState = GameState.run
-	if run == null:
-		return false
-	var killer: Player = killer_of(hit)
-	run.elites_killed += 1
-	OrePayout.award(run, killer, OrePayout.KIND_ELITE)
-	EchoShards.award(run, killer, EchoShards.for_elite())
-	return true
-
-
 # --- reading the enemy ------------------------------------------------------
 
 
 ## The `LootTable` the dead enemy carries, or null. Read off `EnemyData`
-## (SPEC-enemies-ai: "`loot_table: LootTable` defined in run-economy"), which is
-## Dev A's class and not in the tree — so the read is duck-typed and a missing
-## field reads as no table rather than as an error. **Blocked on Dev A (W2-A9).**
+## (SPEC-enemies-ai: "`loot_table: LootTable` defined in run-economy"). The read
+## stays duck-typed, so a node with no `data` or no `loot_table` field reads as no
+## table rather than as an error.
 func loot_table_of(enemy: Node) -> LootTable:
 	if enemy == null or not is_instance_valid(enemy):
 		return null

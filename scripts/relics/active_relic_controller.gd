@@ -123,6 +123,10 @@ static var last_refusal: StringName = REFUSAL_NONE
 ## Host: the slot was used. The HUD's hook (G19) listens for the sweep; the host
 ## itself hears it, and the other peers hear `relic_activated`.
 signal slot_activated(slot: int, id: StringName)
+## Emitted when a slot's readout changes on this peer: a charge spent, a charge
+## refilled by the room, or a cooldown running out. The HUD binds to it and reads
+## `readout(slot)` (W4-B7). Presentation only: the controller owns the state.
+signal readout_changed(slot: int)
 
 ## The player this controller belongs to, resolved from the parent on `_ready()`.
 var player: Player = null
@@ -146,11 +150,15 @@ func _ready() -> void:
 		push_warning("[relics] %s is not parented to a Player, no slot can fire" % name)
 		return
 	Events.room_entered.connect(_on_room_entered)
+	if not NetworkManager.relic_activated_received.is_connected(_on_relic_activated_received):
+		NetworkManager.relic_activated_received.connect(_on_relic_activated_received)
 
 
 func _exit_tree() -> void:
 	if Events.room_entered.is_connected(_on_room_entered):
 		Events.room_entered.disconnect(_on_room_entered)
+	if NetworkManager.relic_activated_received.is_connected(_on_relic_activated_received):
+		NetworkManager.relic_activated_received.disconnect(_on_relic_activated_received)
 
 
 ## The controller `player` carries, installing one when it has none — the lookup
@@ -190,7 +198,10 @@ func advance(delta: float) -> void:
 	if scaled <= 0.0:
 		return
 	for slot: int in _cooldown.keys():
-		_cooldown[slot] = maxf(float(_cooldown[slot]) - scaled, 0.0)
+		var was: float = float(_cooldown[slot])
+		_cooldown[slot] = maxf(was - scaled, 0.0)
+		if was > 0.0 and float(_cooldown[slot]) <= 0.0:
+			readout_changed.emit(slot)
 
 
 ## How fast time passes for this controller right now: the player's own
@@ -199,6 +210,22 @@ func time_scale() -> float:
 	if player == null or not is_instance_valid(player):
 		return 1.0
 	return TimeManager.scale_for(player)
+
+
+## The HUD's read of `slot` in one dictionary: the relic id (empty when none),
+## charges and their pool, the cooldown seconds left and as a fraction, and whether
+## the slot may fire now (is_ready). Pure read; nothing is spent or ticked.
+func readout(slot: int) -> Dictionary:
+	var data: RelicData = slot_data(slot)
+	return {
+		"slot": slot,
+		"relic": data.id if data != null else &"",
+		"charges": charges(slot),
+		"max_charges": max_charges(slot),
+		"cooldown_left": float(_cooldown.get(slot, 0.0)),
+		"cooldown_fraction": cooldown_fraction(slot),
+		"ready": is_ready(slot),
+	}
 
 
 ## How much of `slot`'s cooldown is left, 1.0 the instant it was used and 0.0
@@ -370,6 +397,7 @@ func activate(slot: int) -> bool:
 	_sync_slot(slot, data)
 	_charges[slot] = maxi(int(_charges.get(slot, 0)) - 1, 0)
 	_cooldown[slot] = data.active_cooldown
+	readout_changed.emit(slot)
 	slot_activated.emit(slot, data.id)
 	NetworkManager.route_relic_activated(player, slot, data.id)
 	return true
@@ -477,9 +505,25 @@ func _on_room_entered(_room: Node, who: Player) -> void:
 		if effect == null or not effect.refills_charges_per_room():
 			continue
 		_charges[slot] = data.active_charges
+		readout_changed.emit(slot)
 
 
 # --- internals ---------------------------------------------------------------
+
+## A client's mirror of a spend. The host announces every activation on
+## `relic_activated_received`; on a client this controller applies the same charge
+## and cooldown to its own readout, because the client never spends for itself. The
+## host skips it (it already spent). Owned by relics (W4-B7).
+func _on_relic_activated_received(peer_id: int, slot: int, relic_id: StringName) -> void:
+	if NetworkManager.is_host or player == null or peer_id != player.peer_id:
+		return
+	var data: RelicData = slot_data(slot)
+	if data == null or data.id != relic_id:
+		return
+	_sync_slot(slot, data)
+	_charges[slot] = maxi(int(_charges.get(slot, 0)) - 1, 0)
+	_cooldown[slot] = data.active_cooldown
+	readout_changed.emit(slot)
 
 
 ## The player this controller drives: its parent when that is a Player.

@@ -349,6 +349,8 @@ func test_the_exit_stays_shut_until_the_rule_holds() -> void:
 	exit_room._check_exit()
 	assert_eq(GameState.run.floor_index, floor_before + 1, "the rule met, the exit advances the run")
 	assert_eq(GameState.run.floors_cleared, 1, "the advance counted the floor")
+	# The advance repaints the floor, which queue_frees the old children; wait a frame so they are gone before GUT's orphan check.
+	await wait_process_frames(1)
 
 
 func test_the_exit_only_takes_a_player_on_its_anchor() -> void:

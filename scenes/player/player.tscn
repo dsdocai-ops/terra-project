@@ -17,6 +17,9 @@
 [ext_resource type="Script" path="res://scripts/weapons/weapon_controller.gd" id="14_weapons"]
 [ext_resource type="Script" path="res://scenes/player/states/downed.gd" id="15_downed"]
 [ext_resource type="Script" path="res://scenes/player/states/dead.gd" id="16_dead"]
+[ext_resource type="Script" path="res://scripts/abilities/ability_controller.gd" id="17_abilities"]
+[ext_resource type="Script" path="res://scripts/abilities/ultimate_controller.gd" id="18_ultimate"]
+[ext_resource type="Script" path="res://scripts/classes/class_controller.gd" id="19_classes"]
 
 [sub_resource type="SceneReplicationConfig" id="SceneReplicationConfig_input"]
 properties/0/path = NodePath(".:move_input")
@@ -138,6 +141,15 @@ script = ExtResource("14_weapons")
 
 [node name="AttackController" type="Node" parent="."]
 script = ExtResource("13_attackctl")
+
+[node name="AbilityController" type="Node" parent="."]
+script = ExtResource("17_abilities")
+
+[node name="UltimateController" type="Node" parent="."]
+script = ExtResource("18_ultimate")
+
+[node name="ClassController" type="Node" parent="."]
+script = ExtResource("19_classes")
 
 [node name="InputSync" type="MultiplayerSynchronizer" parent="."]
 root_path = NodePath("..")

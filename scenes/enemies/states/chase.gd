@@ -34,11 +34,11 @@ func physics_update(delta: float) -> void:
 		return
 	match EnemyStateLogic.chase_move(dist, enemy.data.keep_distance):
 		EnemyStateLogic.ChaseMove.BACK_OFF:
-			enemy.move_toward_point(enemy.global_position - to_target, enemy.data.move_speed, delta)
+			enemy.move_toward_point(enemy.global_position - to_target, enemy.move_speed(), delta)
 		EnemyStateLogic.ChaseMove.HOLD:
 			enemy.stop_moving(delta)
 		EnemyStateLogic.ChaseMove.APPROACH:
-			enemy.move_toward_point(target.global_position, enemy.data.move_speed, delta)
+			enemy.move_toward_point(target.global_position, enemy.move_speed(), delta)
 
 
 func _choose_pattern() -> AttackPattern:

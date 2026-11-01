@@ -16,6 +16,9 @@ var elite: bool = false
 ## Stable per-fight id, host-assigned, so kill/loot bookkeeping and despawns
 ## can name the enemy without relying on node paths.
 var fight_id: int = 0
+## The elite affix (EliteAffix); NONE for a plain enemy. Carried in the spawn
+## payload, so every peer sets the same affix the host chose.
+var affix: EliteAffix.Affix = EliteAffix.Affix.NONE
 
 
 func _init(
@@ -23,11 +26,13 @@ func _init(
 	p_spawn_position: Vector2 = Vector2.ZERO,
 	p_elite: bool = false,
 	p_fight_id: int = 0,
+	p_affix: EliteAffix.Affix = EliteAffix.Affix.NONE,
 ) -> void:
 	kind = p_kind
 	spawn_position = p_spawn_position
 	elite = p_elite
 	fight_id = p_fight_id
+	affix = p_affix
 
 
 func to_dict() -> Dictionary:
@@ -36,6 +41,7 @@ func to_dict() -> Dictionary:
 		"spawn_position": spawn_position,
 		"elite": elite,
 		"fight_id": fight_id,
+		"affix": affix,
 	}
 
 
@@ -47,4 +53,5 @@ static func from_dict(data: Dictionary) -> EnemySpawnInfo:
 		pos,
 		bool(data.get("elite", false)),
 		int(data.get("fight_id", 0)),
+		int(data.get("affix", EliteAffix.Affix.NONE)) as EliteAffix.Affix,
 	)

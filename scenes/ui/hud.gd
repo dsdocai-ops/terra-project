@@ -51,6 +51,8 @@ var _map_visits: int = -1
 var _map_layout: RefCounted = null
 
 var _poll: Timer
+## The player whose active-relic readouts the ability row is bound to.
+var _relic_bound_for: Player = null
 
 
 func _ready() -> void:
@@ -364,6 +366,7 @@ func _apply_all() -> void:
 	relic_rope.relics = hud_model.relics
 	status_row.statuses = hud_model.statuses
 	ability_row.has_active_relic = _holds_active_relic()
+	_bind_relic_readouts()
 	_apply_layout()
 	if pause_layer != null and pause_layer.visible:
 		_fill_run_summary()
@@ -413,6 +416,17 @@ func _rebuild_teammates() -> void:
 		badge.custom_minimum_size = BADGE_SIZE
 		badge.mouse_filter = Control.MOUSE_FILTER_IGNORE
 		teammate_badges.add_child(badge)
+
+
+## Binds the ability row to the local player's active-relic controller (W4-B7), once
+## per player. The local player is the roster entry for this peer; a missing one
+## (the menus) binds nothing.
+func _bind_relic_readouts() -> void:
+	var local: Player = NetworkManager.players.get(multiplayer.get_unique_id()) as Player
+	if local == null or local == _relic_bound_for:
+		return
+	_relic_bound_for = local
+	ability_row.bind_relic_readout(ActiveRelicController.for_player(local))
 
 
 func _holds_active_relic() -> bool:

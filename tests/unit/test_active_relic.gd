@@ -562,3 +562,96 @@ func test_a_frozen_player_stalls_the_cooldown() -> void:
 	_controller.advance(COOLDOWN)
 	assert_almost_eq(_controller.cooldown_fraction(ActiveRelicController.SLOT_1), 0.0, 0.0001,
 		"and it runs again once the player is unfrozen")
+
+
+# --- the slot readout the HUD binds to (W4-B7, G19) -----------------------------------
+
+
+func test_the_readout_reports_a_spent_charge_and_the_cooldown_then_the_recovery() -> void:
+	var slot: int = ActiveRelicController.SLOT_1
+	var fresh: Dictionary = _controller.readout(slot)
+	assert_eq(fresh.get("charges"), CHARGES, "the readout starts with a full pool")
+	assert_true(fresh.get("ready"), "and is ready")
+	assert_true(_controller.activate(slot), "the press applies")
+	var spent: Dictionary = _controller.readout(slot)
+	assert_eq(spent.get("charges"), CHARGES - 1, "one charge spent")
+	assert_almost_eq(float(spent.get("cooldown_left")), COOLDOWN, 0.001, "the cooldown is running")
+	assert_almost_eq(float(spent.get("cooldown_fraction")), 1.0, 0.001, "fraction 1.0 the instant it was used")
+	assert_false(spent.get("ready"), "not ready while it counts down")
+	_controller.advance(COOLDOWN)
+	var recovered: Dictionary = _controller.readout(slot)
+	assert_almost_eq(float(recovered.get("cooldown_left")), 0.0, 0.001, "the cooldown ran out")
+	assert_true(recovered.get("ready"), "ready again with a charge left")
+	assert_eq(recovered.get("charges"), CHARGES - 1, "the spent charge stays spent")
+
+
+func test_readout_changed_fires_on_a_spend_and_again_when_the_cooldown_clears() -> void:
+	var slot: int = ActiveRelicController.SLOT_1
+	watch_signals(_controller)
+	assert_true(_controller.activate(slot), "the press applies")
+	assert_signal_emit_count(_controller, "readout_changed", 1, "the spend changes the readout")
+	_controller.advance(COOLDOWN)
+	assert_signal_emit_count(_controller, "readout_changed", 2, "the cooldown clearing changes it too")
+
+
+func test_slot_two_reads_as_empty_when_only_one_active_is_held() -> void:
+	var empty: Dictionary = _controller.readout(ActiveRelicController.SLOT_2)
+	assert_eq(empty.get("relic"), &"", "no relic in slot 2")
+	assert_eq(empty.get("charges"), 0, "no charges")
+	assert_false(empty.get("ready"), "and it is not ready")
+
+
+func test_the_ability_row_binds_to_the_readout_and_updates_as_charges_are_spent() -> void:
+	var row := AbilityRow.new()
+	add_child_autofree(row)
+	row.bind_relic_readout(_controller)
+	assert_eq(row.relic_readouts[0].get("charges"), CHARGES, "the bound row reads the full pool")
+	assert_true(_controller.activate(ActiveRelicController.SLOT_1), "the press applies")
+	assert_eq(row.relic_readouts[0].get("charges"), CHARGES - 1, "the row updated without a poll")
+	assert_almost_eq(float(row.relic_readouts[0].get("cooldown_fraction")), 1.0, 0.001, "and shows the sweep")
+
+
+func test_slot_two_reads_its_charges_and_its_recovery_when_a_second_active_is_held() -> void:
+	var second: RelicData = _make_active()
+	second.id = &"test_bomb_bag_two"
+	_slice(HOST_PEER).relics.append(second.id)
+	_harness.attach(second, 1, _player)
+	_controller.pool = [_active, second]
+	var slot: int = ActiveRelicController.SLOT_2
+	assert_eq(_controller.readout(slot).get("relic"), second.id, "slot 2 holds the second active")
+	assert_eq(_controller.readout(slot).get("charges"), CHARGES, "slot 2 starts full")
+	assert_true(_controller.activate(slot), "slot 2 applies")
+	assert_eq(_controller.readout(slot).get("charges"), CHARGES - 1, "one charge spent from slot 2")
+	assert_almost_eq(float(_controller.readout(slot).get("cooldown_left")), COOLDOWN, 0.001, "slot 2 counts down")
+	_controller.advance(COOLDOWN)
+	assert_true(_controller.readout(slot).get("ready"), "slot 2 is ready again after its cooldown")
+	assert_eq(_controller.readout(ActiveRelicController.SLOT_1).get("charges"), CHARGES, "slot 1 is untouched")
+
+
+func test_a_client_mirrors_the_hosts_spend_into_its_own_readout() -> void:
+	# The client never spends for itself; the host announces the activation and the
+	# client's readout takes the same charge and cooldown the host took.
+	_become_client()
+	var slot: int = ActiveRelicController.SLOT_1
+	assert_eq(_controller.readout(slot).get("charges"), CHARGES, "the client starts full")
+	NetworkManager.relic_activated_received.emit(HOST_PEER, slot, ACTIVE_ID)
+	assert_eq(_controller.readout(slot).get("charges"), CHARGES - 1, "the client shows the spend")
+	assert_almost_eq(float(_controller.readout(slot).get("cooldown_left")), COOLDOWN, 0.001, "and the cooldown")
+
+
+func test_the_row_redraws_its_cooldown_each_frame_while_it_runs() -> void:
+	var row := AbilityRow.new()
+	add_child_autofree(row)
+	row.bind_relic_readout(_controller)
+	assert_true(_controller.activate(ActiveRelicController.SLOT_1), "the press applies")
+	_controller.advance(COOLDOWN / 2.0)
+	row._process(0.0)
+	assert_almost_eq(float(row.relic_readouts[0].get("cooldown_fraction")), 0.5, 0.001, "the sweep is half done")
+
+
+func test_binding_the_same_controller_twice_connects_once() -> void:
+	var row := AbilityRow.new()
+	add_child_autofree(row)
+	row.bind_relic_readout(_controller)
+	row.bind_relic_readout(_controller)
+	assert_eq(_controller.readout_changed.get_connections().size(), 1, "one connection, not two")

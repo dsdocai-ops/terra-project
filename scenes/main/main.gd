@@ -10,6 +10,30 @@ const VOID_COLOR: Color = Color(0.055, 0.043, 0.035, 1.0)
 ## the run, and how long it waits for one before starting it alone.
 const SMOKE_FLOOR_POLL_SECONDS: float = 0.25
 const SMOKE_FLOOR_CLIENT_WAIT_SECONDS: float = 5.0
+## The time-stop smoke: the command the client sends, and how often it checks
+## whether it has a connected host with the other player in the run.
+const SMOKE_TIME_COMMAND: String = "timestop 2"
+## The per-entity stop the client asks for after the global one (W4-B9 follow-up).
+const SMOKE_ENTITY_TIME_COMMAND: String = "entitystop 2"
+const SMOKE_TIME_POLL_SECONDS: float = 0.25
+## The ability smoke (W5-G2b): the content it casts, how often it polls, and the
+## poll ticks (counted once two players exist) at which the client sends its NaN
+## aim and then its finite cast request.
+const SMOKE_ABILITY_PATH: String = "res://data/abilities/meteor_call.tres"
+const SMOKE_ABILITY_POLL_SECONDS: float = 0.25
+const SMOKE_ABILITY_NAN_TICK: int = 2
+const SMOKE_ABILITY_CAST_TICK: int = 6
+## The Shadow Clones smoke (W5-G4): the client casts slot 1 at this tick, and both
+## screens must show three clones.
+const SMOKE_CLONES_PATH: String = "res://data/abilities/shadow_clones.tres"
+const SMOKE_CLONES_CAST_TICK: int = 10
+const SMOKE_CLONES_COUNT: int = 3
+## The ultimate smoke (W5-G6): the host charges the client's meter to full at the
+## charge tick, the client reads it on its copy, and the client's press at the press
+## tick reaches the host. No ultimate is assigned yet (Cave-In is W5-G7), so the host
+## refuses the press; that refusal is the only ultimate path this smoke proves.
+const SMOKE_ULTIMATE_CHARGE_TICK: int = 12
+const SMOKE_ULTIMATE_PRESS_TICK: int = 13
 
 var world: World
 var options: LaunchArgs
@@ -43,6 +67,39 @@ var _smoke3_crack_received: bool = false
 ## Full-HP ticks seen before resolving the partial hit: gives StateSync a
 ## beat to deliver the spawn (hp=10) to the client before the drop.
 var _smoke3_full_hp_ticks: int = 0
+
+## Time-stop smoke (W4-B9), run inside the steps 1+2 pair. The client is the using
+## player: it asks the host for `timestop` over request_debug. Both peers log when
+## the enemy time stop starts and ends, with the host player's x, so smoke_two.sh
+## can check that the non-using player kept moving through the stop on both screens.
+## The stop reaches the client only through the host's reliable time_effect_applied RPC.
+var _smoke_time_poll: Timer
+var _smoke_time_requested: bool = false
+var _smoke_time_stopped: bool = false
+var _smoke_time_resumed: bool = false
+## Entity time-stop smoke (W4-B9 follow-up): both peers poll the client's player
+## TimeManager scale. The stop reaches the client only through the host's reliable
+## entity_time_applied RPC, so the client's own TimeManager state is what is logged.
+var _smoke_entity_timer: Timer
+var _smoke_entity_stopped: bool = false
+var _smoke_entity_resumed: bool = false
+
+## Ability smoke (W5-G2b), run inside the steps 1+2 pair. Once two players exist,
+## each peer gives every player Meteor Call in slot Q. The client sends a NaN aim,
+## which the host must refuse over the RPC, then a finite aim, which the host must
+## cast once. smoke_two.sh greps the markers the host and client log.
+var _smoke_ability_poll: Timer
+var _smoke_ability_ticks: int = 0
+var _smoke_ability_assigned: bool = false
+var _smoke_ability_refusal_logged: bool = false
+var _smoke_ability_copy_logged: bool = false
+var _smoke_ultimate_charged: bool = false
+var _smoke_ultimate_copy_logged: bool = false
+var _smoke_ultimate_pressed: bool = false
+var _smoke_ultimate_refusal_logged: bool = false
+var _smoke_ability_emissions: int = 0
+var _smoke_clones_host_logged: bool = false
+var _smoke_clones_copy_logged: bool = false
 
 ## Floor-sync smoke (SPEC-networking "Seed sync", W3-B3a). The host starts a run
 ## once a client has joined, which broadcasts floor_ready for floor 1; both
@@ -136,6 +193,19 @@ func _start_smoke(seconds: float) -> void:
 	log_timer.autostart = true
 	log_timer.timeout.connect(_log_smoke)
 	add_child(log_timer)
+	TimeManager.enemy_time_changed.connect(_on_smoke_time_scale)
+	_smoke_entity_timer = Timer.new()
+	_smoke_entity_timer.wait_time = SMOKE_TIME_POLL_SECONDS
+	_smoke_entity_timer.autostart = true
+	_smoke_entity_timer.timeout.connect(_on_smoke_entity_poll)
+	add_child(_smoke_entity_timer)
+	_start_smoke_ability()
+	if not NetworkManager.is_host:
+		_smoke_time_poll = Timer.new()
+		_smoke_time_poll.wait_time = SMOKE_TIME_POLL_SECONDS
+		_smoke_time_poll.autostart = true
+		_smoke_time_poll.timeout.connect(_on_smoke_time_poll)
+		add_child(_smoke_time_poll)
 	get_tree().create_timer(seconds).timeout.connect(func() -> void:
 		print("[smoke] done, quitting")
 		get_tree().quit())
@@ -146,6 +216,194 @@ func _arm_autowalk_if_local(node: Node) -> void:
 	if player != null and player.peer_id == NetworkManager.local_peer_id:
 		player.debug_autowalk = Vector2(1, 0)
 		print("[smoke] autowalk armed on %s" % player.name)
+
+
+## Client (the using player): once connected and the host player is in the run,
+## ask the host for a timestop over request_debug, exactly once.
+func _on_smoke_time_poll() -> void:
+	if _smoke_time_requested:
+		return
+	var peer: MultiplayerPeer = multiplayer.multiplayer_peer
+	if not NetworkManager.is_active or peer == null or peer.get_connection_status() != MultiplayerPeer.CONNECTION_CONNECTED:
+		return
+	if NetworkManager.player_count() < 2:
+		return
+	_smoke_time_requested = true
+	NetworkManager.rpc_id(NetworkManager.HOST_PEER_ID, "request_debug", SMOKE_TIME_COMMAND, NetworkManager.local_peer_id)
+	print("[smoke-time] client requested %s" % SMOKE_TIME_COMMAND)
+	NetworkManager.rpc_id(NetworkManager.HOST_PEER_ID, "request_debug", SMOKE_ENTITY_TIME_COMMAND, NetworkManager.local_peer_id)
+	print("[smoke-time] client requested %s" % SMOKE_ENTITY_TIME_COMMAND)
+
+
+## Both peers: TimeManager's enemy scale changed. Below 1.0 is the stop starting
+## (the host's own call locally, the client through the reliable RPC); back at 1.0
+## is it expiring. The host player's x at each edge shows whether it kept moving.
+func _on_smoke_time_scale(scale: float) -> void:
+	var who := "host" if NetworkManager.is_host else "client"
+	if scale < 1.0 and not _smoke_time_stopped:
+		_smoke_time_stopped = true
+		print("[smoke-time] %s sees the enemy time stop (scale %.2f) with Player1 x=%.1f" % [who, scale, _smoke_time_host_x()])
+	elif scale >= 1.0 and _smoke_time_stopped and not _smoke_time_resumed:
+		_smoke_time_resumed = true
+		print("[smoke-time] %s sees the enemy time resume with Player1 x=%.1f" % [who, _smoke_time_host_x()])
+
+
+## The host player's x as this peer currently sees it (replicated on the client).
+func _smoke_time_host_x() -> float:
+	var host_player: Player = NetworkManager.players.get(NetworkManager.HOST_PEER_ID) as Player
+	return host_player.position.x if host_player != null else NAN
+
+
+## Both peers: the client's player as this peer sees it, polled. Below 1.0 is the
+## per-entity stop reaching this screen (the host's own call locally, the client
+## through the reliable entity_time_applied RPC); back at 1.0 is it expiring.
+func _on_smoke_entity_poll() -> void:
+	var client_player: Player = null
+	for peer_id: int in NetworkManager.players:
+		if peer_id != NetworkManager.HOST_PEER_ID:
+			client_player = NetworkManager.players[peer_id] as Player
+	if client_player == null:
+		return
+	var scale := TimeManager.scale_for(client_player)
+	var who := "host" if NetworkManager.is_host else "client"
+	if scale < 1.0 and not _smoke_entity_stopped:
+		_smoke_entity_stopped = true
+		print("[smoke-time] %s sees the entity time stop on %s (scale %.2f)" % [who, client_player.name, scale])
+	elif scale >= 1.0 and _smoke_entity_stopped and not _smoke_entity_resumed:
+		_smoke_entity_resumed = true
+		print("[smoke-time] %s sees the entity time resume on %s" % [who, client_player.name])
+
+
+func _start_smoke_ability() -> void:
+	Events.ability_cast.connect(_on_smoke_ability_cast)
+	_smoke_ability_poll = Timer.new()
+	_smoke_ability_poll.wait_time = SMOKE_ABILITY_POLL_SECONDS
+	_smoke_ability_poll.autostart = true
+	_smoke_ability_poll.timeout.connect(_on_smoke_ability_poll)
+	add_child(_smoke_ability_poll)
+
+
+## Both peers: once two players exist, give each one Meteor Call (the host needs
+## it on every player, since a client's request lands on the host's copy of that
+## player's controller), then run the client's requests on the poll ticks.
+func _on_smoke_ability_poll() -> void:
+	if NetworkManager.player_count() < 2:
+		return
+	if not _smoke_ability_assigned:
+		_smoke_ability_assigned = true
+		var meteor := load(SMOKE_ABILITY_PATH) as AbilityData
+		var clones := load(SMOKE_CLONES_PATH) as AbilityData
+		for peer_id: int in NetworkManager.players:
+			var player := NetworkManager.players[peer_id] as Player
+			(player.get_node("AbilityController") as AbilityController).assign(0, meteor)
+			(player.get_node("AbilityController") as AbilityController).assign(1, clones)
+	_smoke_ability_ticks += 1
+	if NetworkManager.is_host:
+		_smoke_ability_host_tick()
+		_smoke_ultimate_host_tick()
+	else:
+		_smoke_ability_client_tick()
+		_smoke_ultimate_client_tick()
+
+
+## Host: logs the first refusal of a non-finite aim by a client's controller.
+func _smoke_ability_host_tick() -> void:
+	if _smoke_ability_refusal_logged:
+		return
+	for peer_id: int in NetworkManager.players:
+		if peer_id == NetworkManager.HOST_PEER_ID:
+			continue
+		var player := NetworkManager.players[peer_id] as Player
+		var ability := player.get_node("AbilityController") as AbilityController
+		if ability.last_refusal == AbilityController.REFUSE_NOT_FINITE:
+			_smoke_ability_refusal_logged = true
+			print("[smoke-ability] host refused the non-finite aim from %s (%s)" % [player.name, ability.last_refusal])
+
+
+## Client: sends the NaN aim, then the finite cast, and logs the visual copy the
+## host sends back on its own player's controller.
+func _smoke_ability_client_tick() -> void:
+	var me := NetworkManager.players.get(NetworkManager.local_peer_id) as Player
+	if me == null:
+		return
+	var ability := me.get_node("AbilityController") as AbilityController
+	if _smoke_ability_ticks == SMOKE_ABILITY_NAN_TICK:
+		ability.ask_cast(0, Vector2(NAN, 0.0))
+		print("[smoke-ability] client asked for a cast with a NaN aim")
+	elif _smoke_ability_ticks == SMOKE_ABILITY_CAST_TICK:
+		ability.ask_cast(0, me.global_position + Vector2(96, 0))
+		print("[smoke-ability] client asked the host to cast Meteor Call")
+	elif _smoke_ability_ticks == SMOKE_CLONES_CAST_TICK:
+		ability.ask_cast(1, me.global_position + Vector2(64, 0))
+		print("[smoke-clones] client asked the host to cast Shadow Clones")
+	if not _smoke_clones_copy_logged and ability.last_cast is ShadowClonesCast and (ability.last_cast as ShadowClonesCast).units.size() == SMOKE_CLONES_COUNT:
+		_smoke_clones_copy_logged = true
+		print("[smoke-clones] client sees %d clones on %s" % [SMOKE_CLONES_COUNT, me.name])
+	if not _smoke_ability_copy_logged and is_instance_valid(ability.last_cast):
+		_smoke_ability_copy_logged = true
+		print("[smoke-ability] client sees the cast on %s (host RPC)" % me.name)
+
+
+## Host: charges each client's meter to full once at the charge tick, then logs the
+## refusal of the client's press once. The meter the client reads is this copy's
+## value, sent over UltimateController's RPC.
+func _smoke_ultimate_host_tick() -> void:
+	for peer_id: int in NetworkManager.players:
+		if peer_id == NetworkManager.HOST_PEER_ID:
+			continue
+		var player := NetworkManager.players[peer_id] as Player
+		var ultimate := player.get_node("UltimateController") as UltimateController
+		if _smoke_ability_ticks == SMOKE_ULTIMATE_CHARGE_TICK and not _smoke_ultimate_charged:
+			_smoke_ultimate_charged = true
+			ultimate.charge(UltimateController.METER_MAX)
+			print("[smoke-ultimate] host charged the meter of %s to %.0f" % [player.name, ultimate.meter])
+		if not _smoke_ultimate_refusal_logged and ultimate.last_refusal == UltimateController.REFUSE_NO_ULTIMATE:
+			_smoke_ultimate_refusal_logged = true
+			print("[smoke-ultimate] host refused the ultimate press from %s (%s) with meter %.0f" % [player.name, ultimate.last_refusal, ultimate.meter])
+
+
+## Client: presses the ultimate at the press tick, and logs its meter once the host's
+## value reaches this copy.
+func _smoke_ultimate_client_tick() -> void:
+	var me := NetworkManager.players.get(NetworkManager.local_peer_id) as Player
+	if me == null:
+		return
+	var ultimate := me.get_node("UltimateController") as UltimateController
+	if _smoke_ability_ticks == SMOKE_ULTIMATE_PRESS_TICK and not _smoke_ultimate_pressed:
+		_smoke_ultimate_pressed = true
+		ultimate.ask_ultimate()
+		print("[smoke-ultimate] client pressed the ultimate on %s" % me.name)
+	if not _smoke_ultimate_copy_logged and ultimate.meter >= UltimateController.METER_MAX:
+		_smoke_ultimate_copy_logged = true
+		print("[smoke-ultimate] client sees ultimate meter %.0f on %s (host RPC)" % [ultimate.meter, me.name])
+
+
+## Both peers connect, but only the host emits a cast, so only the host logs one.
+## Logged with its emission count and the node the cast spawned under.
+func _on_smoke_ability_cast(player: Player, ability: Resource, rank: int) -> void:
+	if not NetworkManager.is_host:
+		return
+	var data := ability as AbilityData
+	if data != null and data.id == &"shadow_clones":
+		_log_smoke_clones(player)
+		return
+	_smoke_ability_emissions += 1
+	var cast := (player.get_node("AbilityController") as AbilityController).last_cast
+	var parent_name: String = str(cast.get_parent().name) if is_instance_valid(cast) else "none"
+	print("[smoke-ability] host emitted ability_cast #%d for %s (rank %d) under %s" % [_smoke_ability_emissions, player.name, rank, parent_name])
+
+
+## Host: logs the clones one Shadow Clones cast spawned, once. Clones are counted
+## apart from Meteor Call, so the "#2" check on Meteor Call still means a second
+## Meteor cast.
+func _log_smoke_clones(player: Player) -> void:
+	if _smoke_clones_host_logged:
+		return
+	var cast := (player.get_node("AbilityController") as AbilityController).last_cast as ShadowClonesCast
+	if cast == null:
+		return
+	_smoke_clones_host_logged = true
+	print("[smoke-clones] host spawned %d clones for %s" % [cast.units.size(), player.name])
 
 
 func _log_smoke() -> void:
@@ -167,6 +425,12 @@ func _start_smoke3(seconds: float) -> void:
 	world.combat_feedback.feedback_played.connect(_on_smoke3_feedback_played)
 	world.combat_feedback.dodge_ping_played.connect(_on_smoke3_dodge_ping)
 	Events.heavy_attack_released.connect(_on_smoke3_heavy_released)
+	# The kill's gold drop is a pickup on the spawner. MultiplayerSpawner.spawned fires
+	# only on the receiving peers, so this logs the client's replicated copy; the host
+	# counts its own drops at the kill instead (see _smoke3_host_tick).
+	var pickup_spawner := world.entities.get_node_or_null(String(PickupSpawner.NODE_NAME)) as PickupSpawner
+	if pickup_spawner != null:
+		pickup_spawner.spawned.connect(_on_smoke3_pickup_spawned)
 	_smoke3_poll = Timer.new()
 	_smoke3_poll.wait_time = 0.25
 	_smoke3_poll.autostart = true
@@ -246,21 +510,60 @@ func _smoke3_crack_count(peer_id: int, forwarded: bool) -> int:
 	return weapons.cracks_forwarded if forwarded else weapons.remote_cracks_received
 
 
+## The rule for the smoke's client skill press, as a pure function so the GUT
+## suite can test each term: the step-3 driver is armed, this peer is a client, the
+## session is live, the host's perfect-dodge window is open on this player, the
+## attack may start on this frame, and the press has not been sent yet.
+static func smoke3_skill_press_due(armed: bool, is_host_peer: bool, active: bool, window_open: bool, legal: bool, already_pressed: bool) -> bool:
+	return armed and not is_host_peer and active and window_open and legal and not already_pressed
+
+
 ## Client: once the host's perfect-dodge window reaches this player (the host RPC),
-## press heavy inside it. That fires the weapon skill on both sides.
+## press heavy inside it. That fires the weapon skill on both sides. The press
+## waits for a frame the attack may start: a press during the heavy's recovery is
+## buffered for 0.2 s and can miss the window (the W5-G5b flake), so this runs
+## every frame from _process, not on the 0.25 s poll.
 func _smoke3_drive_skill() -> void:
 	var me: Player = NetworkManager.players.get(NetworkManager.local_peer_id) as Player
-	if me == null or _smoke3_window_seen or not me.is_perfect_dodge_window():
+	if me == null:
+		return
+	var controller: AttackController = me.get_node("AttackController") as AttackController
+	if not smoke3_skill_press_due(_smoke3_poll != null, NetworkManager.is_host, NetworkManager.is_active,
+			me.is_perfect_dodge_window(), controller.can_start_attack(), _smoke3_window_seen):
 		return
 	_smoke3_window_seen = true
 	print("[smoke3] client sees the perfect-dodge window (host RPC)")
-	var controller: AttackController = me.get_node("AttackController") as AttackController
 	controller.send(AttackController.Kind.HEAVY_PRESS, 0.0)
 	print("[smoke3] client pressed heavy inside the window")
 
 
 func _on_smoke3_enemy_killed(_enemy: Node, _hit: RefCounted) -> void:
 	_smoke3_kill_emissions += 1
+
+
+func _on_smoke3_pickup_spawned(_pickup: Node) -> void:
+	print("[smoke3] client received a pickup spawn on peer %d" % NetworkManager.local_peer_id)
+
+
+## Host: the drops still on the floor after the kill. Pickups spawn under the same
+## Entities node as the enemy, so this is the host's own copy of the drop.
+func _smoke3_pickup_count() -> int:
+	var count: int = 0
+	for child: Node in world.entities.get_children():
+		if child is Pickup:
+			count += 1
+	return count
+
+
+## Host: the kill's gold drop needs a run to pay into, and the smoke has none. This
+## sets `GameState.run` directly rather than through `start_run`, because
+## `start_run` broadcasts floor_ready and would regenerate the floor under the
+## step-3 enemy.
+func _smoke3_start_loot_run() -> void:
+	var run := RunState.new(1, 1)
+	for peer_id: int in NetworkManager.peer_ids:
+		run.add_player(RunPlayerState.new(peer_id))
+	GameState.run = run
 
 
 func _on_smoke3_poll() -> void:
@@ -284,6 +587,8 @@ func _smoke3_find_enemy() -> Node:
 ## of 3 (HP 10 -> 7, replicated to everyone). When the client's kill lands,
 ## log how many times enemy_killed fired — it must be exactly 1.
 func _smoke3_host_tick() -> void:
+	if GameState.run == null:
+		_smoke3_start_loot_run()
 	if _smoke3_host_heavy_ticks >= 0 and _smoke3_host_heavy_ticks <= 4:
 		_smoke3_drive_host_heavy()
 	if not _smoke3_crack_forwarded and _smoke3_crack_count(NetworkManager.local_peer_id, true) > 0:
@@ -350,6 +655,7 @@ func _smoke3_host_tick() -> void:
 	if hp == 0 and not _smoke3_kill_logged:
 		_smoke3_kill_logged = true
 		print("[smoke3] enemy_killed emitted %d time(s)" % _smoke3_kill_emissions)
+		print("[smoke3] host sees %d pickup(s) after the kill" % _smoke3_pickup_count())
 
 
 ## Client: ask the host to spawn the stub enemy, watch the replicated HP drop
@@ -365,7 +671,6 @@ func _smoke3_client_tick() -> void:
 		return
 	if _smoke3_heavy_ticks >= 0 and _smoke3_heavy_ticks <= 4:
 		_smoke3_drive_heavy()
-	_smoke3_drive_skill()
 	if not _smoke3_crack_received and _smoke3_crack_count(NetworkManager.HOST_PEER_ID, false) > 0:
 		_smoke3_crack_received = true
 		print("[smoke3] client received the ground crack over the host RPC")
@@ -668,6 +973,8 @@ func _stop_announcing() -> void:
 ## The HUD belongs to the game: it shows only in a live session, never over the
 ## main menu or the co-op lobby.
 func _process(_delta: float) -> void:
+	# The smoke's client skill press runs per frame (see _smoke3_drive_skill).
+	_smoke3_drive_skill()
 	if _hud == null:
 		return
 	var menus_up: bool = (menu != null and menu.visible) or (lobby != null and lobby.visible)

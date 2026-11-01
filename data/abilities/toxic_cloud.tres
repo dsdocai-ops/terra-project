@@ -1,0 +1,42 @@
+[gd_resource type="Resource" script_class="AbilityData" load_steps=7 format=3]
+
+[ext_resource type="Script" path="res://scripts/data/ability_data.gd" id="1_data"]
+[ext_resource type="Script" path="res://scripts/data/ability_rank.gd" id="2_rank"]
+[ext_resource type="PackedScene" path="res://scenes/abilities/toxic_cloud.tscn" id="3_cast"]
+
+[sub_resource type="Resource" id="rank_1"]
+script = ExtResource("2_rank")
+damage_mult = 1.0
+size_mult = 1.0
+duration = 5.0
+extra = 0.0
+
+[sub_resource type="Resource" id="rank_2"]
+script = ExtResource("2_rank")
+damage_mult = 1.2
+size_mult = 1.15
+duration = 6.0
+extra = 0.0
+
+[sub_resource type="Resource" id="rank_3"]
+script = ExtResource("2_rank")
+damage_mult = 1.4
+size_mult = 1.3
+duration = 7.0
+extra = 0.0
+
+[resource]
+script = ExtResource("1_data")
+id = &"toxic_cloud"
+display_name = "Toxic Cloud"
+school = 4
+element = 5
+targeting = 1
+cooldown = 10.0
+charges = 1
+base_damage = 12.0
+ranks = Array[ExtResource("2_rank")]([SubResource("rank_1"), SubResource("rank_2"), SubResource("rank_3")])
+cast_scene = ExtResource("3_cast")
+description = "Throws a gas canister. The cloud grows while it lasts and poisons every enemy inside it."
+is_ultimate = false
+hp_cost_percent = 0.0

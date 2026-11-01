@@ -75,6 +75,8 @@ func test_paint_replaces_an_earlier_floors_rooms_and_doors() -> void:
 	assert_eq(floor_node.doors_by_room.size(), second_layout.rooms.size(), "door table rebuilt")
 	# And `painted` fired once per paint, never twice for one.
 	assert_eq(_painted.size(), 1, "one painted emit per paint")
+	# paint() queue_frees the stale children; wait a frame so they are gone before GUT's orphan check.
+	await wait_process_frames(1)
 
 
 # --- paint: the doors -------------------------------------------------------
@@ -255,3 +257,5 @@ func test_a_repaint_replaces_the_markers_with_the_new_floors() -> void:
 		assert_false(floor_node.markers.has(stale), "the stale %s was not kept" % str(stale.name))
 	for type: int in Floor.MARKER_TYPES:
 		assert_not_null(floor_node.marker_of_type(type), "the new floor's %s marker" % str(type))
+	# paint() queue_frees the stale markers; wait a frame so they are gone before GUT's orphan check.
+	await wait_process_frames(1)

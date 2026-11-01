@@ -118,11 +118,20 @@ func test_an_enemy_attack_hurts_the_player() -> void:
 func test_clearing_the_room_opens_the_doors() -> void:
 	var room: Room = _combat_room()
 	await _enter(room)
-	for enemy: Enemy in _enemies():
-		var hit := HitInfo.new()
-		hit.final_damage = 9999
-		enemy.health.apply_damage(hit)
-	await wait_physics_frames(10)
+	# SpawnDirector v2 releases waves as the room thins, so the room clears only
+	# when the last wave is gone: keep killing whatever is alive until none is.
+	for _pass: int in 8:
+		var alive: Array[Enemy] = []
+		for enemy: Enemy in _enemies():
+			if not enemy.health.is_dead:
+				alive.append(enemy)
+		if alive.is_empty():
+			break
+		for enemy: Enemy in alive:
+			var hit := HitInfo.new()
+			hit.final_damage = 9999
+			enemy.health.apply_damage(hit)
+		await wait_physics_frames(10)
 	assert_true(room.cleared, "the room cleared")
 	for door: Door in _world.floor_node.doors_by_room[room.spec.index]:
 		assert_false(door.closed, "doors open")

@@ -92,6 +92,15 @@ func add_bounce(count: int) -> void:
 	_flight.bounces_left += count
 
 
+## Ends the flight now, as a wall does. The Barrier Dome's Zone calls it on an enemy
+## bolt inside its edge (Zone.block_projectiles owns that rule). Host only. A bolt
+## already retired is a no-op, since _retire checks for it.
+func block() -> void:
+	if not multiplayer.is_server():
+		return
+	_retire()
+
+
 ## A reflect source bats the projectile back at the other team. Returns whether
 ## it reflected — a projectile without the flag is a guarded no-op, the same
 ## shape the relic seam uses for a provider that is not there.

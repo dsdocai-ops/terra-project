@@ -7,8 +7,9 @@ extends GutTest
 
 const CORE_COMMANDS: Array[StringName] = [
 	&"help", &"spawn", &"give", &"gold", &"skip", &"floor", &"seed",
-	&"net_lag", &"god", &"kill", &"heal", &"timestop", &"fps", &"dump",
+	&"net_lag", &"god", &"kill", &"heal", &"timestop", &"fps", &"effects", &"dump", &"perf",
 ]
+const PERF_SCENE := "res://scenes/debug/perf_test.tscn"
 const WORLD_SCENE := "res://scenes/main/world.tscn"
 const DUMP_PATH := "user://debug_dump.json"
 
@@ -43,6 +44,9 @@ func after_each() -> void:
 	# state leaks across GUT files).
 	NetworkManager.net_lag_ms = 0
 	NetworkManager.net_lag_loss = 0.0
+	# ProcLog is a static store: clear it so recorded procs cannot bleed into
+	# the next test file.
+	ProcLog.clear()
 	if FileAccess.file_exists(DUMP_PATH):
 		DirAccess.remove_absolute(ProjectSettings.globalize_path(DUMP_PATH))
 
@@ -267,6 +271,18 @@ func test_timeslow_slows_enemies() -> void:
 	assert_signal_emitted_with_parameters(TimeManager, "enemy_time_changed", [0.5])
 
 
+## entitystop is the per-entity override: only the issuing player is stopped, the
+## other player keeps normal time, and the stop clears with the debug source.
+func test_entitystop_freezes_only_the_issuing_player() -> void:
+	NetworkManager.start_solo()
+	var issuer := _add_player(2)
+	var other := _add_player(1)
+	var result := _console.run("entitystop 3", 2)
+	assert_true(String(result).contains("3"), result)
+	assert_eq(TimeManager.scale_for(issuer), 0.0, "the issuing player is stopped")
+	assert_eq(TimeManager.scale_for(other), 1.0, "the other player keeps normal time")
+
+
 func test_spawn_spawns_enemies_at_the_issuing_player() -> void:
 	NetworkManager.start_solo()
 	_spawn_world()
@@ -314,6 +330,36 @@ func test_fps_toggles_the_overlay() -> void:
 	assert_false(_console.is_fps_overlay())
 
 
+func test_effects_toggles_the_overlay() -> void:
+	assert_false(_console.is_effects_overlay())
+	var on := _console.run("effects", 1)
+	assert_true(_console.is_effects_overlay())
+	assert_true(String(on).contains("ON"), on)
+	_console.run("effects", 1)
+	assert_false(_console.is_effects_overlay())
+
+
+func test_effects_overlay_text_lists_the_newest_proc_first() -> void:
+	ProcLog.clear()
+	assert_eq(_console.effects_overlay_text(), "procs: none yet")
+	ProcLog.record(&"relic_a", 1, 4)
+	ProcLog.record(&"relic_b", 2, 7)
+	var lines := _console.effects_overlay_text().split("\n")
+	assert_eq(lines.size(), 2)
+	assert_eq(lines[0], "relic_b  depth 2  dmg 7", "newest proc is the first line")
+	assert_eq(lines[1], "relic_a  depth 1  dmg 4")
+	ProcLog.clear()
+
+
+func test_a_new_run_clears_the_proc_log() -> void:
+	ProcLog.record(&"relic_a", 1, 4)
+	ProcLog.record(&"relic_b", 2, 7)
+	assert_eq(ProcLog.recent().size(), 2, "two procs recorded before the run")
+	Events.run_started.emit(42)
+	assert_eq(ProcLog.recent().size(), 0, "a new run empties the proc store")
+	assert_eq(_console.effects_overlay_text(), "procs: none yet", "overlay shows no previous-run procs")
+
+
 func test_dump_writes_a_json_file() -> void:
 	var result := _console.run("dump", 1)
 	assert_true(String(result).contains("debug_dump.json"), result)
@@ -322,6 +368,36 @@ func test_dump_writes_a_json_file() -> void:
 	var parsed: Variant = JSON.parse_string(file.get_as_text())
 	file.close()
 	assert_true(parsed is Dictionary, "dump is a JSON object")
+
+
+# perf — opens the W4-B11 perf scene (SPEC-debug-tools command table)
+
+func test_perf_requests_the_perf_scene() -> void:
+	var requested: Array[String] = []
+	_console.commands.open_scene = func(path: String) -> void: requested.append(path)
+	var result := _console.run("perf", 1)
+	assert_eq(requested.size(), 1, "perf asks for one scene")
+	assert_eq(requested[0], PERF_SCENE, "the request names the perf scene")
+	assert_true(String(result).contains(PERF_SCENE), result)
+
+
+func test_perf_is_refused_while_another_peer_is_connected() -> void:
+	var requested: Array[String] = []
+	_console.commands.open_scene = func(path: String) -> void: requested.append(path)
+	NetworkManager.peer_ids = [1, 2]
+	var result := _console.run("perf", 1)
+	assert_eq(requested.size(), 0, "no scene change while a peer is connected")
+	assert_true(String(result).contains("refused"), result)
+
+
+func test_perf_is_allowed_in_a_solo_session() -> void:
+	var requested: Array[String] = []
+	_console.commands.open_scene = func(path: String) -> void: requested.append(path)
+	NetworkManager.peer_ids = [1]
+	var result := _console.run("perf", 1)
+	assert_eq(requested.size(), 1, "perf opens the scene when only the host is connected")
+	assert_eq(requested[0], PERF_SCENE, "the solo request names the perf scene")
+	assert_false(String(result).contains("refused"), result)
 
 
 # skip / floor <n> — the debug floor advance wired to GameState (W3-B5a)

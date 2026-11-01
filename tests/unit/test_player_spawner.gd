@@ -73,6 +73,8 @@ func test_spawn_player_creates_a_player_under_players_with_authority_set() -> vo
 	assert_eq(player.get_multiplayer_authority(), 1, "root stays host-owned")
 	assert_eq(player.input_sync.get_multiplayer_authority(), 1, "input belongs to the owning peer")
 	assert_eq(player.state_sync.get_multiplayer_authority(), 1, "state belongs to the host")
+	# start_solo already spawned Player1; this spawn queue_frees it. Wait a frame so it is gone before GUT's orphan check.
+	await wait_process_frames(1)
 
 
 func test_a_spawned_player_carries_the_player_tag_the_status_gate_reads() -> void:
@@ -86,6 +88,8 @@ func test_a_spawned_player_carries_the_player_tag_the_status_gate_reads() -> voi
 		"a spawned player joins %s" % StatusEffects.PLAYER_TAG)
 	assert_false(_world.players.is_in_group(StatusEffects.PLAYER_TAG),
 		"the container is not a player; only the entity is tagged")
+	# start_solo already spawned Player1; this spawn queue_frees it. Wait a frame so it is gone before GUT's orphan check.
+	await wait_process_frames(1)
 
 
 func test_spawned_player_input_authority_follows_peer_id() -> void:
@@ -101,6 +105,8 @@ func test_spawn_registers_in_network_manager_players() -> void:
 	NetworkManager.start_solo()
 	var player := _world.player_spawner.spawn_player(PlayerSpawnInfo.new(1))
 	assert_eq(NetworkManager.get_player(1), player)
+	# start_solo already spawned Player1; this spawn queue_frees it. Wait a frame so it is gone before GUT's orphan check.
+	await wait_process_frames(1)
 
 
 func test_despawn_removes_the_node_and_the_registry_entry() -> void:

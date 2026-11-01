@@ -27,6 +27,11 @@ var potion_count: int = 0:
 	set(value):
 		potion_count = value
 		queue_redraw()
+## The readouts of relic slots 1 and 2 (ActiveRelicController.readout), filled by
+## bind_relic_readout. Index 0 is slot 1. Empty dictionaries until bound.
+var relic_readouts: Array[Dictionary] = [{}, {}]
+## The controller this row reads its readouts from, when bound.
+var _bound_controller: ActiveRelicController = null
 
 
 ## The printed name of the key bound to `action`, "?" when nothing is bound.
@@ -68,9 +73,14 @@ func _draw() -> void:
 	# Active relic dial.
 	var relic_radius: float = 16.0
 	var relic := Vector2(x + relic_radius, base - relic_radius - 6.0)
+	var shown: Dictionary = shown_relic_readout()
+	var cooldown: float = float(shown.get("cooldown_fraction", 0.0)) if not shown.is_empty() else relic_cooldown
 	_dial(relic, relic_radius, UiPalette.MANA_BLUE if has_active_relic else UiPalette.BRONZE)
-	if has_active_relic and relic_cooldown > 0.0:
-		UiPalette.arc(self, relic, relic_radius * 0.5, -PI * 0.5, -PI * 0.5 + TAU * relic_cooldown, Color(0, 0, 0, 0.75), relic_radius)
+	if has_active_relic and cooldown > 0.0:
+		UiPalette.arc(self, relic, relic_radius * 0.5, -PI * 0.5, -PI * 0.5 + TAU * cooldown, Color(0, 0, 0, 0.75), relic_radius)
+	if not shown.is_empty():
+		var charges_text: String = "%d/%d" % [int(shown.get("charges", 0)), int(shown.get("max_charges", 0))]
+		UiPalette.draw_outlined(self, font, relic + Vector2(-relic_radius, -relic_radius - 2.0), charges_text, 8, UiPalette.PARCHMENT, HORIZONTAL_ALIGNMENT_CENTER, relic_radius * 2.0)
 	_key_tag(font, relic + Vector2(0, relic_radius + 12.0), ACTIONS[4])
 	x += relic_radius * 2.0 + 8.0
 	# Potion flask.
@@ -90,3 +100,45 @@ func _dial(center: Vector2, radius: float, rim: Color) -> void:
 
 func _key_tag(font: Font, at: Vector2, action: StringName) -> void:
 	UiPalette.draw_outlined(self, font, at + Vector2(-16, 0), key_label(action), 8, UiPalette.PARCHMENT, HORIZONTAL_ALIGNMENT_CENTER, 32.0)
+
+
+## Binds this row to `controller`'s slot readouts (W4-B7): reads both slots now and
+## again on every `readout_changed`, and each frame while a cooldown runs, so the
+## sweep moves without the HUD polling. Presentation only; the controller owns the
+## state. Binding the same controller twice connects once.
+func bind_relic_readout(controller: ActiveRelicController) -> void:
+	if controller == null:
+		return
+	if controller != _bound_controller:
+		if _bound_controller != null and _bound_controller.readout_changed.is_connected(_on_relic_readout_changed):
+			_bound_controller.readout_changed.disconnect(_on_relic_readout_changed)
+		_bound_controller = controller
+		controller.readout_changed.connect(_on_relic_readout_changed)
+	_refresh_relic_readouts()
+
+
+func _on_relic_readout_changed(_slot: int) -> void:
+	_refresh_relic_readouts()
+
+
+## Re-reads both slots from the bound controller and redraws. Clears them when
+## nothing is bound.
+func _refresh_relic_readouts() -> void:
+	if _bound_controller != null:
+		for slot: int in [ActiveRelicController.SLOT_1, ActiveRelicController.SLOT_2]:
+			relic_readouts[slot - 1] = _bound_controller.readout(slot)
+	queue_redraw()
+
+
+## The readout of the first slot that holds a relic, or {} when neither does. The
+## relic dial shows this slot's charges and cooldown.
+func shown_relic_readout() -> Dictionary:
+	for readout: Dictionary in relic_readouts:
+		if not readout.is_empty() and readout.get("relic", &"") != &"":
+			return readout
+	return {}
+
+
+func _process(_delta: float) -> void:
+	if _bound_controller != null and is_visible_in_tree():
+		_refresh_relic_readouts()

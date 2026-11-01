@@ -399,6 +399,10 @@ func apply_status(target: Node, status: StatusEffects.Status, stacks: int = 1) -
 ## bus") — so a chain continues through the hurtbox, and the hit is stamped
 ## before it gets there. A target with no hurtbox is a warned no-op.
 ##
+## Once the hurtbox returns, the hit is written to `ProcLog` with its source id,
+## depth and `final_damage`. `Hurtbox.receive` computes that damage, so a hit it
+## refuses before computing records 0.
+##
 ## The hit's `tags` are the caller's: this helper adds `proc` and nothing else.
 ## An effect that would otherwise re-trigger on its own damage appends
 ## `source_id()` there as well, which is what the wrapper's rule-2 check
@@ -416,6 +420,7 @@ func deal_damage(target: Node, hit: HitInfo) -> void:
 			source_id(), target.name])
 		return
 	sink.call(DAMAGE_SINK_METHOD, hit)
+	ProcLog.record(source_id(), hit.proc_depth, hit.final_damage)
 
 
 ## Spawns `scene` at `pos` through the world's spawner seam, one link deeper

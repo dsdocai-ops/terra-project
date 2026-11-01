@@ -2,7 +2,7 @@ class_name DebugCommands
 extends RefCounted
 ## Registers the debug-tools core command set on a DebugConsole (the
 ## SPEC-debug-tools command table): help, spawn, give, gold, skip, floor, seed,
-## net_lag, god, kill, heal, timestop, timeslow, fps, dump. Handlers return result text;
+## net_lag, god, kill, heal, timestop, timeslow, fps, effects, dump, perf. Handlers return result text;
 ## targeting commands use the issuing peer id to find the right player.
 ## Owned by debug-tools (W2-B4, floor advance W3-B5a).
 ## Sync: every handler runs on the host (a client's console routes the line
@@ -15,12 +15,16 @@ extends RefCounted
 const SOURCE := &"debug_console"
 const GIVE_TYPES: Array[String] = ["relic", "ability", "weapon", "mutation"]
 const DUMP_PATH := "user://debug_dump.json"
+const PERF_SCENE := "res://scenes/debug/perf_test.tscn"
 ## The most floor advances one `floor <n>` call may make. The target is range
 ## checked against RunState's own bounds first and next_floor() refuses past the
 ## last floor, so this is a guard on the loop rather than a second rule.
 const MAX_FLOOR_JUMPS: int = 64
 
 var console: DebugConsole
+## Seam for `perf`: called with the scene path instead of a live scene change,
+## so tests can record the request. Unset in the game, which changes the scene.
+var open_scene: Callable
 
 
 ## Installs every core command onto self.console. Called by the console after
@@ -32,7 +36,7 @@ func register_all() -> void:
 
 func _register() -> void:
 	console.register(&"help", _cmd_help, "help [cmd] — list commands or describe one")
-	console.register(&"spawn", _cmd_spawn, "spawn <enemy_id> [count] [elite] [affix] — spawn enemies at the issuing player (affix ignored until enemies-ai lands)")
+	console.register(&"spawn", _cmd_spawn, "spawn <enemy_id> [count] [elite] [affix] — spawn enemies at the issuing player; affix is SHIELDED, HASTED, SPLITTING, VAMPIRIC, EXPLOSIVE or TELEPORTING")
 	console.register(&"give", _cmd_give, "give <relic|ability|weapon|mutation> <id> [stacks] — grant to the issuing player (deferred to the owning module)")
 	console.register(&"gold", _cmd_gold, "gold <n> — give n gold to the issuing player (currency_gained event; totals tracked from week 4)")
 	console.register(&"skip", _cmd_skip, "skip — advance one floor (host only; reports why a shut exit blocked it)")
@@ -43,9 +47,12 @@ func _register() -> void:
 	console.register(&"kill", _cmd_kill, "kill — kill every enemy under World/Entities (host-only)")
 	console.register(&"heal", _cmd_heal, "heal — full-heal the issuing player (deferred until combat-core Health lands)")
 	console.register(&"timestop", _cmd_timestop, "timestop <s> — stop enemies for s seconds (TimeManager; players unaffected)")
+	console.register(&"entitystop", _cmd_entitystop, "entitystop <s> — stop the issuing player's time for s seconds (per-entity TimeManager override, broadcast as a reliable RPC)")
 	console.register(&"timeslow", _cmd_timeslow, "timeslow <factor> <s> — slow enemies by factor for s seconds")
 	console.register(&"fps", _cmd_fps, "fps — toggle the FPS overlay")
+	console.register(&"effects", _cmd_effects, "effects — toggle the proc overlay (last 20 effect procs, newest first)")
 	console.register(&"dump", _cmd_dump, "dump — write run/profile debug state to user://debug_dump.json")
+	console.register(&"perf", _cmd_perf, "perf — open the perf scene on the host (refused while other peers are connected)")
 
 
 func _cmd_help(args: PackedStringArray, _peer_id: int) -> String:
@@ -69,14 +76,30 @@ func _cmd_spawn(args: PackedStringArray, peer_id: int) -> String:
 	if args.size() >= 2 and String(args[1]).is_valid_int():
 		count = clampi(int(args[1]), 1, 32)
 	var elite := _is_truthy(args, 2)
-	# args[3] is the affix; accepted and ignored until EnemyData (W2-A9) lands.
+	var affix := _affix_arg(args, 3)
 	var world := GameState.world
 	if world == null:
 		return "no world loaded; cannot spawn"
 	var position := _spawn_position(peer_id)
 	for i in count:
-		world.enemy_spawner.spawn_enemy(EnemySpawnInfo.new(kind, position, elite))
-	return "spawned %d %s at %s%s" % [count, kind, position, " (elite)" if elite else ""]
+		world.enemy_spawner.spawn_enemy(EnemySpawnInfo.new(kind, position, elite, 0, affix))
+	var data := EnemyData.find(kind)
+	var tag := ""
+	if elite and data != null and not data.can_be_elite:
+		tag = " (plain: this enemy's data forbids elites)"
+	elif elite:
+		tag = " (elite, affix %s)" % EliteAffix.Affix.keys()[affix]
+	if args.size() > 3 and not EliteAffix.Affix.keys().has(args[3].to_upper()):
+		tag += " (unknown affix '%s', spawned without one)" % args[3]
+	return "spawned %d %s at %s%s" % [count, kind, position, tag]
+
+
+## The affix named by args[index] (SHIELDED, HASTED, ...), NONE when absent or unknown.
+func _affix_arg(args: PackedStringArray, index: int) -> EliteAffix.Affix:
+	if args.size() <= index:
+		return EliteAffix.Affix.NONE
+	var at: int = EliteAffix.Affix.keys().find(args[index].to_upper())
+	return at as EliteAffix.Affix if at >= 0 else EliteAffix.Affix.NONE
 
 
 func _cmd_give(args: PackedStringArray, _peer_id: int) -> String:
@@ -251,6 +274,19 @@ func _cmd_timestop(args: PackedStringArray, _peer_id: int) -> String:
 	return "time stop: enemies frozen for %.1f s (players unaffected)" % seconds
 
 
+## Per-entity stop on the issuing player (W4-B9 follow-up). TimeManager broadcasts
+## the override to every peer, so a client's player is frozen on its own screen too.
+func _cmd_entitystop(args: PackedStringArray, peer_id: int) -> String:
+	if args.is_empty() or not String(args[0]).is_valid_float():
+		return "entitystop needs seconds: entitystop <s>"
+	var player := NetworkManager.get_player(peer_id)
+	if player == null:
+		return "no player for peer %d to stop" % peer_id
+	var seconds := maxf(float(args[0]), 0.01)
+	TimeManager.set_entity_scale(player, 0.0, seconds, SOURCE)
+	return "entity time stop: %s frozen for %.1f s" % [player.name, seconds]
+
+
 func _cmd_timeslow(args: PackedStringArray, _peer_id: int) -> String:
 	if args.size() < 2 or not String(args[0]).is_valid_float() or not String(args[1]).is_valid_float():
 		return "timeslow needs: timeslow <factor> <s>"
@@ -263,6 +299,25 @@ func _cmd_timeslow(args: PackedStringArray, _peer_id: int) -> String:
 func _cmd_fps(_args: PackedStringArray, _peer_id: int) -> String:
 	var on := console.toggle_fps()
 	return "FPS overlay %s" % ["ON" if on else "OFF"]
+
+
+func _cmd_effects(_args: PackedStringArray, _peer_id: int) -> String:
+	var on := console.toggle_effects()
+	return "proc overlay %s" % ["ON" if on else "OFF"]
+
+
+func _cmd_perf(_args: PackedStringArray, _peer_id: int) -> String:
+	# A scene change runs on the host only, so it would leave every other peer in the
+	# old scene. Refuse while another peer is connected.
+	if NetworkManager.peer_ids.size() > 1:
+		return "perf refused: a scene change would strand the %d other peer(s); run perf in a solo session" % (NetworkManager.peer_ids.size() - 1)
+	if open_scene.is_valid():
+		open_scene.call(PERF_SCENE)
+		return "perf scene requested: %s" % PERF_SCENE
+	var error := console.get_tree().change_scene_to_file(PERF_SCENE)
+	if error != OK:
+		return "perf scene failed to open: error %d" % error
+	return "opening perf scene: %s" % PERF_SCENE
 
 
 func _cmd_dump(_args: PackedStringArray, peer_id: int) -> String:

@@ -1,0 +1,42 @@
+[gd_resource type="Resource" script_class="AbilityData" load_steps=7 format=3]
+
+[ext_resource type="Script" path="res://scripts/data/ability_data.gd" id="1_data"]
+[ext_resource type="Script" path="res://scripts/data/ability_rank.gd" id="2_rank"]
+[ext_resource type="PackedScene" path="res://scenes/abilities/cave_in.tscn" id="3_cast"]
+
+[sub_resource type="Resource" id="rank_1"]
+script = ExtResource("2_rank")
+damage_mult = 1.0
+size_mult = 1.0
+duration = 0.4
+extra = 1.0
+
+[sub_resource type="Resource" id="rank_2"]
+script = ExtResource("2_rank")
+damage_mult = 1.25
+size_mult = 1.0
+duration = 0.4
+extra = 1.25
+
+[sub_resource type="Resource" id="rank_3"]
+script = ExtResource("2_rank")
+damage_mult = 1.5
+size_mult = 1.0
+duration = 0.4
+extra = 1.5
+
+[resource]
+script = ExtResource("1_data")
+id = &"cave_in"
+display_name = "Cave-In"
+school = 5
+element = 6
+targeting = 0
+cooldown = 4.0
+charges = 1
+base_damage = 60.0
+ranks = Array[ExtResource("2_rank")]([SubResource("rank_1"), SubResource("rank_2"), SubResource("rank_3")])
+cast_scene = ExtResource("3_cast")
+description = "Wren's ultimate. The ceiling collapses on every enemy in the room: heavy damage and a stun."
+is_ultimate = true
+hp_cost_percent = 0.0

@@ -301,9 +301,7 @@ static func _assign_types(rng: RandomNumberGenerator, adjacency: Array[PackedInt
 	if in_biome == 2:
 		wanted.append(RoomType.ROPE)
 	wanted.append(RoomType.TREASURE)
-	if floor_index >= 3:
-		wanted.append(RoomType.ELITE_COMBAT)
-	if floor_index >= 11:
+	for _elite_room: int in Scaling.elite_combat_rooms(floor_index):
 		wanted.append(RoomType.ELITE_COMBAT)
 	if in_biome == biome.lore_floor:
 		wanted.append(RoomType.LORE)

@@ -62,6 +62,12 @@ const ENEMIES_PER_ROOM_PER_FLOOR: float = 0.5
 ## ask for a room nobody can fight.
 const ENEMIES_PER_ROOM_MAX: int = 18
 
+## The first floor that carries an ELITE_COMBAT room, and the first floor that
+## carries a second one (SPEC-floor-generation, "Room rules": "1 per floor from
+## floor 3, 2 from floor 11").
+const ELITE_COMBAT_FIRST_FLOOR: int = 3
+const ELITE_COMBAT_SECOND_FLOOR: int = 11
+
 ## The chance a spawn slot on floor 1 rolls an elite.
 const ELITE_CHANCE_BASE: float = 0.05
 ## How much that grows per floor.
@@ -112,6 +118,18 @@ static func enemies_per_room(floor_index: int) -> int:
 static func elite_chance(floor_index: int) -> float:
 	var depth: int = _clamped_floor(floor_index) - FIRST_FLOOR
 	return minf(ELITE_CHANCE_BASE + ELITE_CHANCE_PER_FLOOR * float(depth), ELITE_CHANCE_MAX)
+
+
+## The ELITE_COMBAT rooms `floor_index` carries: none before the first elite
+## floor, one from there, two from the second. Clamped at both ends like the
+## other floor curves, so a floor past the design doc's depth reads as the last.
+static func elite_combat_rooms(floor_index: int) -> int:
+	var floor_number: int = _clamped_floor(floor_index)
+	if floor_number >= ELITE_COMBAT_SECOND_FLOOR:
+		return 2
+	if floor_number >= ELITE_COMBAT_FIRST_FLOOR:
+		return 1
+	return 0
 
 
 ## An elite's max HP for `max_hp`: the design doc's "+100% HP", i.e. the base

@@ -90,8 +90,8 @@ func test_the_budget_reads_the_spec_curve_not_a_second_table() -> void:
 
 func test_fill_room_reads_the_budget_function_not_an_inline_second_copy() -> void:
 	var source := FileAccess.get_file_as_string(SPAWN_DIRECTOR_PATH)
-	assert_true(source.contains("var count: int = room_budget(floor_index)"), \
-		"fill_room's wave count is room_budget's")
+	assert_true(source.contains("SpawnWaves.plan(room_budget(floor_index), rng)"), \
+		"fill_room's wave plan is built from room_budget")
 	assert_eq(source.count( \
 		"return maxi(Scaling.enemies_per_room(floor_index), MIN_ENEMIES)"), 1, \
 		"the composition appears once, in room_budget — no second copy to drift")
@@ -239,12 +239,14 @@ func _far_points(count: int, start_x: int = 40) -> Array[Vector2i]:
 	return points
 
 
-func test_one_fill_room_call_spawns_the_whole_budget_as_a_single_wave() -> void:
+func test_one_fill_room_call_spawns_only_the_first_wave_and_plans_the_whole_budget() -> void:
 	_wire_world()
 	var room := _room(_spec(_far_points(8)))
 	var spawned: Array[Enemy] = SpawnDirector.fill_room(room)
-	assert_eq(spawned.size(), SpawnDirector.room_budget(1), \
-		"one call fields the whole floor-1 budget — a single wave, nothing held back")
+	assert_between(spawned.size(), 1, SpawnWaves.MAX_WAVE, \
+		"the first wave is 1 to 3 enemies; the rest wait for the room to thin")
+	assert_eq(_planned_total(room), SpawnDirector.room_budget(1), \
+		"the waves together field the floor-1 budget")
 	for enemy: Enemy in spawned:
 		assert_eq(enemy.get_parent(), _world.entities, "each spawn sits under World/Entities")
 		assert_not_null(enemy.data, "each spawn carries its EnemyData")
@@ -263,8 +265,8 @@ func test_no_enemy_spawns_within_the_safe_radius_of_a_player() -> void:
 	var far_screens: Array[Vector2] = []
 	for cell: Vector2i in far_cells:
 		far_screens.append(Iso.to_screen(cell))
-	assert_eq(spawned.size(), SpawnDirector.room_budget(1), \
-		"enough safe cells: the wave still fields the whole budget")
+	assert_between(spawned.size(), 1, SpawnWaves.MAX_WAVE, \
+		"enough safe cells: the first wave fields 1 to 3")
 	for enemy: Enemy in spawned:
 		assert_gte(enemy.position.distance_to(player.position), SpawnDirector.SAFE_RADIUS, \
 			"no spawn within the player-distance threshold")
@@ -389,8 +391,8 @@ func test_a_combat_room_looked_up_through_the_registry_fills_once_on_activation(
 		"the looked-up callable armed the room: `activated` is wired to the fill on the host")
 	var before: int = _enemy_count()
 	room.activated.emit(room)
-	assert_eq(_enemy_count() - before, SpawnDirector.room_budget(1), \
-		"one activation ran fill_room exactly once — the whole budget, not a doubled wave")
+	assert_between(_enemy_count() - before, 1, SpawnWaves.MAX_WAVE, \
+		"one activation ran fill_room once: the first wave, 1 to 3 enemies")
 
 
 func test_a_second_lookup_does_not_double_arm_the_room() -> void:
@@ -401,8 +403,8 @@ func test_a_second_lookup_does_not_double_arm_the_room() -> void:
 	FloorGenerator.run_populators(room)
 	var before: int = _enemy_count()
 	room.activated.emit(room)
-	assert_eq(_enemy_count() - before, SpawnDirector.room_budget(1), \
-		"a repaint re-running the registry on an armed room still fields one wave, not two")
+	assert_between(_enemy_count() - before, 1, SpawnWaves.MAX_WAVE, \
+		"a repaint re-running the registry on an armed room still fields one first wave, not two")
 
 
 func test_an_elite_combat_room_looked_up_through_the_registry_fills_once_on_activation() -> void:
@@ -413,11 +415,180 @@ func test_an_elite_combat_room_looked_up_through_the_registry_fills_once_on_acti
 	var before: int = _enemy_count()
 	room.activated.emit(room)
 	var spawned_budget: int = _enemy_count() - before
-	assert_eq(spawned_budget, SpawnDirector.room_budget(1), \
-		"one activation on the elite room too — fill_room once, the whole budget")
+	assert_between(spawned_budget, 1, SpawnWaves.MAX_WAVE, \
+		"one activation on the elite room too: its first wave, 1 to 3 enemies")
 	var elites: int = 0
 	for child: Node in _world.entities.get_children():
 		if child is Enemy and (child as Enemy).elite:
 			elites += 1
 	assert_gte(elites, SpawnDirector.ELITE_ROOM_BONUS_ELITES, \
 		"and the elite room's own fill_room bonus elite is in the wave")
+
+
+# --- SpawnDirector v2 (W4-A2 part 1): waves, the 40 % release, elite chance ---------
+
+
+func _planned_total(room: Room) -> int:
+	var state := room.get_meta(SpawnDirector.WAVE_STATE_META) as SpawnDirector.WaveState
+	var total: int = state.spawned
+	for size: int in state.waves:
+		total += size
+	return total
+
+
+func _state(room: Room) -> SpawnDirector.WaveState:
+	return room.get_meta(SpawnDirector.WAVE_STATE_META) as SpawnDirector.WaveState
+
+
+func test_every_wave_is_one_to_three_and_the_plan_totals_the_budget() -> void:
+	for floor_index: int in [1, 10, 30]:
+		var rng := RandomNumberGenerator.new()
+		rng.seed = 4242
+		var budget: int = SpawnDirector.room_budget(floor_index)
+		var waves: Array[int] = SpawnWaves.plan(budget, rng)
+		var total: int = 0
+		for size: int in waves:
+			assert_between(size, 1, 3, "floor %d: a wave is 1 to 3" % floor_index)
+			total += size
+		assert_eq(total, budget, "floor %d: the waves total the budget" % floor_index)
+
+
+func test_the_next_wave_is_due_at_forty_percent_remaining() -> void:
+	assert_true(SpawnWaves.next_wave_due(4, 10), "4 of 10 alive is exactly 40 %: due")
+	assert_false(SpawnWaves.next_wave_due(5, 10), "5 of 10 alive is 50 %: not yet")
+	assert_true(SpawnWaves.next_wave_due(0, 3), "a cleared room releases the next wave")
+
+
+func test_killing_down_to_forty_percent_releases_the_next_wave() -> void:
+	_wire_world()
+	var room := _room(_spec(_far_points(8)))
+	var first: Array[Enemy] = SpawnDirector.fill_room(room)
+	var state := _state(room)
+	var waves_before: int = state.waves.size()
+	assert_gt(waves_before, 0, "the plan has waves after the first")
+	for enemy: Enemy in first:
+		if not SpawnWaves.next_wave_due(room.enemies_alive, state.spawned):
+			enemy.apply_hit(100000)
+	assert_lt(state.waves.size(), waves_before, "the next wave was released")
+	assert_true(state.spawned > first.size(), "its enemies spawned too")
+
+
+func test_the_elite_chance_is_the_scaling_curve_without_double_elites() -> void:
+	for floor_index: int in [1, 10, 30]:
+		assert_almost_eq(SpawnDirector.elite_chance_for(floor_index, false), Scaling.elite_chance(floor_index), 0.0001, \
+			"floor %d: the plain elite chance is Scaling.elite_chance" % floor_index)
+
+
+func test_double_elites_doubles_the_elite_chance_and_caps_at_one() -> void:
+	for floor_index: int in [1, 10, 30]:
+		var plain: float = Scaling.elite_chance(floor_index)
+		assert_almost_eq(SpawnDirector.elite_chance_for(floor_index, true), minf(plain * 2.0, 1.0), 0.0001, \
+			"floor %d: Double Elites doubles it" % floor_index)
+	assert_eq(SpawnDirector.elite_chance_for(30, true), minf(Scaling.elite_chance(30) * 2.0, 1.0), "capped")
+	assert_true(SpawnDirector.elite_chance_for(30, true) <= 1.0, "never above certainty")
+
+
+func test_the_director_rolls_double_elites_from_the_floor_modifiers() -> void:
+	var seed_with: int = -1
+	for run_seed: int in range(1, 2000):
+		if FloorGenerator.roll_modifiers(run_seed, 30).has(FloorGenerator.FloorModifier.DOUBLE_ELITES):
+			seed_with = run_seed
+			break
+	assert_gt(seed_with, 0, "some seed rolls Double Elites on floor 30")
+	assert_true(SpawnDirector._has_double_elites(seed_with, 30), "the director reads the same roll")
+
+
+func test_a_director_elite_carries_a_real_affix() -> void:
+	_wire_world()
+	var room := _room(_spec(_far_points(8), 4, FloorGenerator.RoomType.ELITE_COMBAT))
+	var spawned: Array[Enemy] = SpawnDirector.fill_room(room)
+	var elite: Enemy = null
+	for enemy: Enemy in spawned:
+		if enemy.elite:
+			elite = enemy
+			break
+	assert_not_null(elite, "the elite room fields its bonus elite in the first wave")
+	if elite != null:
+		assert_ne(elite.affix, EliteAffix.Affix.NONE, "the director gives an elite a real affix")
+
+
+# --- the 160 px rule holds for every wave, and the release threshold is exact -------
+
+
+func test_a_later_wave_keeps_the_safe_radius_from_a_player_who_walked_over() -> void:
+	# The player starts far from every cell, then walks onto the next wave's first
+	# free cell before it is released. The wave must go elsewhere.
+	_wire_world()
+	var room := _room(_spec(_far_points(8)))
+	var player: Player = _add_player(1, Vector2(-5000.0, -5000.0))
+	var first: Array[Enemy] = SpawnDirector.fill_room(room)
+	var state := _state(room)
+	assert_false(state.cells.is_empty(), "free cells remain for the later waves")
+	player.position = Iso.to_screen(state.cells[state.cells.size() - 1])
+	for enemy: Enemy in first:
+		if not SpawnWaves.next_wave_due(room.enemies_alive, state.spawned):
+			enemy.apply_hit(100000)
+	var later: int = 0
+	for node: Node in _world.entities.get_children():
+		if node is Enemy and not first.has(node):
+			later += 1
+			assert_gte((node as Enemy).position.distance_to(player.position), SpawnDirector.SAFE_RADIUS, \
+				"a later wave's spawn is still 160 px from the walked-over player")
+	assert_gt(later, 0, "a later wave was released")
+
+
+func test_the_safe_radius_holds_for_every_wave_across_many_room_seeds() -> void:
+	# Each room index is its own rng seed (layout_seed + index * SEED_MIX), so this
+	# sweeps a spread of wave plans and cell orders. Each release is checked against
+	# the player's position at that moment, not against the first wave's.
+	_wire_world()
+	var player: Player = _add_player(1, Vector2(-5000.0, -5000.0))
+	var checked: int = 0
+	for index: int in range(3, 15):
+		var room := _room(_spec(_far_points(10), index))
+		var first: Array[Enemy] = SpawnDirector.fill_room(room)
+		var state := _state(room)
+		var guard: int = 0
+		while not state.waves.is_empty() and guard < 20:
+			guard += 1
+			if not state.cells.is_empty():
+				player.position = Iso.to_screen(state.cells[state.cells.size() - 1])
+			var known: Array[int] = _enemy_ids()
+			for enemy: Enemy in first:
+				if not enemy.health.is_dead:
+					enemy.apply_hit(100000)
+			first.clear()
+			for node: Node in _world.entities.get_children():
+				if node is Enemy and not known.has(node.get_instance_id()):
+					checked += 1
+					assert_gte((node as Enemy).position.distance_to(player.position), SpawnDirector.SAFE_RADIUS, \
+						"room index %d: a wave released while the player stood there keeps 160 px" % index)
+					first.append(node as Enemy)
+	assert_gt(checked, 0, "some later-wave spawns were checked")
+
+
+func _enemy_ids() -> Array[int]:
+	var ids: Array[int] = []
+	for node: Node in _world.entities.get_children():
+		if node is Enemy:
+			ids.append(node.get_instance_id())
+	return ids
+
+
+func test_no_wave_is_released_above_forty_percent_remaining() -> void:
+	_wire_world()
+	# Find a room whose first wave has at least two enemies, so one death leaves the
+	# room above the 40 % line. The room index is the rng seed, so this is fixed.
+	var room: Room = null
+	var first: Array[Enemy] = []
+	for index: int in range(3, 30):
+		room = _room(_spec(_far_points(8), index))
+		first = SpawnDirector.fill_room(room)
+		if first.size() >= 2:
+			break
+	assert_gte(first.size(), 2, "a room with a first wave of two or more exists")
+	var state := _state(room)
+	var waves_before: int = state.waves.size()
+	first[0].apply_hit(100000)
+	assert_false(SpawnWaves.next_wave_due(room.enemies_alive, state.spawned), "above 40 %: not due")
+	assert_eq(state.waves.size(), waves_before, "and no wave was released")

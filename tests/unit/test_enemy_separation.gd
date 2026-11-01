@@ -263,3 +263,84 @@ func test_the_move_runs_straight_with_no_one_to_separate_from() -> void:
 	_enemy = _spawn(&"hollow_miner", Vector2.ZERO)
 	_enemy.move_toward_point(Vector2(100, 0), 60.0, 1.0 / 60.0)
 	assert_almost_eq(_enemy.velocity.y, 0.0, EPSILON, "nothing nearby, nothing to bend around")
+
+
+# --- the spatial hash against brute force, and not O(n^2) at 60 units (W4-A2 part 2) ---
+
+
+func _brute_neighbours(positions: Array[Vector2], query: Vector2, cell: float) -> Array[Vector2]:
+	var query_cell := Vector2i(floori(query.x / cell), floori(query.y / cell))
+	var found: Array[Vector2] = []
+	for position: Vector2 in positions:
+		var at := Vector2i(floori(position.x / cell), floori(position.y / cell))
+		if absi(at.x - query_cell.x) <= 1 and absi(at.y - query_cell.y) <= 1:
+			found.append(position)
+	return found
+
+
+func test_the_hash_neighbours_match_brute_force_for_sixty_fixed_positions() -> void:
+	var rng := RandomNumberGenerator.new()
+	rng.seed = 60606
+	var positions: Array[Vector2] = []
+	var hash := EnemySeparation.new(CELL)
+	for index: int in 60:
+		var position := Vector2(rng.randf_range(-400.0, 400.0), rng.randf_range(-400.0, 400.0))
+		positions.append(position)
+		hash.insert(position, index)
+	for index: int in 60:
+		var query: Vector2 = positions[index]
+		var expected: Array[Vector2] = _brute_neighbours(positions, query, CELL)
+		var found: Array[Vector2] = hash.nearby(query, index)
+		expected.erase(query)
+		assert_eq(found.size(), expected.size(), "query %d: same neighbour count as brute force" % index)
+		for position: Vector2 in expected:
+			assert_true(found.has(position), "query %d: brute force neighbour is found by the hash" % index)
+
+
+func test_a_dense_sixty_unit_layout_returns_exactly_the_brute_force_neighbours() -> void:
+	# Sixty bodies packed into a 60 px square, so each query's nine cells hold
+	# about ten others. Unlike the sparse layout above, every query has real
+	# neighbours to get right: the hash must return exactly the brute-force set,
+	# neither missing one nor adding one.
+	var rng := RandomNumberGenerator.new()
+	rng.seed = 60608
+	var positions: Array[Vector2] = []
+	var hash := EnemySeparation.new(CELL)
+	for index: int in 60:
+		var position := Vector2(rng.randf_range(0.0, 60.0), rng.randf_range(0.0, 60.0))
+		positions.append(position)
+		hash.insert(position, index)
+	var total_neighbours: int = 0
+	for index: int in 60:
+		var query: Vector2 = positions[index]
+		var expected: Array[Vector2] = _brute_neighbours(positions, query, CELL)
+		expected.erase(query)
+		var found: Array[Vector2] = hash.nearby(query, index)
+		total_neighbours += expected.size()
+		assert_eq(found.size(), expected.size(), "query %d: same neighbour count as brute force" % index)
+		for position: Vector2 in expected:
+			assert_true(found.has(position), "query %d: brute force neighbour %s is found by the hash" % [index, position])
+	assert_gte(float(total_neighbours) / 60.0, 3.0, "each query averages at least three neighbours, so the check has work to do")
+
+
+func test_sixty_unit_neighbour_queries_touch_local_bodies_not_all_pairs() -> void:
+	# An all-pairs scan of 60 units inspects 60 * 59 = 3540 pairs. The hash returns
+	# only the bodies in a query's nine cells, so the work stays local: over 60
+	# queries the returned neighbours total far below the all-pairs count. The
+	# layout is 200 px square (20 x 20 cells of CELL 10), so each query's nine
+	# cells hold about 60 * 9 / 400 = 1.35 bodies, the query's own included (nearby()
+	# drops it, so about 1.33 neighbours): a real, non-zero count. A
+	# 2000 px layout gave about 0.01 per query and passed an empty hash.
+	var rng := RandomNumberGenerator.new()
+	rng.seed = 60607
+	var hash := EnemySeparation.new(CELL)
+	var positions: Array[Vector2] = []
+	for index: int in 60:
+		var position := Vector2(rng.randf_range(0.0, 200.0), rng.randf_range(0.0, 200.0))
+		positions.append(position)
+		hash.insert(position, index)
+	var returned: int = 0
+	for index: int in 60:
+		returned += hash.nearby(positions[index], index).size()
+	assert_gt(returned, 0, "the hash returns real neighbours, so an empty hash cannot pass")
+	assert_lt(returned, 60 * 59 / 10, "the hash inspects a small share of the all-pairs count")

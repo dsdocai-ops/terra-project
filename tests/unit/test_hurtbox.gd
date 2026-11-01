@@ -3,6 +3,8 @@ extends GutTest
 ## Damage.compute, events, from-behind, invulnerability and the dodge report,
 ## statuses, knockback hand-off, team filtering and hit-once-per-target.
 
+const CLIENT_PORT: int = 7816
+
 class Mover:
 	extends Node2D
 	var facing: Vector2 = Vector2.RIGHT
@@ -282,3 +284,31 @@ func test_overlap_through_physics_hits_once() -> void:
 	hitbox.active = true
 	await wait_physics_frames(4)
 	assert_eq(_health.current_hp, 90, "area_entered delivered exactly one hit")
+
+
+func test_knockback_immunity_takes_the_damage_but_hands_over_no_knockback() -> void:
+	_hurtbox.knockback_immune = true
+	var hit := _hit()
+	hit.knockback = Vector2(40, 0)
+	hit.hit_stun_seconds = 0.3
+	var before: int = _health.current_hp
+	assert_true(_hurtbox.receive(hit), "an immune target still takes the hit")
+	assert_lt(_health.current_hp, before, "the damage lands")
+	assert_eq(_target.knocked.size(), 0, "no knockback or stun is handed to the entity")
+
+
+func test_a_client_hurtbox_refuses_a_hit_and_takes_no_damage() -> void:
+	# The hit is resolved under a client API, so the host guard in receive is the one
+	# that refuses it. The default API is restored after.
+	var default_api: MultiplayerAPI = get_multiplayer()
+	var client_peer := ENetMultiplayerPeer.new()
+	assert_eq(client_peer.create_client("127.0.0.1", CLIENT_PORT), OK, "the client peer opens")
+	var client_api := SceneMultiplayer.new()
+	client_api.multiplayer_peer = client_peer
+	get_tree().set_multiplayer(client_api, get_path())
+	var before: int = _health.current_hp
+	var connected: bool = _hurtbox.receive(_hit(10.0))
+	get_tree().set_multiplayer(default_api, get_path())
+	client_peer.close()
+	assert_false(connected, "a client's hurtbox refuses the hit")
+	assert_eq(_health.current_hp, before, "no damage lands from a client")

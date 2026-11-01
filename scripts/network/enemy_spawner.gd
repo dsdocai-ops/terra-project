@@ -46,13 +46,13 @@ func _spawn_from_data(data: Variant) -> Node:
 	var info := EnemySpawnInfo.from_dict(data as Dictionary)
 	var enemy := enemy_scene.instantiate()
 	if enemy.has_method(&"setup"):
-		enemy.call(&"setup", info.kind, info.elite)
+		enemy.call(&"setup", info.kind, info.elite, info.affix)
+	elif info.elite:
+		enemy.set("elite", true)
 	enemy.name = "Enemy%d" % info.fight_id
 	enemy.position = info.spawn_position
 	# The replicated pose and per-fight id; enemy_base (Dev A) must keep these
 	# names so the swap-in stays mechanical (recorded in .goals/LOG.md).
 	enemy.set("synced_position", info.spawn_position)
 	enemy.set("fight_id", info.fight_id)
-	if info.elite:
-		enemy.set("elite", true)
 	return enemy

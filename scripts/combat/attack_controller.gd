@@ -139,6 +139,12 @@ func _can_start_attack() -> bool:
 	return false
 
 
+## True when a fresh attack would start on this frame rather than wait in the
+## buffer. Public so the smoke driver can press on the first legal frame.
+func can_start_attack() -> bool:
+	return _can_start_attack()
+
+
 ## True when a heavy press right now would fire the weapon skill.
 func skill_available() -> bool:
 	return _player.is_perfect_dodge_window() and _weapons.skill_ready()

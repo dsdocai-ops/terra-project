@@ -16,8 +16,13 @@ var _dodges: Array[bool] = []
 
 
 func before_each() -> void:
+	# The player sits under a world node the test frees. A swing spawns ground
+	# crack lines under the player's parent, and they free themselves only after
+	# a fade the tests never run, so they must be freed with the world.
+	var world := Node2D.new()
+	add_child_autofree(world)
 	_player = (load(PLAYER_SCENE) as PackedScene).instantiate() as Player
-	add_child_autofree(_player)
+	world.add_child(_player)
 	_player.position = Vector2.ZERO
 	_controller = _player.get_node("AttackController") as AttackController
 	_weapons = _player.get_node("WeaponController") as WeaponController

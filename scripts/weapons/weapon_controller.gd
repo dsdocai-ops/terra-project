@@ -8,6 +8,15 @@ extends Node
 ## timing predict the host's, and nothing it spawns can deal damage.
 
 signal weapon_changed(slot: int, weapon: WeaponData)
+## A swing went live, with the spec it played and the hit it carries. Local to this
+## controller, so Shadow Clones can copy the owner's melee swings. Emitted on every
+## peer; only the host's hits land.
+signal swing_begun(spec: AttackSpec, hit: HitInfo)
+## Whether the active slot's weapon is on the class affinity list (SPEC-weapons
+## "Class affinity hooks"). Emitted when the active slot is equipped (an empty slot
+## is false), when the active slot changes, and when the class sets its list. Every
+## peer runs the same calls; the class effect that attaches on it is host-side.
+signal affinity_active_changed(active: bool)
 
 const SLOT_COUNT: int = 2
 const SWAP_LOCKOUT_SECONDS: float = 0.2
@@ -21,6 +30,10 @@ const HEAVY_POISE_CHARGE_BONUS: float = 30.0
 ## heavy's damage and poise damage.
 const PERFECT_RELEASE_BONUS: float = 0.2
 const ARC_SEGMENTS: int = 6
+## Each Blacksmith damage tier adds this share to ATTACK (SPEC-town "weapon damage
+## tier +10%"). Applied as a StatBlock modifier under TIER_SOURCE, never a base edit.
+const TIER_PERCENT_PER_TIER: float = 0.10
+const TIER_SOURCE: StringName = &"blacksmith_tier"
 ## A heavy's reach grows with its charge in this many steps (0 to 4 quarters), so
 ## the hitbox shapes can be cached per attack and bucket instead of built per
 ## swing. The slash arc uses the same stepped reach, so it shows the real hitbox.
@@ -64,18 +77,27 @@ var _shape_cache: Dictionary = {}
 var _combo_timer: float = 0.0
 ## Seconds left on each slot's weapon skill, counted in TimeManager-scaled time.
 var _skill_cooldowns: Array[float] = [0.0, 0.0]
+## Blacksmith damage tier per slot (SPEC-weapons). Only the active slot's tier is
+## applied to the player's ATTACK, through `_apply_damage_tier`.
+var _slot_tiers: Array[int] = [0, 0]
 var _swap_lockout: float = 0.0
 var _hitbox: Hitbox = null
 var _hitbox_shape: CollisionShape2D = null
 var _slash_arc: SlashArc = null
 var _player: Player = null
+## The weapon ids the class counts as its affinity (ClassData.affinity_weapon_ids),
+## set by `set_affinity_ids`. Empty until a class is chosen.
+var _affinity_ids: Array[StringName] = []
 
 
 func _ready() -> void:
 	_player = get_parent() as Player
 	slots.resize(SLOT_COUNT)
 	for index: int in SLOT_COUNT:
-		slots[index] = load(DEFAULT_WEAPON_PATHS[index]) as WeaponData
+		var data := load(DEFAULT_WEAPON_PATHS[index]) as WeaponData
+		slots[index] = data
+		_slot_tiers[index] = _profile_tier(data)
+	_apply_damage_tier()
 	_build_hitbox()
 	_build_slash_arc()
 
@@ -115,16 +137,38 @@ func _build_slash_arc() -> void:
 		add_child(_slash_arc)
 
 
-func equip(slot: int, data: WeaponData) -> void:
+## Equips `data` into `slot` with its Blacksmith damage tier (0 for none). The
+## tier only reaches ATTACK while its slot is the active one (`_apply_damage_tier`).
+func equip(slot: int, data: WeaponData, damage_tier: int = 0) -> void:
 	if slot < 0 or slot >= SLOT_COUNT:
 		return
 	slots[slot] = data
+	_slot_tiers[slot] = maxi(damage_tier, 0)
 	combo_step = 0
+	if slot == active_slot:
+		_apply_damage_tier()
 	weapon_changed.emit(slot, data)
+	if slot == active_slot:
+		_announce_affinity()
 
 
 func active_weapon() -> WeaponData:
 	return slots[active_slot]
+
+
+## Sets the weapon ids the class counts as its affinity, and announces the active
+## weapon's state so an attached class effect can re-sync.
+func set_affinity_ids(ids: Array[StringName]) -> void:
+	_affinity_ids = ids.duplicate()
+	_announce_affinity()
+
+
+func _is_affinity(data: WeaponData) -> bool:
+	return data != null and _affinity_ids.has(data.id)
+
+
+func _announce_affinity() -> void:
+	affinity_active_changed.emit(_is_affinity(active_weapon()))
 
 
 func can_swap() -> bool:
@@ -146,7 +190,9 @@ func select_slot(index: int) -> bool:
 	active_slot = index
 	_swap_lockout = SWAP_LOCKOUT_SECONDS
 	combo_step = 0
+	_apply_damage_tier()
 	weapon_changed.emit(active_slot, slots[active_slot])
+	_announce_affinity()
 	if _player != null and multiplayer.is_server():
 		Events.weapon_swapped.emit(_player, active_slot)
 	return true
@@ -234,6 +280,8 @@ func build_hit(spec: AttackSpec, dir: Vector2, charge: float, heavy: bool, perfe
 	var weapon: WeaponData = active_weapon()
 	if weapon != null:
 		hit.tags.append(weapon.id)
+	if _is_affinity(weapon):
+		hit.tags.append(&"affinity")
 	hit.tags.append(&"ranged" if hit.is_projectile else &"melee")
 	if heavy and perfect:
 		hit.tags.append(&"perfect_release")
@@ -249,6 +297,7 @@ func build_hit(spec: AttackSpec, dir: Vector2, charge: float, heavy: bool, perfe
 ## when the window closes.
 func begin_swing(spec: AttackSpec, dir: Vector2, charge: float, heavy: bool, perfect: bool = false) -> void:
 	var hit: HitInfo = build_hit(spec, dir, charge, heavy, perfect)
+	swing_begun.emit(spec, hit)
 	_run_attack_hook(spec, dir, charge, heavy)
 	if spec.shape == AttackSpec.Shape.PROJECTILE:
 		_fire_projectile(spec, dir, hit)
@@ -349,6 +398,38 @@ func _remote_swing(shape: int, reach: float, arc_degrees: float, dir: Vector2, s
 	if multiplayer.get_remote_sender_id() != NetworkManager.HOST_PEER_ID or _slash_arc == null:
 		return
 	_slash_arc.play(shape as AttackSpec.Shape, reach, arc_degrees, dir, seconds, color)
+
+
+## Re-writes the active slot's Blacksmith tier as the one ATTACK modifier this
+## controller owns. Runs on every peer (no server check), but only the host's
+## ATTACK feeds damage (`Damage.compute` runs on the host). A tier of 0 adds nothing.
+func _apply_damage_tier() -> void:
+	# The StatBlock child by name: `_ready` runs before the player's @onready
+	# `stat_block` is set, and the tier must still land on the first frame.
+	var stats := _player.get_node_or_null("StatBlock") as StatBlock if _player != null else null
+	if stats == null:
+		return
+	stats.remove_source(TIER_SOURCE)
+	var tier: int = _slot_tiers[active_slot]
+	if tier > 0:
+		stats.add_modifier(StatBlock.Stat.ATTACK, 0.0, tier * TIER_PERCENT_PER_TIER, TIER_SOURCE)
+
+
+## The Blacksmith tier the local profile holds for `data` (0 when none). Only
+## this machine's own player reads its profile: on the host, a remote client's
+## player is spawned with the host's profile, which holds the host's tiers, so
+## the tier is 0 there. The weapon id is the data file's name (`pickaxe.tres` is
+## `pickaxe`), the key `PlayerProfile.weapon_damage_tiers` uses. Owned by weapons;
+## sync: none, the profile is a local file. Carrying a remote player's tier to the
+## host is not built yet (W4-A5 finding in .goals/LOG.md).
+func _profile_tier(data: WeaponData) -> int:
+	var profile: PlayerProfile = SaveManager.profile
+	if profile == null or data == null or _player == null:
+		return 0
+	if _player.peer_id != multiplayer.get_unique_id():
+		return 0
+	var weapon_id: String = data.resource_path.get_file().get_basename()
+	return int(profile.weapon_damage_tiers.get(weapon_id, 0))
 
 
 func _attack_speed() -> float:

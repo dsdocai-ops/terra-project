@@ -1,0 +1,42 @@
+[gd_resource type="Resource" script_class="AbilityData" load_steps=7 format=3]
+
+[ext_resource type="Script" path="res://scripts/data/ability_data.gd" id="1_data"]
+[ext_resource type="Script" path="res://scripts/data/ability_rank.gd" id="2_rank"]
+[ext_resource type="PackedScene" path="res://scenes/abilities/thunder_step.tscn" id="3_cast"]
+
+[sub_resource type="Resource" id="rank_1"]
+script = ExtResource("2_rank")
+damage_mult = 1.0
+size_mult = 1.0
+duration = 0.4
+extra = 180.0
+
+[sub_resource type="Resource" id="rank_2"]
+script = ExtResource("2_rank")
+damage_mult = 1.25
+size_mult = 1.1
+duration = 0.4
+extra = 200.0
+
+[sub_resource type="Resource" id="rank_3"]
+script = ExtResource("2_rank")
+damage_mult = 1.5
+size_mult = 1.2
+duration = 0.4
+extra = 220.0
+
+[resource]
+script = ExtResource("1_data")
+id = &"thunder_step"
+display_name = "Thunder Step"
+school = 2
+element = 3
+targeting = 1
+cooldown = 7.0
+charges = 1
+base_damage = 30.0
+ranks = Array[ExtResource("2_rank")]([SubResource("rank_1"), SubResource("rank_2"), SubResource("rank_3")])
+cast_scene = ExtResource("3_cast")
+description = "Teleport toward the cursor. Lightning strikes where you land."
+is_ultimate = false
+hp_cost_percent = 0.0

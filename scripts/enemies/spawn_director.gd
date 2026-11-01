@@ -1,9 +1,9 @@
 class_name SpawnDirector
 extends RefCounted
-## Fills combat rooms with enemies (SPEC-enemies-ai `SpawnDirector`, v1: one
-## wave per room). Owned by enemies-ai. Sync: host-only; enemies spawn through
-## the EnemySpawner so every peer sees them, and the room counts each one so it
-## clears when the last dies.
+## Fills combat rooms with enemies (SPEC-enemies-ai `SpawnDirector`, v2: waves of
+## 1 to 3 per room, the next at 40 % remaining, see SpawnWaves). Owned by
+## enemies-ai. Sync: host-only; enemies spawn through the EnemySpawner so every
+## peer sees them, and the room counts each one so it clears when the last dies.
 ##
 ## It registers as the COMBAT and ELITE_COMBAT populator: the populator only
 ## arms the room (spawning waits for the first player to enter), so a floor
@@ -19,15 +19,17 @@ const DEFAULT_POOL: Array[Array] = [
 ]
 const ELITE_ROOM_BONUS_ELITES: int = 1
 const SEED_MIX: int = 7919
+## The elite chance multiplier the Double Elites floor modifier applies.
+const DOUBLE_ELITES_FACTOR: float = 2.0
+## Room metadata key that holds the room's WaveState while its waves run.
+const WAVE_STATE_META: StringName = &"spawn_waves"
 
-## The enemy count one combat room's v1 wave carries on `floor_index`: the
+## The enemy count one combat room fields across its waves on `floor_index`: the
 ## SPEC-enemies-ai budget, `Scaling.enemies_per_room(floor)` (the stats-status
 ## curve — its base, step and cap constants are the budget table), floored at
 ## `MIN_ENEMIES` so the shallowest room never fields fewer than the wave needs.
-## v1 spawns the whole budget as one wave on the room's activation (the
-## single-wave rule); the 1-to-3 wave split — next wave at 40% remaining — is
-## the v2 shape. Pure: the floor goes in, the count comes out, nothing reads
-## the tree.
+## SpawnWaves.plan cuts it into waves of 1 to 3. Pure: the floor goes in, the
+## count comes out, nothing reads the tree.
 static func room_budget(floor_index: int) -> int:
 	return maxi(Scaling.enemies_per_room(floor_index), MIN_ENEMIES)
 
@@ -74,46 +76,102 @@ static func _on_room_activated(room: Room) -> void:
 	fill_room(room)
 
 
-## Spawns the room's wave. Returns the enemies created. v1's shape: one call
-## spawns the whole budget as a single wave — nothing is held back for a later
-## trigger — and no enemy ever spawns within `SAFE_RADIUS` of a player: a room
-## with fewer safe cells than the budget fields fewer than the budget, and one
+## Spawns the room's first wave and arms the rest (see _on_room_enemies_changed).
+## Returns the enemies created. No enemy ever spawns within `SAFE_RADIUS` of a
+## player: a room with fewer safe cells than the wave needs fields fewer, and one
 ## with no safe cell at all fields an empty wave (the old too-small-room
 ## fallback is gone — the spec's 160 px rule has no exception). Deterministic
 ## given the run seed and the room's index.
 static func fill_room(room: Room) -> Array[Enemy]:
-	var spawned: Array[Enemy] = []
 	var world: World = GameState.world
 	if world == null or room.spec == null or not room.multiplayer.is_server():
-		return spawned
+		return [] as Array[Enemy]
 	var floor_index: int = GameState.run.floor_index if GameState.run != null else 1
 	var rng := RandomNumberGenerator.new()
 	var base_seed: int = GameState.run.seed if GameState.run != null else 1
 	rng.seed = FloorGenerator.layout_seed(base_seed, floor_index) + room.spec.index * SEED_MIX
-	var count: int = room_budget(floor_index)
-	var elites_left: int = ELITE_ROOM_BONUS_ELITES if room.type == FloorGenerator.RoomType.ELITE_COMBAT else 0
-	var cells: Array[Vector2i] = _spawn_cells(room, rng)
-	for index: int in count:
-		if cells.is_empty():
+	var state := WaveState.new()
+	state.waves = SpawnWaves.plan(room_budget(floor_index), rng)
+	state.cells = _spawn_cells(room, rng)
+	state.floor_index = floor_index
+	state.elites_left = ELITE_ROOM_BONUS_ELITES if room.type == FloorGenerator.RoomType.ELITE_COMBAT else 0
+	state.double_elites = _has_double_elites(base_seed, floor_index)
+	state.rng = rng
+	room.set_meta(WAVE_STATE_META, state)
+	if not room.enemies_changed.is_connected(_on_room_enemies_changed):
+		room.enemies_changed.connect(_on_room_enemies_changed)
+	return _spawn_next_wave(room, state)
+
+
+## Releases the room's next wave when its living count has fallen to the wave
+## threshold (SpawnWaves.next_wave_due). Runs on the host from Room.enemies_changed.
+static func _on_room_enemies_changed(room: Room) -> void:
+	if not room.has_meta(WAVE_STATE_META):
+		return
+	var state := room.get_meta(WAVE_STATE_META) as WaveState
+	if state.waves.is_empty() or not SpawnWaves.next_wave_due(room.enemies_alive, state.spawned):
+		return
+	_spawn_next_wave(room, state)
+
+
+## Spawns the front wave of `state` in `room` and pops it off the plan. Each slot
+## rolls its elite chance (Scaling.elite_chance, doubled by Double Elites); the
+## ELITE_COMBAT room's first slot is always an elite. Returns the enemies created.
+static func _spawn_next_wave(room: Room, state: WaveState) -> Array[Enemy]:
+	var spawned: Array[Enemy] = []
+	if state.waves.is_empty():
+		return spawned
+	# Players move between waves, so the free cells are re-checked against where they stand now.
+	state.cells = safe_cells(state.cells, _live_player_positions(), SAFE_RADIUS)
+	var size: int = state.waves.pop_front()
+	for index: int in size:
+		if state.cells.is_empty():
 			break
-		var cell: Vector2i = cells.pop_back()
-		var elite: bool = elites_left > 0 or rng.randf() < Scaling.elite_chance(floor_index)
-		if elites_left > 0:
-			elites_left -= 1
-		var enemy: Enemy = spawn_one(_pick_kind(rng, room), Iso.to_screen(cell), elite, room)
+		var cell: Vector2i = state.cells.pop_back()
+		var elite: bool = state.elites_left > 0 or state.rng.randf() < elite_chance_for(state.floor_index, state.double_elites)
+		if state.elites_left > 0:
+			state.elites_left -= 1
+		var affix: EliteAffix.Affix = _roll_affix(state.rng) if elite else EliteAffix.Affix.NONE
+		var enemy: Enemy = spawn_one(_pick_kind(state.rng, room), Iso.to_screen(cell), elite, room, affix)
 		if enemy != null:
 			spawned.append(enemy)
+			state.spawned += 1
 	return spawned
 
 
-## Spawns one enemy of `kind` at `pos` and, when a room is given, registers it
-## with that room. Host only; returns null on a client or when the kind has no
-## data.
-static func spawn_one(kind: StringName, pos: Vector2, elite: bool = false, room: Room = null) -> Enemy:
+## The elite chance on `floor_index`: Scaling.elite_chance, doubled by the Double
+## Elites floor modifier and capped at 1. Pure.
+static func elite_chance_for(floor_index: int, double_elites: bool) -> float:
+	var chance: float = Scaling.elite_chance(floor_index)
+	return minf(chance * DOUBLE_ELITES_FACTOR, 1.0) if double_elites else chance
+
+
+## An elite's affix, drawn from the six real affixes (never NONE) by `rng`.
+static func _roll_affix(rng: RandomNumberGenerator) -> EliteAffix.Affix:
+	return rng.randi_range(1, EliteAffix.Affix.size() - 1) as EliteAffix.Affix
+
+
+## Whether the run's floor `floor_index` rolls the Double Elites modifier. The roll
+## is the floor generator's, per run seed, so every peer agrees.
+static func _has_double_elites(run_seed: int, floor_index: int) -> bool:
+	var modifiers: Array[int] = FloorGenerator.roll_modifiers(run_seed, floor_index)
+	return modifiers.has(FloorGenerator.FloorModifier.DOUBLE_ELITES)
+
+
+## Spawns one enemy of `kind` at `pos` (carrying `affix` when it is an elite) and,
+## when a room is given, registers it with that room. Host only; returns null on a
+## client or when the kind has no data.
+static func spawn_one(
+		kind: StringName,
+		pos: Vector2,
+		elite: bool = false,
+		room: Room = null,
+		affix: EliteAffix.Affix = EliteAffix.Affix.NONE,
+) -> Enemy:
 	var world: World = GameState.world
 	if world == null or not world.multiplayer.is_server():
 		return null
-	var info := EnemySpawnInfo.new(kind, pos, elite)
+	var info := EnemySpawnInfo.new(kind, pos, elite, 0, affix)
 	var enemy: Enemy = world.enemy_spawner.spawn_enemy(info) as Enemy
 	if enemy == null:
 		return null
@@ -137,17 +195,34 @@ static func _pick_kind(rng: RandomNumberGenerator, room: Room) -> StringName:
 	return StringName(pool[0][0])
 
 
-## The wiring around `safe_cells`: the live players' positions go in, the
-## surviving cells come back shuffled by the room's rng.
-static func _spawn_cells(room: Room, rng: RandomNumberGenerator) -> Array[Vector2i]:
+## The live players' positions, read off the host's NetworkManager roster.
+static func _live_player_positions() -> Array[Vector2]:
 	var players: Array[Vector2] = []
 	for player: Player in NetworkManager.players.values():
 		if is_instance_valid(player):
 			players.append(player.position)
-	var cells: Array[Vector2i] = safe_cells(room.spec.spawn_points, players, SAFE_RADIUS)
+	return players
+
+
+## The spawn cells of `room` that stand clear of every player, shuffled by `rng`.
+static func _spawn_cells(room: Room, rng: RandomNumberGenerator) -> Array[Vector2i]:
+	var cells: Array[Vector2i] = safe_cells(room.spec.spawn_points, _live_player_positions(), SAFE_RADIUS)
 	for i: int in range(cells.size() - 1, 0, -1):
 		var j: int = rng.randi_range(0, i)
 		var swap: Vector2i = cells[i]
 		cells[i] = cells[j]
 		cells[j] = swap
 	return cells
+
+
+## One room's wave progress, kept on the host's Room while its waves release. The
+## plan (`waves`), the free cells, the elite slots left and the spawn count so far.
+class WaveState:
+	extends RefCounted
+	var waves: Array[int] = []
+	var cells: Array[Vector2i] = []
+	var floor_index: int = 1
+	var elites_left: int = 0
+	var double_elites: bool = false
+	var spawned: int = 0
+	var rng: RandomNumberGenerator = null

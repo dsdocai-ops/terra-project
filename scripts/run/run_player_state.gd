@@ -19,6 +19,10 @@ var ascension: StringName = &""
 var potions: Array[StringName] = []
 var echo_shards_earned: int = 0
 var class_xp_earned: int = 0
+## This player's ultimate meter, 0 to 100. The host's UltimateController writes it
+## as it changes. The owning client reads it from that controller's RPC, because
+## RunPlayerState is not sent on the wire (W5-G6, D-P7: Dev B reviews this seam).
+var ultimate_meter: float = 0.0
 ## This player's share of the party's shared gold.
 var gold_share: int = 0
 ## True while this player is downed and waiting for a revive. Written by the

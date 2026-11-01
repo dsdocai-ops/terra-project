@@ -11,11 +11,10 @@ extends GutTest
 ## `enemy_killed` with `EnemyData.loot_table`". SPEC-run-economy, "Multiplayer
 ## ownership": "Run state, votes, loot rolls, currency totals ... host."
 ##
-## `EnemyData` and the production `enemy_killed` / `elite_killed` emitters are
-## Dev A's and are not in the tree, so the cases drive the spec-shaped doubles
-## `tests/helpers/enemy_data_stub.gd` and `tests/helpers/loot_enemy_stub.gd` and
-## fire the bus directly — **blocked on Dev A (W2-A9, W4-A4)**, recorded with
-## the swap line in `HANDOFF.md`.
+## The cases drive the spec-shaped doubles `tests/helpers/enemy_data_stub.gd` and
+## `tests/helpers/loot_enemy_stub.gd` and fire the bus directly, so each table is
+## set by the case. The real `EnemyData` and the production emitters are in the
+## tree; `test_floor_loot_placement.gd` covers the live death path.
 ##
 ## The credit happens at the roll, not at the coin: SPEC-run-economy's "Shared
 ## currencies are collected by whoever touches them" describes the collection
@@ -202,19 +201,20 @@ func test_an_ore_drop_credits_the_shared_ore_pool_by_the_biomes_ore() -> void:
 
 func test_an_elite_death_pays_ore_and_echo_from_the_elite_path_alone() -> void:
 	_data.loot_table = _table(Pickup.KIND_GOLD, 1)
+	_enemy.is_elite = true
 	assert_true(_drops.on_elite_killed(_enemy, _hit()), "the host pays the elite")
 	assert_eq(_run.elites_killed, 1, "the run counts the elite")
 	assert_eq(int(_run.shared_ore.get(OrePayout.id_for_biome(RUN_BIOME), 0)), 1, "elites pay one ore")
 	assert_between(_run.get_player(PEER_ID).echo_shards_earned, 1, 2, "and 1 to 2 echo shards")
 	var echo_after_elite: int = _run.get_player(PEER_ID).echo_shards_earned
 	var gold_after_elite: int = _run.shared_gold
-	# The game announces an elite's death on both signals (G8a decision 77), so
-	# the gold path running afterwards must not pay the elite bonus twice.
+	# The game announces an elite's death on both signals. The table is rolled once,
+	# on elite_killed, so the enemy_killed path running afterwards pays nothing.
 	_drops.on_enemy_killed(_enemy, _hit())
 	assert_eq(_run.elites_killed, 1, "the gold path counts no second elite")
 	assert_eq(_run.get_player(PEER_ID).echo_shards_earned, echo_after_elite, "and pays no second echo")
 	assert_eq(int(_run.shared_ore.get(OrePayout.id_for_biome(RUN_BIOME), 0)), 1, "nor a second ore")
-	assert_eq(_run.shared_gold, gold_after_elite + 1, "only the table's own gold")
+	assert_eq(_run.shared_gold, gold_after_elite, "the enemy_killed path adds no second table roll")
 	assert_eq(_gains.size(), 3, "one ore, one echo, then one gold")
 	assert_eq(_gains[0]["currency"], OrePayout.CURRENCY_ID, "the elite's ore first")
 	assert_eq(_gains[1]["currency"], EchoShards.CURRENCY_ID, "then its echo shards")

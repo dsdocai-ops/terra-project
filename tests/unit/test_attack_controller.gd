@@ -17,8 +17,13 @@ var _swapped: Array[int] = []
 
 
 func before_each() -> void:
+	# The player sits under a world node the test frees. A swing spawns ground
+	# crack lines under the player's parent, and they free themselves only after
+	# a fade the tests never run, so they must be freed with the world.
+	var world := Node2D.new()
+	add_child_autofree(world)
 	_player = (load(PLAYER_SCENE) as PackedScene).instantiate() as Player
-	add_child_autofree(_player)
+	world.add_child(_player)
 	_player.position = Vector2.ZERO
 	_controller = _player.get_node("AttackController") as AttackController
 	_weapons = _player.get_node("WeaponController") as WeaponController
@@ -154,6 +159,15 @@ func test_a_press_from_idle_runs_at_once() -> void:
 	_controller.apply(AttackController.Kind.LIGHT, Vector2.RIGHT, 0.0)
 	assert_eq(_state(), &"Attack")
 	assert_eq(_controller.buffered_kind(), -1, "nothing buffered")
+
+
+func test_can_start_attack_is_true_only_on_a_legal_frame() -> void:
+	assert_true(_controller.can_start_attack(), "idle may start an attack")
+	_start_attack(_long_spec())
+	_tick(0.1)
+	assert_false(_controller.can_start_attack(), "mid-swing, the combo has not opened")
+	_tick(0.5)
+	assert_true(_controller.can_start_attack(), "at the combo cancel the next attack may start")
 
 
 # --- cancel windows -------------------------------------------------------------------

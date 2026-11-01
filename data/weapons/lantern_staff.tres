@@ -1,0 +1,72 @@
+[gd_resource type="Resource" script_class="WeaponData" load_steps=7 format=3]
+
+[ext_resource type="Script" path="res://scripts/data/weapon_data.gd" id="1_weapon"]
+[ext_resource type="Script" path="res://scripts/data/attack_spec.gd" id="2_spec"]
+
+[sub_resource type="Resource" id="Light1"]
+script = ExtResource("2_spec")
+animation = &"swing"
+shape = 0
+windup_seconds = 0.06
+active_seconds = 0.12
+recovery_seconds = 0.18
+reach = 56.0
+arc_degrees = 110.0
+base_damage = 12.0
+knockback = 60.0
+poise_damage = 8.0
+
+[sub_resource type="Resource" id="Light2"]
+script = ExtResource("2_spec")
+animation = &"swing"
+shape = 0
+windup_seconds = 0.06
+active_seconds = 0.12
+recovery_seconds = 0.2
+reach = 64.0
+arc_degrees = 120.0
+base_damage = 14.0
+knockback = 80.0
+poise_damage = 10.0
+
+[sub_resource type="Resource" id="Heavy"]
+script = ExtResource("2_spec")
+animation = &"beam"
+shape = 0
+windup_seconds = 0.1
+active_seconds = 0.15
+recovery_seconds = 0.35
+reach = 150.0
+arc_degrees = 30.0
+base_damage = 40.0
+knockback = 180.0
+poise_damage = 25.0
+hit_stun_seconds = 0.2
+
+[sub_resource type="Resource" id="Skill"]
+script = ExtResource("2_spec")
+animation = &"skill_beam"
+shape = 0
+windup_seconds = 0.08
+active_seconds = 0.15
+recovery_seconds = 0.35
+reach = 150.0
+arc_degrees = 60.0
+base_damage = 60.0
+knockback = 220.0
+poise_damage = 35.0
+hit_stun_seconds = 0.25
+
+[resource]
+script = ExtResource("1_weapon")
+id = &"lantern_staff"
+display_name = "Lantern Staff"
+type = 3
+description = "A staff that carries a lantern. A charged beam lights the enemies in its cone."
+light_combo = Array[ExtResource("2_spec")]([SubResource("Light1"), SubResource("Light2")])
+heavy = SubResource("Heavy")
+skill = SubResource("Skill")
+skill_cooldown_seconds = 6.0
+heavy_charge_seconds = 0.9
+unlocked_at_start = true
+color = Color(0.95, 0.8, 0.4, 1)

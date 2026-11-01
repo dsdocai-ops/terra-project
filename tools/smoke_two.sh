@@ -7,6 +7,9 @@
 #    the client asks the host to spawn it through request_debug, the host
 #    resolves one partial hit so HP drops 10 -> 7 on both screens (StateSync),
 #    the client asks the host to kill it, and enemy_killed fires exactly once.
+#  - time stop (W4-B9, inside steps 1+2): the client asks for timestop 2 over
+#    request_debug; both screens see the enemy stop and its end, and the host
+#    player keeps moving through it.
 #  - floor sync (SPEC-networking "Seed sync"): two host/client pairs launched
 #    with the same --seed must generate the same floor — the two layout_hash
 #    values are compared for equality, not merely grepped for presence — and a
@@ -42,10 +45,10 @@ check() {  # check <file> <grep -E pattern> <description>
 }
 
 # --- steps 1+2 ---
-"$GODOT" --headless --path "$PROJECT" -- --host "--port=$PORT" "--smoke=$HOST_SECONDS" > "$OUT/host.log" 2>&1 &
+"$GODOT" --headless --path "$PROJECT" -- --host "--port=$PORT" --debug-tools "--smoke=$HOST_SECONDS" > "$OUT/host.log" 2>&1 &
 HOST_PID=$!
 sleep 2
-"$GODOT" --headless --path "$PROJECT" -- "--port=$PORT" "--join=127.0.0.1:$PORT" "--smoke=$CLIENT_SECONDS" > "$OUT/client.log" 2>&1 &
+"$GODOT" --headless --path "$PROJECT" -- "--port=$PORT" "--join=127.0.0.1:$PORT" --debug-tools "--smoke=$CLIENT_SECONDS" > "$OUT/client.log" 2>&1 &
 CLIENT_PID=$!
 wait $HOST_PID $CLIENT_PID
 
@@ -77,6 +80,63 @@ moved() {  # moved <file> <player name>
 if moved "$OUT/host.log" "Player$CLIENT_ID";   then echo "ok   client's input moved its player on the host (InputSync)"; else echo "FAIL Player$CLIENT_ID did not move on the host"; fail=1; fi
 if moved "$OUT/client.log" "Player1";          then echo "ok   host's movement of Player1 reached the client (StateSync)"; else echo "FAIL Player1 did not move on the client"; fail=1; fi
 if moved "$OUT/client.log" "Player$CLIENT_ID"; then echo "ok   client's own player moved locally (prediction + reconcile)"; else echo "FAIL Player$CLIENT_ID did not move on the client"; fail=1; fi
+
+# Time stop (W4-B9): the client is the using player and asks the host for
+# timestop 2. The host runs it through the console, the stop reaches both screens
+# (the client through the reliable time_effect_applied RPC), and the host player,
+# who is not using it, keeps moving through the stop on both screens.
+time_stop_moved() {  # time_stop_moved <file>
+  local began resumed
+  began=$(grep -Eo 'sees the enemy time stop \(scale [0-9.]+\) with Player1 x=-?[0-9.]+' "$1" | head -1 | grep -Eo -- '-?[0-9.]+$')
+  resumed=$(grep -Eo 'sees the enemy time resume with Player1 x=-?[0-9.]+' "$1" | head -1 | grep -Eo -- '-?[0-9.]+$')
+  [ -n "$began" ] && [ -n "$resumed" ] && awk -v a="$began" -v b="$resumed" 'BEGIN { exit !(b > a + 20) }'
+}
+check "$OUT/client.log" "\[smoke-time\] client requested timestop 2"                 "client (using player) asked the host for timestop 2"
+check "$OUT/host.log"   '\[console\] timestop 2 \(peer [0-9]+\) -> time stop: enemies frozen' "host ran the timestop through the console"
+check "$OUT/host.log"   '\[smoke-time\] host sees the enemy time stop'               "host screen shows the stop"
+check "$OUT/client.log" '\[smoke-time\] client sees the enemy time stop'             "client screen shows the stop (reliable RPC)"
+check "$OUT/host.log"   '\[smoke-time\] host sees the enemy time resume'             "host screen shows the stop end"
+check "$OUT/client.log" '\[smoke-time\] client sees the enemy time resume'           "client screen shows the stop end"
+if time_stop_moved "$OUT/host.log";   then echo "ok   non-using host player kept moving through the stop on the host screen"; else echo "FAIL non-using host player did not move through the stop on the host screen"; fail=1; fi
+if time_stop_moved "$OUT/client.log"; then echo "ok   non-using host player kept moving through the stop on the client screen"; else echo "FAIL non-using host player did not move through the stop on the client screen"; fail=1; fi
+
+# Entity time stop (W4-B9 follow-up): the client asks the host for entitystop 2,
+# which freezes the client's own player through set_entity_scale. The override is
+# broadcast on the reliable entity_time_applied RPC, so the client's TimeManager
+# state must change on the client's screen, not only on the host's.
+check "$OUT/client.log" "\[smoke-time\] client requested entitystop 2"                 "client asked the host for entitystop 2"
+check "$OUT/host.log"   '\[console\] entitystop 2 \(peer [0-9]+\) -> entity time stop: Player[0-9]+ frozen' "host ran the entitystop through the console"
+check "$OUT/host.log"   '\[smoke-time\] host sees the entity time stop on Player[0-9]+' "host TimeManager shows the entity stop"
+check "$OUT/client.log" '\[smoke-time\] client sees the entity time stop on Player[0-9]+' "client TimeManager took the entity stop over the reliable RPC"
+check "$OUT/host.log"   '\[smoke-time\] host sees the entity time resume on Player[0-9]+' "host TimeManager shows the entity stop end"
+check "$OUT/client.log" '\[smoke-time\] client sees the entity time resume on Player[0-9]+' "client TimeManager shows the entity stop end"
+
+# --- ability cast (W5-G2b, same pair) ---
+# The client sends Meteor Call with a NaN aim: the host refuses it over the RPC and
+# announces nothing. Then it sends a finite aim: the host casts once, under the FX
+# layer, and the client gets the visual copy back from the host.
+check "$OUT/client.log" '\[smoke-ability\] client asked for a cast with a NaN aim' "client sent a NaN aim to the host"
+check "$OUT/host.log"   "\[smoke-ability\] host refused the non-finite aim from Player$CLIENT_ID \(not_finite\)" "host refused the NaN aim over the RPC"
+check "$OUT/client.log" '\[smoke-ability\] client asked the host to cast Meteor Call' "client asked the host to cast Meteor Call"
+check "$OUT/host.log"   "\[smoke-ability\] host emitted ability_cast #1 for Player$CLIENT_ID \(rank 1\) under FX" "host cast Meteor Call once, under the FX layer"
+check "$OUT/client.log" "\[smoke-ability\] client sees the cast on Player$CLIENT_ID \(host RPC\)" "client saw the cast over the host RPC"
+if grep -Eq '\[smoke-ability\] host emitted ability_cast #2' "$OUT/host.log"; then echo "FAIL the host announced a second cast"; fail=1; else echo "ok   the host announced no second cast"; fi
+
+# --- Shadow Clones (W5-G4, same pair) ---
+# The client casts Shadow Clones from slot 1. The host spawns three clones, and the
+# client's visual copy shows three too, so both screens have three clones.
+check "$OUT/client.log" '\[smoke-clones\] client asked the host to cast Shadow Clones' "client asked the host to cast Shadow Clones"
+check "$OUT/host.log"   "\[smoke-clones\] host spawned 3 clones for Player$CLIENT_ID" "host spawned three clones for the client's player"
+check "$OUT/client.log" "\[smoke-clones\] client sees 3 clones on Player$CLIENT_ID" "client sees three clones on its player"
+
+# --- ultimate meter (W5-G6, same pair) ---
+# The host charges the client's meter to full and the client reads 100 on its copy over
+# UltimateController's RPC. The client presses; the host refuses the press because no
+# ultimate is assigned yet (Cave-In is W5-G7), and the meter stays at 100.
+check "$OUT/host.log"   "\[smoke-ultimate\] host charged the meter of Player$CLIENT_ID to 100" "host charged the client's meter to 100"
+check "$OUT/client.log" "\[smoke-ultimate\] client sees ultimate meter 100 on Player$CLIENT_ID \(host RPC\)" "client read the host's meter over the RPC"
+check "$OUT/client.log" "\[smoke-ultimate\] client pressed the ultimate on Player$CLIENT_ID" "client pressed the ultimate"
+check "$OUT/host.log"   "\[smoke-ultimate\] host refused the ultimate press from Player$CLIENT_ID \(no_ultimate\) with meter 100" "host refused the press with no ultimate assigned"
 
 # --- step 3 ---
 # Give the first pair's sockets a beat to release before rebinding $PORT.
@@ -116,6 +176,8 @@ check "$OUT/client3.log" '\[smoke3\] client requested kill'              "client
 check "$OUT/host3.log"   '\[console\] kill .* -> killed 1 enem'         "host3 ran the kill through the console"
 check "$OUT/host3.log"   '\[smoke3\] enemy_killed emitted 1 time'        "host3 registered the kill exactly once"
 check "$OUT/client3.log" '\[smoke3\] client sees Enemy[0-9]+ hp=0 \(dead\)' "client3 saw the death replicated"
+check "$OUT/host3.log"   '\[smoke3\] host sees [1-9][0-9]* pickup\(s\) after the kill' "host3 spawned the kill's gold pickup (run-economy, W4-B8)"
+check "$OUT/client3.log" '\[smoke3\] client received a pickup spawn on peer [0-9]+' "client3 received the gold pickup over the spawner"
 
 # --- floor sync (SPEC-networking "Seed sync") ---
 # The host starts the run once the client has joined, which broadcasts

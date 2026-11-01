@@ -14,6 +14,10 @@ enum Group { PLAYER, ENEMY }
 signal enemy_time_changed(scale: float)
 
 const HIT_STOP_SOURCE := &"hit_stop"
+## Rewind sampling: every 0.1 s over a 3 s window (SPEC-time-manager "Rewind").
+const REWIND_SAMPLE_SECONDS: float = 0.1
+const REWIND_WINDOW_SECONDS: float = 3.0
+const REWIND_EPSILON: float = 0.000001
 const DEFAULT_SCALE := 1.0
 
 ## node instance_id -> Group.
@@ -26,11 +30,17 @@ var _last_enemy_scale: float = DEFAULT_SCALE
 ## Active scaled one-shot timers (see timer()).
 var _scaled_timers: Array[ScaledTimer] = []
 
+## Registered rewindables by instance id, and the real-time clock they sample on.
+var _rewind: Dictionary[int, RewindTrack] = {}
+var _rewind_clock: float = 0.0
+var _rewind_next_sample: float = 0.0
+
 
 func _physics_process(delta: float) -> void:
 	_prune_dead_nodes()
 	_expire_effects()
 	_tick_scaled_timers(delta)
+	tick_rewind(delta)
 
 
 ## Current time multiplier for a node (1.0 = normal, 0.0 = stopped). A
@@ -106,19 +116,66 @@ func timer(node: Node, seconds: float) -> Signal:
 	return scaled.timeout
 
 
-## Rewind hook (Time Hourglass). Week 4 per spec scope; the API shape is kept
-## so effect-system can register against it.
-func register_rewindable(_node: Node, _sampler: Callable, _restorer: Callable) -> void:
-	pass
+## Rewind hook (Time Hourglass). Registers `node` for sampling: every
+## REWIND_SAMPLE_SECONDS of real time `sampler` returns the node's state and it is
+## kept for REWIND_WINDOW_SECONDS. `restorer` takes a state back and applies it.
+## Host-side bookkeeping: nothing here replicates. Owned by time-manager (W4-B9).
+func register_rewindable(node: Node, sampler: Callable, restorer: Callable) -> void:
+	if node == null or not sampler.is_valid() or not restorer.is_valid():
+		return
+	var track := RewindTrack.new()
+	track.node = node
+	track.sampler = sampler
+	track.restorer = restorer
+	_rewind[node.get_instance_id()] = track
+	if not node.tree_exiting.is_connected(_on_rewindable_leaving):
+		node.tree_exiting.connect(_on_rewindable_leaving.bind(node))
 
 
-func unregister_rewindable(_node: Node) -> void:
-	pass
+func unregister_rewindable(node: Node) -> void:
+	if node == null:
+		return
+	_rewind.erase(node.get_instance_id())
 
 
-func rewind(_node: Node, _seconds: float) -> void:
-	pass
+## Restores `node` to its newest sample at or before `seconds` ago, and drops the
+## samples newer than it. Does nothing when the node is not registered or no sample
+## is that old (the window is REWIND_WINDOW_SECONDS).
+func rewind(node: Node, seconds: float) -> void:
+	if node == null or not _rewind.has(node.get_instance_id()):
+		return
+	var track: RewindTrack = _rewind[node.get_instance_id()]
+	var target: float = _rewind_clock - maxf(seconds, 0.0)
+	var index: int = track.samples.size() - 1
+	while index >= 0 and float(track.samples[index].at) > target + REWIND_EPSILON:
+		index -= 1
+	if index < 0:
+		return
+	var kept: Dictionary = track.samples[index]
+	track.samples.resize(index + 1)
+	track.restorer.call(kept.state)
 
+
+## Advances the rewind clock by `delta` and samples every registered node when a
+## sample is due. Called from _physics_process; public so a test can drive it.
+func tick_rewind(delta: float) -> void:
+	_rewind_clock += delta
+	if _rewind_clock + REWIND_EPSILON < _rewind_next_sample:
+		return
+	_rewind_next_sample = _rewind_clock + REWIND_SAMPLE_SECONDS
+	for id: int in _rewind.keys():
+		var track: RewindTrack = _rewind[id]
+		if not is_instance_valid(track.node):
+			_rewind.erase(id)
+			continue
+		track.samples.append({"at": _rewind_clock, "state": track.sampler.call()})
+		var cutoff: float = _rewind_clock - REWIND_WINDOW_SECONDS
+		while not track.samples.is_empty() and float(track.samples[0].at) < cutoff:
+			track.samples.pop_front()
+
+
+func _on_rewindable_leaving(node: Node) -> void:
+	unregister_rewindable(node)
 
 ## Host -> clients: a global time effect started. Clients apply the same
 ## duration locally so expiry stays in lockstep.
@@ -276,3 +333,12 @@ class ScaledTimer:
 
 	var node_id: int = 0
 	var remaining: float = 0.0
+
+
+## One registered node's rewind samples: `{at, state}` dictionaries, oldest first.
+class RewindTrack:
+	extends RefCounted
+	var node: Node = null
+	var sampler: Callable
+	var restorer: Callable
+	var samples: Array[Dictionary] = []

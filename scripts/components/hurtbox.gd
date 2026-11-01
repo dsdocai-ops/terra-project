@@ -23,6 +23,12 @@ const KNOCKBACK_METHOD: StringName = &"apply_knockback"
 ## The entity method that drains poise before `hit_landed` fires, when it has one:
 ## `absorb_hit_poise(hit: HitInfo)` sets `hit.staggered` when the hit broke it.
 const POISE_METHOD: StringName = &"absorb_hit_poise"
+## The entity method that takes a hit before Health when it returns true (an elite's
+## SHIELDED affix). Host only, and only entities that have it.
+const ABSORB_METHOD: StringName = &"absorbs_hit"
+## The attacker method that hears the damage its hit dealt (an elite's VAMPIRIC
+## heal), called after Health takes it. Only attackers that have it.
+const DEALT_METHOD: StringName = &"on_dealt_damage"
 ## Neutral stats for a source or target with no `StatBlock` (a hazard, a
 ## destructible): attack 100 is the formula's reference, defense 0.
 const NEUTRAL_ATTACK: float = 100.0
@@ -32,11 +38,14 @@ const NEUTRAL_ATTACK: float = 100.0
 		team = value
 		_apply_layer()
 ## While true no hit lands. Post-hit i-frames, dodge i-frames and scripted
-## immunity (Stone Skin) all set it.
+## immunity all set it.
 var invulnerable: bool = false
 ## True during a dodge roll's i-frames: an invulnerable hit then reports
 ## `blocked_during_dodge` instead of silently vanishing.
 var dodge_invulnerable: bool = false
+## True while the entity shrugs off knockback (Stone Skin). The hit still lands and
+## its statuses still apply; only the knockback and stun hand-off is skipped.
+var knockback_immune: bool = false
 
 ## Damage-taken factors by source (staggered enemies take x1.25). Their product
 ## scales every hit after Damage.compute; it is a Hurtbox-side multiplier, never
@@ -85,11 +94,15 @@ func receive(hit: HitInfo) -> bool:
 			blocked_during_dodge.emit(hit)
 		return false
 	hit.target = entity
+	if entity.has_method(ABSORB_METHOD) and entity.call(ABSORB_METHOD, hit):
+		return false
 	hit.from_behind = _is_from_behind(entity, hit)
 	var statuses := get_node_or_null(STATUS_NODE) as StatusEffects
 	_compute_damage(hit, statuses)
 	if not health.apply_damage(hit):
 		return false
+	if hit.source != null and hit.source.has_method(DEALT_METHOD):
+		hit.source.call(DEALT_METHOD, hit.final_damage)
 	if not health.is_dead and entity.has_method(POISE_METHOD):
 		entity.call(POISE_METHOD, hit)
 	Events.hit_landed.emit(hit)
@@ -127,7 +140,7 @@ func _compute_damage(hit: HitInfo, statuses: StatusEffects) -> void:
 ## Knockback along the hit direction and the hit's statuses. Skipped for a dead
 ## target.
 func _apply_reactions(entity: Node, hit: HitInfo, statuses: StatusEffects) -> void:
-	if entity.has_method(KNOCKBACK_METHOD):
+	if not knockback_immune and entity.has_method(KNOCKBACK_METHOD):
 		if entity.get_method_argument_count(KNOCKBACK_METHOD) >= 3:
 			entity.call(KNOCKBACK_METHOD, hit.knockback, hit.hit_stun_seconds, hit)
 		else:

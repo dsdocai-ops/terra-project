@@ -1,6 +1,7 @@
-[gd_resource type="Resource" script_class="EnemyData" load_steps=2 format=3]
+[gd_resource type="Resource" script_class="EnemyData" load_steps=3 format=3]
 
 [ext_resource type="Script" path="res://scripts/data/enemy_data.gd" id="1_enemy"]
+[ext_resource type="Resource" path="res://data/loot/debug_grub.tres" id="2_loot"]
 
 [resource]
 script = ExtResource("1_enemy")
@@ -18,3 +19,4 @@ color = Color(0.6, 0.8, 0.4, 1)
 radius = 8.0
 biome = &"debug"
 scales_hp = false
+loot_table = ExtResource("2_loot")

@@ -161,6 +161,31 @@ func test_broadcast_rpc_methods_exist() -> void:
 	assert_true(TimeManager.has_method("entity_time_applied"), "host->client entity broadcast")
 
 
+## Receipt side of the reliable broadcast: time_effect_applied is the body a client
+## runs when the host's RPC arrives (the host's own broadcast is a no-op solo). A
+## received stop must reach an enemy on this peer and expire locally on its own clock.
+func test_a_received_time_effect_stops_a_local_enemy() -> void:
+	var enemy := _mover(TimeManager.Group.ENEMY)
+	await wait_physics_frames(1)
+	TimeManager.time_effect_applied(TimeManager.Group.ENEMY, 0.0, 1.0, &"test-stop")
+	assert_eq(TimeManager.scale_for(enemy), 0.0, "the received stop reaches the enemy on this peer")
+	await wait_physics_frames(70)
+	assert_eq(TimeManager.scale_for(enemy), 1.0, "the received stop expires locally after its duration")
+
+
+## Receipt side of the per-entity broadcast: entity_time_applied resolves the path the
+## host sent and applies the override to that node on this peer only.
+func test_a_received_entity_time_effect_applies_to_the_node_at_its_path() -> void:
+	var enemy := _mover(TimeManager.Group.ENEMY)
+	var other := _mover(TimeManager.Group.ENEMY)
+	await wait_physics_frames(1)
+	TimeManager.entity_time_applied(enemy.get_path(), 0.0, 1.0, &"test-entity")
+	assert_eq(TimeManager.scale_for(enemy), 0.0, "the received override stops the node at that path")
+	assert_eq(TimeManager.scale_for(other), 1.0, "a node at another path keeps normal time")
+	await wait_physics_frames(70)
+	assert_eq(TimeManager.scale_for(enemy), 1.0, "the received override expires locally after its duration")
+
+
 func test_solo_stop_applies_locally_and_broadcast_is_a_noop() -> void:
 	var enemy := _mover(TimeManager.Group.ENEMY)
 	await wait_physics_frames(1)

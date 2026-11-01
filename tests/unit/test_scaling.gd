@@ -118,6 +118,28 @@ func test_elite_chance_rises_with_depth_and_is_clamped_at_both_ends() -> void:
 	assert_eq(Scaling.elite_chance(9999), Scaling.elite_chance(LAST_FLOOR), "however deep the index goes")
 
 
+## SPEC-floor-generation's room rule for ELITE_COMBAT: none before floor 3, one
+## from floor 3, two from floor 11. Pinned on the three floors the goal names
+## and on the floors either side of each step.
+func test_elite_combat_rooms_follow_the_spec_steps() -> void:
+	assert_eq(Scaling.elite_combat_rooms(1), 0, "floor 1 carries no elite room")
+	assert_eq(Scaling.elite_combat_rooms(2), 0, "floor 2 carries no elite room")
+	assert_eq(Scaling.elite_combat_rooms(3), 1, "floor 3 carries the first elite room")
+	assert_eq(Scaling.elite_combat_rooms(10), 1, "floor 10 still carries one")
+	assert_eq(Scaling.elite_combat_rooms(11), 2, "floor 11 carries the second")
+	assert_eq(Scaling.elite_combat_rooms(30), 2, "floor 30 carries two")
+
+
+func test_elite_combat_rooms_never_fall_and_are_clamped_at_both_ends() -> void:
+	var previous: int = 0
+	for floor: int in range(FIRST_FLOOR, LAST_FLOOR + 1):
+		var rooms := Scaling.elite_combat_rooms(floor)
+		assert_gte(rooms, previous, "floor %d carries no fewer elite rooms than the floor before" % floor)
+		previous = rooms
+	assert_eq(Scaling.elite_combat_rooms(0), Scaling.elite_combat_rooms(FIRST_FLOOR), "clamped below the first floor")
+	assert_eq(Scaling.elite_combat_rooms(LAST_FLOOR + 1), Scaling.elite_combat_rooms(LAST_FLOOR), "clamped above the last")
+
+
 # --- the elite's HP rule ----------------------------------------------------
 
 func test_the_elite_hp_rule_is_plus_one_hundred_percent() -> void:

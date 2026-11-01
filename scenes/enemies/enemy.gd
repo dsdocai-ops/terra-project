@@ -8,9 +8,10 @@ extends CharacterBody2D
 ## `AStarGrid2D` in the pure `EnemyPathing`. Owned by enemies-ai.
 ## Sync: the host runs AI, attacks, HP and death; StateSync replicates
 ## position, animation tag, current HP, the telegraph progress and aim, and the
-## spawn-time `kind`/`elite`. Clients only present that state. Art: the
-## `EnemyData.sprite_frames` sheet, facing picked locally from movement (or the
-## replicated aim while standing); a coloured body polygon when there is none.
+## spawn-time `kind`/`elite`/`affix` (the spawn payload). Clients only present
+## that state. Art: the `EnemyData.sprite_frames` sheet, facing picked locally
+## from movement (or the replicated aim while standing); a coloured body polygon
+## when there is none.
 
 signal died(hit: HitInfo)
 
@@ -19,6 +20,12 @@ const SEPARATION_PUSH: float = 40.0
 const PATH_REFRESH_SECONDS: float = 0.5
 const DEATH_FADE_SECONDS: float = 0.6
 const GROUP: StringName = &"enemies"
+## The elite's +100 % HP modifier source on StatBlock (never a base edit).
+const ELITE_SOURCE: StringName = &"elite"
+const OUTLINE_NODE: String = "EliteOutline"
+const OUTLINE_SHADER: String = "res://scripts/effects/elite_outline.gdshader"
+## How far the elite outline grows past the body rectangle, as a scale.
+const OUTLINE_GROW: float = 1.2
 ## Stand-in for an unknown kind (debug `spawn grub`).
 const FALLBACK_KIND: StringName = &"hollow_miner"
 ## Poise refills at this share of its maximum per second, starting this long
@@ -30,6 +37,20 @@ var data: EnemyData = null
 var kind: StringName = &""
 var fight_id: int = 0
 var elite: bool = false
+## The spec's name for `elite` (SPEC-enemies-ai, the Enemy base).
+var is_elite: bool:
+	get:
+		return elite
+## The elite's affix (SPEC-enemies-ai Elites). NONE for every plain enemy.
+var affix: EliteAffix.Affix = EliteAffix.Affix.NONE
+## The affix's behaviour node (EliteBehavior), host-side. Null for plain enemies.
+var affix_behavior: EliteBehavior = null
+## Set by the Lantern Staff's charged beam while the enemy is inside its cone (SPEC-weapons
+## Magic row; W5-G8, D-P6). Sync: the host owns it. `LanternStaffAttack` sets it true in
+## `_light` and false in `_unlight`, only on the host. StateSync (enemy_base.tscn,
+## `.:lit`, on change) carries each change to the client copies (W5-G8d), so a client
+## reads the same flag and never writes it.
+var lit: bool = false
 var synced_position: Vector2 = Vector2.ZERO
 var current_anim: StringName = &"idle"
 ## 0..1 while an attack winds up, -1 otherwise; clients draw the telegraph.
@@ -88,25 +109,30 @@ static var _hash_group_size: int = -1
 
 ## Configures this enemy from its data. Called by the spawner on every peer
 ## right after instantiate(), before the node enters the tree, so Health's
-## `_ready` sees the final MAX_HP.
-func setup(p_kind: StringName, p_elite: bool = false) -> bool:
+## `_ready` sees the final MAX_HP. An elite is only an elite when its data has
+## `can_be_elite`; its +100 % HP is a StatBlock modifier under ELITE_SOURCE, so
+## the base MAX_HP stays the data's value. `affix` is kept only for elites.
+func setup(p_kind: StringName, p_elite: bool = false, p_affix: EliteAffix.Affix = EliteAffix.Affix.NONE) -> bool:
 	kind = p_kind
-	elite = p_elite
 	data = EnemyData.find(kind)
 	if data == null:
 		push_warning("[enemy] no EnemyData for '%s'; using %s" % [kind, FALLBACK_KIND])
 		data = EnemyData.find(FALLBACK_KIND)
 	if data == null:
 		return false
+	elite = p_elite and data.can_be_elite
+	affix = p_affix if elite else EliteAffix.Affix.NONE
 	var stats: StatBlock = get_node("StatBlock") as StatBlock
 	stats.base = data.base_stats.duplicate()
 	var biome: int = GameState.run.biome_index if GameState.run != null else maxi(GameState.remote_floor_index - 1, 0) / BiomeData.FLOORS_PER_BIOME + 1
 	var max_hp: float = float(stats.base.get(StatBlock.Stat.MAX_HP, 20.0))
 	if data.scales_hp:
 		max_hp = Scaling.enemy_max_hp(max_hp, biome)
-	if elite:
-		max_hp = Scaling.elite_hp(max_hp)
 	stats.base[StatBlock.Stat.MAX_HP] = max_hp
+	stats.base[StatBlock.Stat.MOVE_SPEED] = data.move_speed
+	stats.base[StatBlock.Stat.ATTACK_SPEED] = 1.0
+	if elite:
+		stats.add_modifier(StatBlock.Stat.MAX_HP, 0.0, Scaling.ELITE_HP_MULTIPLIER - 1.0, ELITE_SOURCE)
 	poise_max = maxf(data.poise, 0.0)
 	poise = poise_max
 	var poly: Polygon2D = get_node("Body") as Polygon2D
@@ -114,9 +140,41 @@ func setup(p_kind: StringName, p_elite: bool = false) -> bool:
 	poly.polygon = PackedVector2Array([Vector2(-r, -r * 1.6), Vector2(r, -r * 1.6), Vector2(r, r * 0.5), Vector2(-r, r * 0.5)])
 	poly.color = data.color.lightened(0.25) if elite else data.color
 	_apply_sprite(poly)
+	if elite:
+		_build_outline(poly.polygon)
+		_attach_affix()
 	(get_node("BodyShape") as CollisionShape2D).shape = _circle(r)
 	(get_node("Hurtbox/HurtShape") as CollisionShape2D).shape = _circle(r + 2.0)
 	return true
+
+
+## The elite's affix behaviour, as a child node, when it has one. Runs `on_spawn`
+## on the host from `_ready`, once the node is in the tree. Host-side logic; nothing replicates.
+func _attach_affix() -> void:
+	var script := EliteAffix.behavior_script(affix)
+	if script == null:
+		return
+	var behavior := script.new() as EliteBehavior
+	behavior.name = "Affix"
+	add_child(behavior)
+	affix_behavior = behavior
+
+
+## The elite outline: a copy of the body rectangle grown by OUTLINE_GROW and drawn
+## behind the body in the elite outline shader. Minimal and functional; the real
+## outline art is W4-A6's. Owned by enemies-ai; presentation only, no sync.
+func _build_outline(body_polygon: PackedVector2Array) -> void:
+	var outline := Polygon2D.new()
+	outline.name = OUTLINE_NODE
+	var grown := PackedVector2Array()
+	for point: Vector2 in body_polygon:
+		grown.append(point * OUTLINE_GROW)
+	outline.polygon = grown
+	var material := ShaderMaterial.new()
+	material.shader = load(OUTLINE_SHADER) as Shader
+	outline.material = material
+	add_child(outline)
+	move_child(outline, 0)
 
 
 ## Swaps the placeholder polygon for the data's sprite sheet when it has one.
@@ -161,6 +219,9 @@ func _circle(radius: float) -> CircleShape2D:
 
 func _ready() -> void:
 	add_to_group(GROUP)
+	# Join the ENEMY time group, so stop_enemies and slow_enemies reach this enemy
+	# (TimeManager.scale_for reads the group; an unregistered node runs at normal time).
+	TimeManager.set_group(self, TimeManager.Group.ENEMY)
 	synced_position = global_position
 	_last_position = global_position
 	hurtbox.team = Team.Kind.ENEMY
@@ -170,6 +231,8 @@ func _ready() -> void:
 	if multiplayer.is_server():
 		health.died.connect(_on_died)
 		health.damaged.connect(_on_damaged)
+		if affix_behavior != null:
+			affix_behavior.on_spawn(self)
 		if room != null:
 			room.track_enemy(self)
 
@@ -178,10 +241,12 @@ func _physics_process(delta: float) -> void:
 	if not multiplayer.is_server():
 		return
 	var scaled: float = delta * _time_scale()
-	attack_cooldown_left = maxf(attack_cooldown_left - scaled, 0.0)
+	attack_cooldown_left = maxf(attack_cooldown_left - scaled * attack_speed(), 0.0)
 	_path_timer = maxf(_path_timer - scaled, 0.0)
 	_refill_poise(scaled)
 	_shove(scaled)
+	if affix_behavior != null:
+		affix_behavior.process(scaled, self)
 
 
 func _process(delta: float) -> void:
@@ -204,6 +269,28 @@ func apply_hit(amount: int) -> bool:
 	var flat := HitInfo.new()
 	flat.final_damage = amount
 	return health.apply_damage(flat)
+
+
+## Whether the elite's affix absorbs `hit` before Health sees it (SHIELDED). Called by
+## the Hurtbox on the host; false for every plain enemy.
+func absorbs_hit(hit: HitInfo) -> bool:
+	return affix_behavior != null and affix_behavior.absorbs(self, hit)
+
+
+## Called by the Hurtbox on the host when this enemy lands `damage` (VAMPIRIC).
+func on_dealt_damage(damage: int) -> void:
+	if affix_behavior != null and multiplayer.is_server():
+		affix_behavior.on_dealt(self, damage)
+
+
+## Movement speed now: data speed under the StatBlock modifiers (HASTED).
+func move_speed() -> float:
+	return (get_node("StatBlock") as StatBlock).get_value(StatBlock.Stat.MOVE_SPEED)
+
+
+## Attack-timer rate now: 1.0 plain, more under StatBlock ATTACK_SPEED (HASTED).
+func attack_speed() -> float:
+	return (get_node("StatBlock") as StatBlock).get_value(StatBlock.Stat.ATTACK_SPEED)
 
 
 ## Current HP, under the name the debug console and smoke driver read.
@@ -417,6 +504,8 @@ func _on_died(hit: HitInfo) -> void:
 	Events.enemy_killed.emit(self, hit)
 	if elite:
 		Events.elite_killed.emit(self, hit)
+	if affix_behavior != null:
+		affix_behavior.on_death(self, hit)
 	telegraph_progress = -1.0
 	hitbox.active = false
 	set_physics_process(false)

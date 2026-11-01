@@ -3255,7 +3255,7 @@ G25–G26 evidence logs' own correction entries.
 
 ### G4 — `RelicRoller`: rarity weights, Luck, no cursed at a Shrine, `max_stacks` (`relics`)
 
-Raw goal **G28**. Shipped 2026-10-20 in the first half of **W4-B5**.
+Raw goal **G28** (historical: an older plan's goal id, not a goal box in the current `.goals/PLAN.md`). Shipped 2026-10-20 in the first half of **W4-B5**.
 
 **What shipped.** `scripts/relics/relic_roller.gd` (new module folder; decision
 58) — a static-only class implementing SPEC-relics' shared roll helper:
@@ -4582,6 +4582,146 @@ cases**, reverted from a snapshot (`diff -q` clean, `sha256` `4712d983…`), log
 relaunch, not against a torn write *during* the rename, and nothing in the game
 reads `SaveManager.profile` at startup yet — hooking the town and the HUD to it is
 a later task. W5-B1 stays `[ ]` and this goal is not ticked; no Dev A dependency.
+
+---
+
+## Week 4 close-out (G12, 2026-10-30)
+
+Written by goal G12 of the Week 4 goal-forge run (`.goals/PLAN.md`). No code
+changed in G12; it records the state of the nine Week 4 items the user listed.
+Three are closed (W4-B7, W4-B8, W4-B9), six stay `[ ]` as PARTIAL with the
+blocking decision named. Every decision number (D1 to D10) is in
+`.goals/PLAN.md` under "Decisions needed". Nothing is committed yet (D10).
+
+### W4-A1 — elites (`enemies-ai`) — PARTIAL (2026-10-30; D5 closed by G2b)
+
+- **Status:** the six affix behaviours (SHIELDED, HASTED, SPLITTING, VAMPIRIC,
+  EXPLOSIVE, TELEPORTING) are judged PASS with a negative control each (G3,
+  G3b). Client gating is covered by `tests/unit/test_affix_host_only.gd`.
+- **Elite core (G2):** `+100%` HP through `StatBlock`, the elite flag,
+  `elite_killed` host-side once, and the outline on elites only. Judged PASS
+  (`tests/unit/test_elite_core.gd`).
+- **D5 (closed by G2b):** the signature is `Enemy.setup(kind, is_elite, affix)`.
+  The kind form stands because every caller and test already passes a kind.
+  `specs/SPEC-enemies-ai.md:74` now lists it. Nothing in the code changed for G2b.
+- **Still open:** `scenes/network/placeholder_enemy.gd` has no affix field and
+  no `setup()`. Nothing in play spawns it (`scenes/main/world.tscn` sets
+  `enemy_base`), so no elite reaches it (goal-forge G13 item c). Pit Pact is
+  deferred to W4-A2 because no modifier data exists under `data/`.
+- **Evidence:** `.goals/evidence/g3/`, `g3b/`, `g2b/`; `.goals/LOG.md`.
+
+### W4-A2 — SpawnDirector v2 (`enemies-ai`) — PARTIAL, blocked on D6 (2026-10-30)
+
+- **Status:** waves of 1 to 3 released at 40% (G4), elite chance by floor and
+  Double Elites (G4; Pit Pact deferred because no modifier data exists), the
+  off-room pause (G5a), and spatial-hash separation checked against brute force
+  including a 60-unit dense layout (G5c).
+- **Open:** `EnemyPool` (G5b). A pooled node cannot be spawned again through
+  `MultiplayerSpawner`, and clients may still draw an enemy in an empty room.
+- **Evidence:** `.goals/evidence/g4_run1..4.txt`, `g5a_*`, `g5c_*`.
+- **Open decision:** D6.
+
+### W4-A3 — SHRINE placement and ELITE_COMBAT counts (`floor-generation`) — PARTIAL, blocked on D7 (2026-10-30)
+
+- **Status:** ELITE_COMBAT counts by floor (G6a) through
+  `Scaling.elite_combat_rooms` (0 below floor 3, 1 from 3, 2 from 11, clamped).
+  Tests in `tests/unit/test_scaling.gd`; the negative control moved the floor-3
+  threshold and failed two `test_room_rules.gd` tests.
+- **Open:** one SHRINE per floor (G6b). The room budget drops SHRINE on
+  room-poor floors, and `test_room_rules.gd` pins that drop.
+- **Evidence:** `.goals/evidence/g6a_negctl_room_rules.txt`.
+- **Open decision:** D7, SHRINE ahead of ELITE_COMBAT in priority, or raise the
+  room minimum.
+
+### W4-A4 — combat event emitters (`combat-core`) — PARTIAL, blocked on D1 to D3 (2026-10-30)
+
+- **Status:** seven emitters on their real paths: `hit_landed`, `crit_landed`,
+  `player_damaged`, `heavy_attack_released`, `weapon_swapped`, `enemy_killed`,
+  `player_dodged` (G1a). Nine negative controls each fail their owning test
+  (`.goals/evidence/g1a/negctl/summary.txt`).
+- **Open:** `projectile_fired` and `enemy_spawned` param types (`events.gd:35,42`,
+  pinned at `test_events_bus.gd:45-46`); the stale "blocked on Dev A (W4-A4)"
+  wording in `tests/helpers/event_emitter.gd` and
+  `tests/unit/test_events_emitters.gd`; and the proc `projectile_fired` emit
+  (`effect_spawner.gd:146`).
+- **Open decisions:** D1 (an `Events` signal change, which needs approval),
+  D2 (the doc and test rewording, which needs approval), D3 (proc shots emit with
+  their source player, or are documented as not player shots).
+
+### W4-A5 — Blacksmith damage tier and `Stat.ATTACK` (`weapons`) — PARTIAL, blocked on D4 (2026-10-30)
+
+- **Status:** the tier is applied as a `StatBlock` ATTACK modifier (+10% per
+  tier) on the active slot, and `Damage.compute` reads `Stat.ATTACK`
+  (`tests/unit/test_blacksmith_damage_tier.gd`). The base stat is not edited.
+- **Open:** no production tier writer (`scripts/town/blacksmith.gd` defers to
+  week 6+), no production `equip()` caller, and a remote client's tier does not
+  reach the host. G1 is not checked.
+- **Open decision:** D4, pull a minimal loadout write into week 4, or cut the
+  live effect to a hook-only item (a scope cut needs a human decision, recorded
+  in the capability map).
+
+### W4-B7 — active relic slot HUD hook (`relics`) — CLOSED (G7) (2026-10-30)
+
+- **Status:** the HUD hook is G7. `ActiveRelicController.readout(slot)` and
+  `readout_changed` drive the ability row for slots 1 and 2 (charges, the
+  cooldown sweep, and a client mirror through `relic_activated_received`).
+- **Evidence:** `tests/unit/test_active_relic.gd` 35/35 (`.goals/evidence/g7g8/active_relic_run2.txt`,
+  `Passing Tests 35`; LOG 2026-10-30 G7 (line 21)), smoke `0 FAIL` (`.goals/evidence/g7g8/smoke_log2.txt`
+  and `smoke_log_rerun.txt`), goal-judge PASS on re-judge 1. `.goals/evidence/g7_run1.txt` is a
+  separate 31/31 run and is not the 35/35 result.
+- **Not closed:** the `player.tscn` install (blocked on Dev A W2-A1; the
+  controller is installed at run time by `for_player()`), the active relics' own
+  content (week 8), and a per-room refill mirror on a client (latent: no shipped
+  relic refills per room). Two-instance smoke step 4 has no active-relic driver.
+
+### W4-B8 — currencies and drops (`run-economy`) — CLOSED (G8, G8b) (2026-10-30)
+
+- **Status:** enemy and elite death rolls go through `LootDrops._roll_table`
+  (an elite rolls once, on `elite_killed`). Chests, breakables and mining nodes
+  are placed on generated floors for seeds 20261020, 7 and 4242. Per-peer
+  pickup visibility is covered in `test_pickup.gd`. G8b cleared the judge's loose
+  ends and extended the smoke to check a host gold pickup and its client replica.
+- **Evidence:** LOG 2026-10-30 G8 (line 28) and G8b (line 35). `.goals/evidence/g8_run1..7.txt`,
+  `g8_smoke_result.txt`, `g8_smoke_logs/`, `.goals/evidence/g8b/`.
+- **Not closed:** the week-5 economy balance pass. G8 excluded tuning, so the
+  placeholder amounts in `data/loot/` stay until the W5 shop goal re-tunes them.
+
+### W4-B9 — TimeManager consumers, rewind, co-op timestop (`time-manager`) — CLOSED (G9, G9b) (2026-10-30)
+
+- **Status:** `slow_enemies` and `stop_enemies` are consumed by real enemy
+  movement and attack cooldowns (`tests/unit/test_enemy_attack_stop.gd` 7/7).
+  `register_rewindable` and `rewind` are real: a 0.1 s sampler, a 3 s window,
+  and restore to the newest sample at or before the point (`test_time_rewind.gd`
+  8/8). Global and entity effects are reliable RPCs with receipt tests
+  (`test_time_manager.gd` 16/16). The `timestop` step in `tools/smoke_two.sh`
+  shows the host player's x going from 461 to 654 across the stop on both
+  screens. G9b added the `entitystop` command and the entity wire checks over
+  the reliable RPC.
+- **Evidence:** LOG 2026-10-30 G9 (line 30) and G9b (line 37). `.goals/evidence/g9/`, `g9_judge2/`, `g9_rewind_run*.txt`,
+  `g9_attack_stop_run*.txt`, `g9b_smoke_result3.txt`, `g9b_entity_wire_lines.txt`.
+- **Smoke:** run 3 at 0 FAIL. Runs 1 and 2 of G9b failed only on step-3 timing
+  checks, which the LOG records as the known flake, not this change.
+- **Not closed:** the attack-start gate under a stop is shown by the frozen
+  chase state and the held cooldown, not a full attack animation.
+
+### W4-B11 — debug tools: perf scene, `net_lag`, effect overlay (`debug-tools`) — PARTIAL, blocked on D3, D8, D9 (2026-10-30)
+
+- **Status:** the perf scene spawns 4 fake players and 128 emitters and logs a
+  30 s FPS log to the console and `user://perf_test_log.txt` (LOG G10a). A
+  valid windowed 60 FPS measurement: `Engine.max_fps` 60, avg 59.8 over 30.0 s
+  (1794 frames), min 6.7, a single-frame reading whose cause was not checked (LOG G10d,
+  `.goals/evidence/g10d/`). The release exclusion for `scripts/debug/*` and
+  `scenes/debug/*` is in `export_presets.cfg`.
+- **Caveat:** the earlier G10a run read about 1020 FPS with vsync reported on.
+  That number was uncapped and is not a 60 FPS result; LOG G10d attributes the cap
+  to `Engine.max_fps`, not vsync.
+- **Open:** the 60-unit count (D9: no skeleton or turret kind exists in `data/`
+  or `scripts/`), the `net_lag` delay queue (D8: no public Godot 4 hook delays
+  `MultiplayerSynchronizer` deltas), and the effect overlay (LOG G10c, blocked on
+  D3).
+- **Open decisions:** D9 (recommended: 60 existing enemy kinds now, skeletons
+  and turrets as a recorded follow-up), D8 (a custom reliable path, or a
+  host-side-only simulation recorded as a deviation), D3.
 
 ---
 
@@ -7744,7 +7884,7 @@ week-4 checkpoints are each **partial** and each tag is withheld (decisions 22,
 37 and 100) — in every case because Dev A's lane for that week has not landed.
 The week-4 verdict, the per-task record and the perf-scene gap are written into
 `specs/WEEKLY.md`'s Week 4 entry, `tasks/todo.md`'s Week 4 checkpoint block and
-decision 100; the perf scene itself is still open as W4-B11 / G28.
+decision 100; the perf scene itself was still open as W4-B11 / G28 at that date (historical; the scene exists now, see the W4-B11 section below).
 
 Week 5 has begun: **G2 (`PlayerProfile`) on 2026-10-20** — import exit 0 with 0
 `ERROR` lines, new `tests/unit/test_save_round_trip.gd` **25/25 / 218 asserts**
